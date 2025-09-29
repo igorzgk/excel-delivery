@@ -1,15 +1,100 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AuditAction {
+  USER_CREATED
+  SUBSCRIPTION_TOGGLED
+  FILE_UPLOADED
+  FILE_ASSIGNED
+  APIKEY_CREATED
+  APIKEY_REVOKED
+  DOWNLOAD_GRANTED
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  name               String?
+  role               Role      @default(USER)
+  passwordHash       String?
+  subscriptionActive Boolean   @default(false)
+  subscriptionEndsAt DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // File uploads created by this user (usually admins)
+  uploads File[] @relation("UserUploads")
+
+  // Files assigned TO this user
+  assignments FileAssignment[] @relation("UserAssignments")
+
+  // Assignments this user MADE to others (admin action)
+  assignmentsGiven FileAssignment[] @relation("AssignmentsAssignedBy")
+
+  // For audit trail
+  auditLogs AuditLog[] @relation("AuditActor")
+}
+
+model File {
+  id           String   @id @default(cuid())
+  storagePath  String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String
+  uploadedBy   User     @relation("UserUploads", fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+  sha256       String?
+
+  assignments FileAssignment[]
+}
+
+model FileAssignment {
+  id           String   @id @default(cuid())
+  userId       String
+  fileId       String
+  assignedById String
+  note         String?
+  createdAt    DateTime @default(now())
+
+  // The recipient of the assignment
+  user User @relation("UserAssignments", fields: [userId], references: [id])
+
+  // Who assigned it (admin)
+  assignedBy User @relation("AssignmentsAssignedBy", fields: [assignedById], references: [id])
+
+  file File @relation(fields: [fileId], references: [id])
+
+  @@unique([userId, fileId])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  label      String
+  keyHash    String
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  actorId   String?
+  actor     User?       @relation("AuditActor", fields: [actorId], references: [id])
+  action    AuditAction
+  targetId  String?
+  target    String?
+  meta      Json?
+  createdAt DateTime    @default(now())
 }
