@@ -22,61 +22,63 @@ enum AuditAction {
   DOWNLOAD_GRANTED
 }
 
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
 model User {
-  id                 String    @id @default(cuid())
-  email              String    @unique
-  name               String?
-  role               Role      @default(USER)
-  passwordHash       String?
-  subscriptionActive Boolean   @default(false)
-  subscriptionEndsAt DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                 String        @id @default(cuid())
+  name               String
+  email              String        @unique
+  passwordHash       String
+  role               Role          @default(USER)
+  subscriptionActive Boolean       @default(false)
+  status             AccountStatus @default(PENDING)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
-  // File uploads created by this user (usually admins)
-  uploads File[] @relation("UserUploads")
-
-  // Files assigned TO this user
-  assignments FileAssignment[] @relation("UserAssignments")
-
-  // Assignments this user MADE to others (admin action)
+  // Relations
+  uploads          File[]           @relation("UserUploads")
+  assignments      FileAssignment[] @relation("UserAssignments")
   assignmentsGiven FileAssignment[] @relation("AssignmentsAssignedBy")
-
-  // For audit trail
-  auditLogs AuditLog[] @relation("AuditActor")
+  auditLogs        AuditLog[]       @relation("AuditActor") // 👈 add this
 }
 
 model File {
   id           String   @id @default(cuid())
-  storagePath  String
-  originalName String
-  mimeType     String
-  sizeBytes    Int
-  uploadedById String
-  uploadedBy   User     @relation("UserUploads", fields: [uploadedById], references: [id])
+  title        String
+  originalName String?
+  url          String? // for external or pre-signed location (we’ll wire actual uploads next day)
+  mime         String?
+  size         Int?
+  uploadedBy   User?    @relation("UserUploads", fields: [uploadedById], references: [id])
+  uploadedById String?
   createdAt    DateTime @default(now())
-  sha256       String?
+  updatedAt    DateTime @updatedAt
 
+  // Assignments
   assignments FileAssignment[]
+
+  @@index([uploadedById])
+  @@index([createdAt])
 }
 
 model FileAssignment {
   id           String   @id @default(cuid())
-  userId       String
+  file         File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
   fileId       String
+  user         User     @relation("UserAssignments", fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  assignedBy   User     @relation("AssignmentsAssignedBy", fields: [assignedById], references: [id])
   assignedById String
   note         String?
   createdAt    DateTime @default(now())
 
-  // The recipient of the assignment
-  user User @relation("UserAssignments", fields: [userId], references: [id])
-
-  // Who assigned it (admin)
-  assignedBy User @relation("AssignmentsAssignedBy", fields: [assignedById], references: [id])
-
-  file File @relation(fields: [fileId], references: [id])
-
-  @@unique([userId, fileId])
+  @@unique([fileId, userId]) // prevent double-assigning the same file to same user
+  @@index([userId, createdAt])
+  @@index([assignedById])
 }
 
 model ApiKey {
@@ -97,4 +99,6 @@ model AuditLog {
   target    String?
   meta      Json?
   createdAt DateTime    @default(now())
+
+  @@index([actorId]) // optional
 }

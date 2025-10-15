@@ -17,11 +17,29 @@ export const authOptions: NextAuthOptions = {
           password: z.string().min(6),
         }).parse(raw);
 
+        //const user = await prisma.user.findUnique({ where: { email: creds.email } });
+        //if (!user || !user.passwordHash) return null;
+
+        //const ok = await bcrypt.compare(creds.password, user.passwordHash);
+        //if (!ok) return null;
+
+        //return { id: user.id, email: user.email, name: user.name ?? "", role: user.role };
+
+        // ...
         const user = await prisma.user.findUnique({ where: { email: creds.email } });
         if (!user || !user.passwordHash) return null;
 
         const ok = await bcrypt.compare(creds.password, user.passwordHash);
         if (!ok) return null;
+
+        // 👇 block if not approved
+        if (user.status !== 'ACTIVE') {
+        // Option A: return null (generic error)
+        // return null;
+
+        // Option B: throw a custom error to show message on /login
+        throw new Error(user.status === 'PENDING' ? 'AccountPending' : 'AccountSuspended');
+        }
 
         return { id: user.id, email: user.email, name: user.name ?? "", role: user.role };
       },

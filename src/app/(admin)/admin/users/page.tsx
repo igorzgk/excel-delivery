@@ -8,6 +8,7 @@ type User = {
   email: string;
   role: "USER" | "ADMIN";
   subscriptionActive: boolean;
+  status: "PENDING" | "ACTIVE" | "SUSPENDED"; // 👈 NEW
   createdAt: string;
 };
 
@@ -15,6 +16,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"ALL" | "PENDING" | "ACTIVE" | "SUSPENDED">("ALL");
 
   // create form state
   const [form, setForm] = useState({
@@ -29,19 +31,17 @@ export default function AdminUsersPage() {
   }, [form]);
 
   async function load() {
-    setLoading(true);
-    setErr(null);
+    setLoading(true); setErr(null);
     try {
-      const res = await fetch("/api/admin/users", { cache: "no-store" });
+      const q = filter === "ALL" ? "" : `?status=${filter}`;
+      const res = await fetch(`/api/admin/users${q}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Failed to load users");
       setUsers(json.users);
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setErr(e.message); }
+    finally { setLoading(false); }
   }
+  useEffect(() => { load(); }, [filter]);
 
   useEffect(() => { load(); }, []);
 
@@ -88,8 +88,40 @@ export default function AdminUsersPage() {
     load();
   }
 
+  async function setStatus(u: User, status: User["status"]) {
+    const optimistic = users.map(x => x.id === u.id ? { ...x, status } : x);
+    setUsers(optimistic);
+    const res = await fetch(`/api/admin/users/${u.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) load();
+  }
+
   return (
     <div className="grid gap-6">
+      {/* Filter bar */}
+      <div className="flex gap-2">
+        {(["ALL","PENDING","ACTIVE","SUSPENDED"] as const).map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={[
+              "rounded-md border px-3 py-2 text-sm",
+              filter === f
+                ? "bg-[color:var(--brand)] text-black border-transparent"
+                : "border-[color:var(--border)]"
+            ].join(" ")}
+          >
+            {f}
+          </button>
+        ))}
+        <div className="ml-auto">
+          <button onClick={load} className="rounded-md border border-[color:var(--border)] px-3 py-2 text-sm">Refresh</button>
+        </div>
+      </div>
+
       {/* Create user */}
       <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4">
         <h2 className="font-semibold mb-3">Create User</h2>
@@ -149,20 +181,7 @@ export default function AdminUsersPage() {
 
       {/* Users table */}
       <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 overflow-x-auto">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Users</h2>
-          <button
-            onClick={load}
-            className="rounded-md border border-[color:var(--border)] px-3 py-2 text-sm"
-          >
-            Refresh
-          </button>
-        </div>
-
-        {err && (
-          <div className="text-sm text-red-600 mb-3">{err}</div>
-        )}
-
+        {/* ...heading... */}
         {loading ? (
           <div className="text-sm text-[color:var(--muted)]">Loading…</div>
         ) : users.length === 0 ? (
@@ -174,6 +193,7 @@ export default function AdminUsersPage() {
                 <th className="py-2 pr-3">Name</th>
                 <th className="py-2 pr-3">Email</th>
                 <th className="py-2 pr-3">Role</th>
+                <th className="py-2 pr-3">Status</th>
                 <th className="py-2 pr-3">Subscription</th>
                 <th className="py-2 pr-3">Created</th>
                 <th className="py-2 pr-3">Actions</th>
@@ -195,17 +215,44 @@ export default function AdminUsersPage() {
                     </select>
                   </td>
                   <td className="py-2 pr-3">
+                    <span className={[
+                      "inline-flex items-center rounded-full px-2 py-0.5 border",
+                      u.status === "ACTIVE" ? "border-green-300 text-green-700 bg-green-50" :
+                      u.status === "PENDING" ? "border-amber-300 text-amber-700 bg-amber-50" :
+                      "border-red-300 text-red-700 bg-red-50"
+                    ].join(" ")}>
+                      {u.status}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3">
                     <label className="inline-flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={u.subscriptionActive}
                         onChange={() => toggleSubscription(u)}
+                        disabled={u.status !== "ACTIVE"} // optional: only active users can have subscription
                       />
                       {u.subscriptionActive ? "Active" : "Inactive"}
                     </label>
                   </td>
                   <td className="py-2 pr-3">{new Date(u.createdAt).toLocaleDateString()}</td>
-                  <td className="py-2 pr-3">
+                  <td className="py-2 pr-3 flex gap-2">
+                    {u.status !== "ACTIVE" && (
+                      <button
+                        onClick={() => setStatus(u, "ACTIVE")}
+                        className="rounded-md bg-green-600/90 text-white px-3 py-1 hover:bg-green-700"
+                      >
+                        Approve
+                      </button>
+                    )}
+                    {u.status === "ACTIVE" && (
+                      <button
+                        onClick={() => setStatus(u, "SUSPENDED")}
+                        className="rounded-md bg-yellow-500/90 text-black px-3 py-1 hover:bg-yellow-500"
+                      >
+                        Suspend
+                      </button>
+                    )}
                     <button
                       onClick={() => remove(u)}
                       className="rounded-md border border-red-200 text-red-700 px-3 py-1 hover:bg-red-50"

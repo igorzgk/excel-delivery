@@ -37,11 +37,16 @@ export default function RegisterPage() {
       }
 
       // Auto-login after registration
-      const login = await signIn('credentials', {
-        redirect: false,
-        email,
-        password,
-      });
+      //const login = await signIn('credentials', {
+      //redirect: false,
+      //email,
+      //password,
+      //});
+
+      // in src/app/register/page.tsx (after successful POST)
+      setLoading(false);
+      router.replace('/login?notice=pending'); // send them to login with a notice
+
 
       if (login?.error) {
         setError(login.error);

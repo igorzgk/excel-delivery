@@ -38,7 +38,8 @@ export async function POST(req: Request) {
         email,
         passwordHash: hash,
         role: 'USER',                 // requires role enum in your schema (from earlier day)
-        subscriptionActive: false,    // per Day 4 requirement
+        subscriptionActive: false,
+        status: 'PENDING',     // per Day 4 requirement
       },
       select: { id: true, email: true, name: true },
     });

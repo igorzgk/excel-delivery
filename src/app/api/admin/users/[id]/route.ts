@@ -13,10 +13,11 @@ export async function PATCH(req: Request, context: { params: Params }) {
   const { id } = await context.params; // 👈 await params
 
   const UpdateSchema = z.object({
-    name: z.string().min(2).optional(),
-    role: z.enum(["USER", "ADMIN"]).optional(),
-    subscriptionActive: z.boolean().optional(),
-  });
+  name: z.string().min(2).optional(),
+  role: z.enum(["USER", "ADMIN"]).optional(),
+  subscriptionActive: z.boolean().optional(),
+  status: z.enum(["PENDING", "ACTIVE", "SUSPENDED"]).optional(), // 👈 NEW
+});
 
   const body = await req.json();
   const data = UpdateSchema.parse(body);
