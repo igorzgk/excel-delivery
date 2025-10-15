@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { requireRole } from "@/lib/auth-helpers";
 import { z } from "zod";
 import bcrypt from "bcrypt";
+
 
 const prisma = new PrismaClient();
 
@@ -14,6 +15,12 @@ async function requireAdmin() {
     return null;
   }
   return session;
+}
+
+export async function GET() {
+  const guard = await requireRole("ADMIN");
+  if (!guard.ok) return NextResponse.json({ error: "forbidden" }, { status: guard.status });
+  return NextResponse.json({ users: [] });
 }
 
 export async function GET() {

@@ -37,6 +37,9 @@ export default function LoginPage() {
           {loading ? "Logging in..." : "Log in"}
         </button>
       </form>
+      <p className="text-sm mt-4">
+          New here? <a className="underline" href="/register">Create account</a>
+      </p>
     </main>
   );
 }
