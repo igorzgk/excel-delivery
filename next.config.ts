@@ -2,13 +2,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  eslint: {
-    // ✅ let the build pass even if ESLint finds issues
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    // ✅ let the build pass even if TS finds type errors
-    ignoreBuildErrors: true,
+  // Let builds pass even with lint/type issues (you enabled this for Vercel)
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
+
+  // Rewrites to serve files from /uploads via our static proxy route
+  async rewrites() {
+    return [
+      { source: "/uploads/:path*", destination: "/api/static/uploads/:path*" },
+    ];
   },
 };
 
