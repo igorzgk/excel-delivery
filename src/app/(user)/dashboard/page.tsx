@@ -1,8 +1,10 @@
+// src/app/(user)/dashboard/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import DashboardCard from "@/components/DashboardCard";
 import TrendMini from "@/components/TrendMini";
+import Link from "next/link";
 
 type Stats = { myFiles:number; myAssigned:number };
 type FileRow = { id:string; title:string; originalName?:string|null; url?:string|null; createdAt:string };
@@ -38,33 +40,33 @@ export default function UserDashboard() {
   return (
     <div className="grid gap-4">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <DashboardCard title="Files assigned to me" value={stats?.myAssigned ?? "—"} subtitle="Total assignments" />
-        <DashboardCard title="My uploads" value={stats?.myFiles ?? "—"} subtitle="Files I uploaded" />
-        <DashboardCard title="Trend (30 days)">
+        <DashboardCard title="Αρχεία που μου έχουν ανατεθεί" value={stats?.myAssigned ?? "—"} subtitle="Σύνολο αναθέσεων" />
+        <DashboardCard title="Τα δικά μου ανεβάσματα" value={stats?.myFiles ?? "—"} subtitle="Αρχεία που ανέβασα" />
+        <DashboardCard title="Τάση (30 ημέρες)">
           <TrendMini data={assignedSeries} />
         </DashboardCard>
-        <DashboardCard title="Shortcuts" subtitle="Common actions">
+        <DashboardCard title="Συντομεύσεις" subtitle="Συνηθισμένες ενέργειες">
           <div className="mt-3 flex flex-wrap gap-2">
-            <a href="/files" className="rounded border px-3 py-1 text-sm">My files</a>
-            <a href="/support" className="rounded border px-3 py-1 text-sm">Support</a>
+            <Link href="/files" className="rounded border px-3 py-1 text-sm">Τα αρχεία μου</Link>
+            <Link href="/support" className="rounded border px-3 py-1 text-sm">Υποστήριξη</Link>
           </div>
         </DashboardCard>
       </div>
 
       <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4 overflow-x-auto">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold">Recent assigned files</h2>
-          <a href="/files" className="text-sm underline">View all</a>
+          <h2 className="font-semibold">Πρόσφατα ανατεθειμένα αρχεία</h2>
+          <Link href="/files" className="text-sm underline">Προβολή όλων</Link>
         </div>
         {assigned.length === 0 ? (
-          <p className="text-sm text-[color:var(--muted)]">No files yet.</p>
+          <p className="text-sm text-[color:var(--muted)]">Δεν υπάρχουν αρχεία ακόμη.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
-                <th className="py-2 pr-3">Title</th>
-                <th className="py-2 pr-3">Assigned</th>
-                <th className="py-2 pr-3">Actions</th>
+                <th className="py-2 pr-3">Τίτλος</th>
+                <th className="py-2 pr-3">Ανάθεση</th>
+                <th className="py-2 pr-3">Ενέργειες</th>
               </tr>
             </thead>
             <tbody>
@@ -78,10 +80,10 @@ export default function UserDashboard() {
                   <td className="py-2 pr-3">
                     {f.url ? (
                       <a href={f.url} target="_blank" rel="noreferrer" className="rounded border px-3 py-1 hover:bg-black/5">
-                        Download
+                        Λήψη
                       </a>
                     ) : (
-                      <span className="text-[color:var(--muted)]">No URL</span>
+                      <span className="text-[color:var(--muted)]">Δεν υπάρχει URL</span>
                     )}
                   </td>
                 </tr>

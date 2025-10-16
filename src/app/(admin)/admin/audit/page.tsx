@@ -1,3 +1,4 @@
+// src/app/(admin)/admin/audit/page.tsx
 "use client";
 import { useEffect, useState } from "react";
 
@@ -33,16 +34,16 @@ export default function AdminAuditPage() {
 
   return (
     <div className="grid gap-4">
-      <h1 className="text-xl font-semibold">Audit Log</h1>
+      <h1 className="text-xl font-semibold">Αρχεία Καταγραφής</h1>
 
       <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
-              <th className="py-2 pr-3">Time</th>
-              <th className="py-2 pr-3">Action</th>
-              <th className="py-2 pr-3">Actor</th>
-              <th className="py-2 pr-3">Target</th>
+              <th className="py-2 pr-3">Ώρα</th>
+              <th className="py-2 pr-3">Ενέργεια</th>
+              <th className="py-2 pr-3">Χρήστης</th>
+              <th className="py-2 pr-3">Στόχος</th>
               <th className="py-2 pr-3">Meta</th>
             </tr>
           </thead>
@@ -74,7 +75,7 @@ export default function AdminAuditPage() {
               disabled={loading}
               className="rounded border border-[color:var(--border)] px-3 py-2 text-sm"
             >
-              {loading ? "Loading…" : "Load more"}
+              {loading ? "Φόρτωση…" : "Φόρτωση περισσότερων"}
             </button>
           )}
         </div>

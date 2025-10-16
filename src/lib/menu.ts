@@ -1,21 +1,21 @@
+// src/lib/menu.ts
 export type Role = "ADMIN" | "USER";
 export type MenuItem = { label: string; href: string };
 
 export function getMenu(role: Role): MenuItem[] {
   if (role === "ADMIN") {
     return [
-      { label: "Dashboard", href: "/admin" },
-      { label: "Users", href: "/admin/users" },
-      { label: "Files", href: "/admin/files" },
-      { label: "Settings", href: "/admin/settings" },
-      { label: "Audit", href: "/admin/audit" },
+      { label: "Πίνακας Ελέγχου", href: "/dashboard" },
+      { label: "Χρήστες", href: "/admin/users" },
+      { label: "Αρχεία", href: "/admin/files" },
+      { label: "Ρυθμίσεις", href: "/admin/settings" },
+      { label: "Αρχεία Καταγραφής", href: "/admin/audit" },
     ];
   }
-  // USER
   return [
-    { label: "Dashboard", href: "/dashboard" },
-    { label: "My Files", href: "/files" },
-    { label: "Assignments", href: "/assignments" },
-    { label: "Support", href: "/support" },
+    { label: "Πίνακας Ελέγχου", href: "/dashboard" },
+    { label: "Τα Αρχεία μου", href: "/files" },
+    { label: "Αναθέσεις", href: "/assignments" },
+    { label: "Υποστήριξη", href: "/support" },
   ];
 }

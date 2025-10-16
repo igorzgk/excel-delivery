@@ -1,3 +1,4 @@
+// src/app/(admin)/admin/uploads/page.tsx
 "use client";
 import { useState } from "react";
 
@@ -8,7 +9,7 @@ export default function AdminUploadPage() {
 
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) return setStatus("No file selected.");
+    if (!file) return setStatus("Δεν επιλέχθηκε αρχείο.");
 
     const fd = new FormData();
     fd.append("file", file);
@@ -17,18 +18,18 @@ export default function AdminUploadPage() {
     const res = await fetch("/api/uploads", { method: "POST", body: fd });
     const json = await res.json();
     if (!res.ok) return setStatus(`❌ ${json.error}`);
-    setStatus(`✅ Uploaded: ${json.file.title}`);
+    setStatus(`✅ Ανέβηκε: ${json.file.title}`);
     setFile(null);
     setTitle("");
   }
 
   return (
     <main className="grid gap-4 max-w-lg">
-      <h1 className="text-xl font-semibold">Upload Excel File</h1>
+      <h1 className="text-xl font-semibold">Ανέβασμα αρχείου Excel</h1>
       <form onSubmit={handleUpload} className="grid gap-3">
         <input
           type="text"
-          placeholder="Title (optional)"
+          placeholder="Τίτλος (προαιρετικά)"
           value={title}
           onChange={e => setTitle(e.target.value)}
           className="border rounded px-3 py-2"
@@ -40,7 +41,7 @@ export default function AdminUploadPage() {
           className="border rounded px-3 py-2"
         />
         <button className="rounded bg-[color:var(--brand)] text-black px-4 py-2">
-          Upload
+          Ανέβασμα
         </button>
       </form>
       {status && <p className="text-sm">{status}</p>}

@@ -1,28 +1,26 @@
-"use client";
+// src/components/AppShell.tsx
+import React from "react";
+import Sidebar from "@/components/Sidebar";
+import { currentUser } from "@/lib/auth-helpers";
 
-import { useState, useMemo } from "react";
-import { useSession } from "next-auth/react";
-import { getMenu } from "@/lib/menu";
-import { Sidebar } from "@/components/Sidebar";
-import { Topbar } from "@/components/Topbar";
+type Role = "ADMIN" | "USER";
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { data } = useSession();
-  const role = (data?.user as any)?.role ?? "USER";
-  const name = data?.user?.name ?? "User";
-
-  const items = useMemo(() => getMenu(role), [role]);
-  const [open, setOpen] = useState(false);
+export default async function AppShell({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // Server-side: fetch the current user once so Sidebar knows the role.
+  const user = await currentUser();
+  const role: Role = (user?.role as Role) || "USER";
+  const name = user?.name ?? null;
 
   return (
-    <div className="min-h-screen w-full flex">
-      <Sidebar items={items} userName={name} open={open} onClose={() => setOpen(false)} />
-      <div className="flex-1 min-w-0">
-        <Topbar onMenu={() => setOpen(true)} />
-        <main className="p-4 md:p-6">
-          {children}
-        </main>
-      </div>
+    <div className="min-h-screen grid grid-cols-[240px_1fr]">
+      <aside className="bg-[#0D2435] text-white">
+        <Sidebar role={role} name={name} />
+      </aside>
+      <main className="bg-[#F9FAFB] p-6">{children}</main>
     </div>
   );
 }

@@ -1,22 +1,21 @@
+// src/app/login/page.tsx
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export const dynamic = "force-dynamic"; // avoid static prerender for this page
+export const dynamic = "force-dynamic";
 
 function QueryEffect({ setError }: { setError: (msg: string) => void }) {
   const sp = useSearchParams();
-
   useEffect(() => {
     const authError = sp.get("error");
     const notice = sp.get("notice");
-    if (authError === "AccountPending") setError("Your account is awaiting admin approval.");
-    else if (authError === "AccountSuspended") setError("Your account is suspended. Contact support.");
-    else if (notice === "pending") setError("Signup successful. Wait for admin approval before logging in.");
+    if (authError === "AccountPending") setError("Ο λογαριασμός σας αναμένει έγκριση από διαχειριστή.");
+    else if (authError === "AccountSuspended") setError("Ο λογαριασμός σας έχει ανασταλεί. Επικοινωνήστε με την υποστήριξη.");
+    else if (notice === "pending") setError("Η εγγραφή ολοκληρώθηκε. Περιμένετε έγκριση από διαχειριστή.");
   }, [sp, setError]);
-
   return null;
 }
 
@@ -34,26 +33,25 @@ export default function LoginPage() {
     const res = await signIn("credentials", { redirect: false, email, password });
     setLoading(false);
     if (res?.error) {
-      if (res.error === "AccountPending")   return setError("Your account is awaiting admin approval.");
-      if (res.error === "AccountSuspended") return setError("Your account is suspended. Contact support.");
-      return setError("Wrong email or password");
+      if (res.error === "AccountPending")   return setError("Ο λογαριασμός σας αναμένει έγκριση από διαχειριστή.");
+      if (res.error === "AccountSuspended") return setError("Ο λογαριασμός σας έχει ανασταλεί. Επικοινωνήστε με την υποστήριξη.");
+      return setError("Λάθος email ή κωδικός");
     }
     router.push("/dashboard");
   }
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
-      {/* Wrap the hook-driven side-effect inside Suspense */}
       <Suspense fallback={null}>
         <QueryEffect setError={setError} />
       </Suspense>
 
       <div className="w-full max-w-sm">
         <form onSubmit={onSubmit} className="space-y-3 border rounded-2xl p-6 bg-white">
-          <h1 className="text-xl font-semibold">Log in</h1>
+          <h1 className="text-xl font-semibold">Σύνδεση</h1>
 
           <label className="block">
-            <span className="text-sm">Email</span>
+            <span className="text-sm">Ηλεκτρονικό ταχυδρομείο</span>
             <input
               className="w-full border rounded p-2"
               value={email}
@@ -65,7 +63,7 @@ export default function LoginPage() {
           </label>
 
           <label className="block">
-            <span className="text-sm">Password</span>
+            <span className="text-sm">Κωδικός πρόσβασης</span>
             <input
               className="w-full border rounded p-2"
               value={password}
@@ -82,11 +80,11 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full rounded bg-black text-white py-2 disabled:opacity-60"
           >
-            {loading ? "Logging in..." : "Log in"}
+            {loading ? "Σύνδεση..." : "Σύνδεση"}
           </button>
 
           <p className="text-sm mt-2 text-center">
-            New here? <a className="underline" href="/register">Create account</a>
+            Νέος χρήστης; <a className="underline" href="/register">Δημιουργία λογαριασμού</a>
           </p>
         </form>
       </div>

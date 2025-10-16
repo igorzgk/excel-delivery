@@ -1,3 +1,4 @@
+// src/app/(user)/files/page.tsx
 "use client";
 import { useEffect, useState } from "react";
 
@@ -26,20 +27,20 @@ export default function MyAssignedFilesPage() {
   return (
     <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 overflow-x-auto">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="font-semibold">Files assigned to me</h2>
-        <button onClick={load} className="rounded border border-[color:var(--border)] px-3 py-1 text-sm">Refresh</button>
+        <h2 className="font-semibold">Αρχεία που μου έχουν ανατεθεί</h2>
+        <button onClick={load} className="rounded border border-[color:var(--border)] px-3 py-1 text-sm">Ανανέωση</button>
       </div>
       {loading ? (
-        <div className="text-sm text-[color:var(--muted)]">Loading…</div>
+        <div className="text-sm text-[color:var(--muted)]">Φόρτωση…</div>
       ) : rows.length === 0 ? (
-        <div className="text-sm text-[color:var(--muted)]">No assigned files yet.</div>
+        <div className="text-sm text-[color:var(--muted)]">Δεν υπάρχουν ανατεθειμένα αρχεία ακόμη.</div>
       ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
-              <th className="py-2 pr-3">Title</th>
-              <th className="py-2 pr-3">Uploaded</th>
-              <th className="py-2 pr-3">Actions</th>
+              <th className="py-2 pr-3">Τίτλος</th>
+              <th className="py-2 pr-3">Ανέβηκε</th>
+              <th className="py-2 pr-3">Ενέργειες</th>
             </tr>
           </thead>
           <tbody>
@@ -58,10 +59,10 @@ export default function MyAssignedFilesPage() {
                       rel="noreferrer"
                       className="rounded border px-3 py-1 hover:bg-black/5"
                     >
-                      Download
+                      Λήψη
                     </a>
                   ) : (
-                    <span className="text-[color:var(--muted)]">No file URL</span>
+                    <span className="text-[color:var(--muted)]">Δεν υπάρχει URL αρχείου</span>
                   )}
                 </td>
               </tr>
