@@ -1,22 +1,16 @@
 @import "tailwindcss";
 
 :root{
-  --brand:#1BA3E5;
-  --brand-600:#1497D6;
-  --accent:#00C4FF;
-  --nav:#051B2D;
-
-  --bg:#F7F9FB;
-  --card:#FFFFFF;
-  --text:#0A0F2C;
-  --muted:#6B7280;
-  --border:#E5E7EB;
-
-  --radius:16px;
+  --brand:#25C3F4;         /* Hygiene Plus cyan */
+  --text:#0A0F2C;          /* deep navy */
+  --muted:#6B7280;         /* gray-500 */
+  --bg:#F9FAFB;            /* gray-50 */
+  --card:#FFFFFF;          /* white */
+  --border:#E5E7EB;        /* gray-200 */
+  --radius:14px;
 }
-html,body{ background:var(--bg); color:var(--text); }
-a{ color:var(--brand); }
-:focus-visible{ outline:2px solid var(--brand); outline-offset:2px; }
+html,body{background:var(--bg);color:var(--text)}
+
 
 
 

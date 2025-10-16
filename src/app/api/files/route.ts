@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { currentUser, requireRole } from "@/lib/auth-helpers";
+import { currentUser } from "@/lib/auth-helpers";
 
 export async function GET(req: Request) {
   const me = await currentUser();
@@ -9,24 +9,27 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const scope = (searchParams.get("scope") || "mine") as "mine" | "assigned" | "all";
   const isAdmin = (me as any).role === "ADMIN";
+  const meId = (me as any).id;
 
   let where: any = {};
   if (isAdmin) {
-    if (scope === "mine") where = { uploadedById: (me as any).id };
+    if (scope === "mine") where = { uploadedById: meId };
     else if (scope === "assigned") {
       const ids = (await prisma.fileAssignment.findMany({
-        where: { userId: (me as any).id }, select: { fileId: true }
+        where: { userId: meId }, select: { fileId: true }
       })).map(a => a.fileId);
       where = { id: { in: ids } };
-    } else { where = {}; } // all
+    } else { // all
+      where = {};
+    }
   } else {
     if (scope === "assigned") {
       const ids = (await prisma.fileAssignment.findMany({
-        where: { userId: (me as any).id }, select: { fileId: true }
+        where: { userId: meId }, select: { fileId: true }
       })).map(a => a.fileId);
       where = { id: { in: ids } };
-    } else { // default to mine
-      where = { uploadedById: (me as any).id };
+    } else {
+      where = { uploadedById: meId };
     }
   }
 
@@ -35,12 +38,19 @@ export async function GET(req: Request) {
     orderBy: { createdAt: "desc" },
     select: {
       id: true, title: true, originalName: true, url: true, mime: true, size: true, createdAt: true,
-      uploadedBy: { select: { id: true, name: true, email: true } }
+      uploadedBy: { select: { id: true, name: true, email: true } },
+      // For admin, include assignment recipients
+      ...(isAdmin ? {
+        assignments: {
+          select: { user: { select: { id: true, email: true, name: true } } }
+        }
+      } : {})
     },
   });
 
   return NextResponse.json({ files });
 }
+
 
 // 🚫 No public POST here anymore unless admin explicitly uses it
 export async function POST(req: Request) {

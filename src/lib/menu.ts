@@ -8,6 +8,7 @@ export function getMenu(role: Role): MenuItem[] {
       { label: "Users", href: "/admin/users" },
       { label: "Files", href: "/admin/files" },
       { label: "Settings", href: "/admin/settings" },
+      { label: "Audit", href: "/admin/audit" },
     ];
   }
   // USER

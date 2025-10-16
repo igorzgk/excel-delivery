@@ -1,71 +1,93 @@
 "use client";
 
-import { useEffect, useState } from "react";
-type FileRow = { id: string; title: string; createdAt: string; uploadedBy: { id: string; name: string | null; email: string } | null };
-type AssignmentRow = { id: string; note?: string | null; createdAt: string; file: { id: string; title: string; url?: string | null; originalName?: string | null } };
+import { useEffect, useMemo, useState } from "react";
+import DashboardCard from "@/components/DashboardCard";
+import TrendMini from "@/components/TrendMini";
+
+type Stats = { myFiles:number; myAssigned:number };
+type FileRow = { id:string; title:string; originalName?:string|null; url?:string|null; createdAt:string };
 
 export default function UserDashboard() {
-  const [stats, setStats] = useState<{ myFiles: number; myAssigned: number } | null>(null);
-  const [files, setFiles] = useState<FileRow[]>([]);
-  const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [assigned, setAssigned] = useState<FileRow[]>([]);
 
   useEffect(() => {
     (async () => {
       const s = await fetch("/api/stats", { cache: "no-store" });
       if (s.ok) setStats(await s.json());
-      const f = await fetch("/api/files?scope=mine", { cache: "no-store" });
-      if (f.ok) setFiles((await f.json()).files);
-      const a = await fetch("/api/assignments", { cache: "no-store" });
-      if (a.ok) setAssignments((await a.json()).assignments);
+      const a = await fetch("/api/files?scope=assigned", { cache: "no-store" });
+      if (a.ok) setAssigned((await a.json()).files);
     })();
   }, []);
 
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4">
-        <h2 className="font-semibold mb-1">Quick stats</h2>
-        <p className="text-sm text-[color:var(--muted)]">Your files and assignments.</p>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div className="rounded-lg border border-[color:var(--border)] p-3">
-            <div className="text-xs text-[color:var(--muted)]">My uploads</div>
-            <div className="text-2xl font-semibold">{stats?.myFiles ?? "—"}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] p-3">
-            <div className="text-xs text-[color:var(--muted)]">Assigned to me</div>
-            <div className="text-2xl font-semibold">{stats?.myAssigned ?? "—"}</div>
-          </div>
-        </div>
-      </section>
+  const assignedSeries = useMemo(() => {
+    const byDay = new Map<string, number>();
+    const fmt = (d:Date)=> d.toISOString().slice(0,10);
+    const today = new Date();
+    for (let i=29;i>=0;i--){
+      const d = new Date(today); d.setDate(today.getDate()-i);
+      byDay.set(fmt(d), 0);
+    }
+    for (const f of assigned) {
+      const k = fmt(new Date(f.createdAt));
+      if (byDay.has(k)) byDay.set(k, (byDay.get(k) || 0) + 1);
+    }
+    return Array.from(byDay.entries()).map(([k,v])=>({ x:k, y:v }));
+  }, [assigned]);
 
-      <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4">
-        <h2 className="font-semibold mb-2">My uploads</h2>
-        {files.length === 0 ? (
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <DashboardCard title="Files assigned to me" value={stats?.myAssigned ?? "—"} subtitle="Total assignments" />
+        <DashboardCard title="My uploads" value={stats?.myFiles ?? "—"} subtitle="Files I uploaded" />
+        <DashboardCard title="Trend (30 days)">
+          <TrendMini data={assignedSeries} />
+        </DashboardCard>
+        <DashboardCard title="Shortcuts" subtitle="Common actions">
+          <div className="mt-3 flex flex-wrap gap-2">
+            <a href="/files" className="rounded border px-3 py-1 text-sm">My files</a>
+            <a href="/support" className="rounded border px-3 py-1 text-sm">Support</a>
+          </div>
+        </DashboardCard>
+      </div>
+
+      <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4 overflow-x-auto">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-semibold">Recent assigned files</h2>
+          <a href="/files" className="text-sm underline">View all</a>
+        </div>
+        {assigned.length === 0 ? (
           <p className="text-sm text-[color:var(--muted)]">No files yet.</p>
         ) : (
-          <ul className="text-sm">
-            {files.slice(0,6).map(f => (
-              <li key={f.id} className="py-1 border-b last:border-0 border-[color:var(--border)]">
-                {f.title} <span className="text-[color:var(--muted)]">· {new Date(f.createdAt).toLocaleDateString()}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 md:col-span-2">
-        <h2 className="font-semibold mb-2">Assignments to me</h2>
-        {assignments.length === 0 ? (
-          <p className="text-sm text-[color:var(--muted)]">No assignments yet.</p>
-        ) : (
-          <ul className="text-sm">
-            {assignments.slice(0,8).map(a => (
-              <li key={a.id} className="py-1 border-b last:border-0 border-[color:var(--border)]">
-                <span className="font-medium">{a.file.title}</span>
-                {a.note ? <span className="text-[color:var(--muted)]"> — {a.note}</span> : null}
-                <span className="text-[color:var(--muted)]"> · {new Date(a.createdAt).toLocaleString()}</span>
-              </li>
-            ))}
-          </ul>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
+                <th className="py-2 pr-3">Title</th>
+                <th className="py-2 pr-3">Assigned</th>
+                <th className="py-2 pr-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assigned.slice(0,6).map(f => (
+                <tr key={f.id} className="border-b last:border-0 border-[color:var(--border)]">
+                  <td className="py-2 pr-3">
+                    {f.title}
+                    {f.originalName ? <span className="text-[color:var(--muted)]"> · {f.originalName}</span> : null}
+                  </td>
+                  <td className="py-2 pr-3">{new Date(f.createdAt).toLocaleString()}</td>
+                  <td className="py-2 pr-3">
+                    {f.url ? (
+                      <a href={f.url} target="_blank" rel="noreferrer" className="rounded border px-3 py-1 hover:bg-black/5">
+                        Download
+                      </a>
+                    ) : (
+                      <span className="text-[color:var(--muted)]">No URL</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </section>
     </div>

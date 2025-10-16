@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
 type LogParams = {
-  actorId?: string | null;       // the user responsible (optional)
+  actorId?: string | null;
   action:
     | "USER_CREATED"
     | "SUBSCRIPTION_TOGGLED"
@@ -10,8 +10,8 @@ type LogParams = {
     | "APIKEY_CREATED"
     | "APIKEY_REVOKED"
     | "DOWNLOAD_GRANTED";
-  targetId?: string | null;      // e.g., file id
-  target?: string | null;        // e.g., "File"
+  targetId?: string | null;
+  target?: string | null;
   meta?: Record<string, any> | null;
 };
 
