@@ -1,4 +1,4 @@
-// src/app/api/files/[...key]/download/route.ts
+// src/app/api/files/download/[...key]/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -13,7 +13,9 @@ export async function GET(
   const keyPath = params.key.join("/");
 
   const supa = createClient(url, key, { auth: { persistSession: false } });
-  const { data, error } = await supa.storage.from(bucket).createSignedUrl(keyPath, 60 * 5); // 5 min
+  const { data, error } = await supa.storage
+    .from(bucket)
+    .createSignedUrl(keyPath, 60 * 5); // 5 minutes
 
   if (error || !data?.signedUrl) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
