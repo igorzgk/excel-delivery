@@ -1,15 +1,15 @@
-import { prisma } from "@/lib/prisma";
-import bcrypt from "bcrypt";
-
-export async function verifyApiKey(plainKey?: string | null) {
-  if (!plainKey) return null;
-  const all = await prisma.apiKey.findMany({ where: { isActive: true }, select: { id: true, keyHash: true } });
-  for (const k of all) {
-    const ok = await bcrypt.compare(plainKey, k.keyHash);
-    if (ok) {
-      await prisma.apiKey.update({ where: { id: k.id }, data: { lastUsedAt: new Date() } });
-      return k;
-    }
+// src/lib/apiKeyAuth.ts
+export function requireApiKey(req: Request) {
+  const header = req.headers.get("x-api-key");
+  const expected = process.env.INTEGRATIONS_API_KEY;
+  if (!expected || !header || header !== expected) {
+    return {
+      ok: false as const,
+      res: new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    };
   }
-  return null;
+  return { ok: true as const };
 }
