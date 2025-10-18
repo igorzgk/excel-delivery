@@ -1,7 +1,10 @@
-// src/app/api/_ops/init-admin/route.ts
+// src/app/api/init-admin/route.ts
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const prisma = new PrismaClient();
 
@@ -20,7 +23,6 @@ export async function GET(req: Request) {
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  // Adjust field names to your schema if needed
   const user = await prisma.user.upsert({
     where: { email },
     update: {
