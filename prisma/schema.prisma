@@ -3,11 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")          // pooled (6543) for runtime
-  // If you run prisma migrate anywhere, also set:
-  directUrl = env("DATABASE_DIRECT_URL")  // direct (5432) for migrations only
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")          // pooled, 6543
+  directUrl = env("DATABASE_DIRECT_URL")   // direct, 5432 (optional)
 }
+
 
 enum Role {
   USER
