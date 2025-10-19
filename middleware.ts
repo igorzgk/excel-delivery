@@ -1,49 +1,30 @@
-// middleware.ts
+// middleware.ts (must be at repo root, next to package.json)
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 /**
- * Routing rules:
- * - "/" (root):
- *    - no token  -> /login
- *    - ADMIN     -> /dashboard/admin
- *    - USER/etc  -> /dashboard
- * - "/login":
- *    - already logged in -> role dashboard
- * - Protected areas (dashboard, files, assignments, support, admin)
- *    - no token -> /login?callbackUrl=<original>
- * - "/admin" area:
- *    - non-admin -> /dashboard
- * - "/dashboard" for admins -> redirect to /dashboard/admin
+ * Global middleware with safe matcher:
+ * - Matches all paths except Next assets and files with extensions.
+ * - Handles "/" and "/login" routing, plus protected areas.
  */
-
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const url = (p: string) => new URL(p, req.url);
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
-  // 1) Root: smart gateway
+  // Root gateway
   if (pathname === "/") {
-    if (!token) {
-      return NextResponse.redirect(url("/login"));
-    }
-    // Logged in: route by role
-    if (token.role === "ADMIN") {
-      return NextResponse.redirect(url("/dashboard/admin"));
-    }
-    return NextResponse.redirect(url("/dashboard"));
+    if (!token) return NextResponse.redirect(url("/login"));
+    return NextResponse.redirect(url(token.role === "ADMIN" ? "/dashboard/admin" : "/dashboard"));
   }
 
-  // 2) Hitting /login while already authed? Send to dashboard by role
+  // Logged-in users should not see /login
   if (pathname === "/login" && token) {
-    if (token.role === "ADMIN") {
-      return NextResponse.redirect(url("/dashboard/admin"));
-    }
-    return NextResponse.redirect(url("/dashboard"));
+    return NextResponse.redirect(url(token.role === "ADMIN" ? "/dashboard/admin" : "/dashboard"));
   }
 
-  // 3) Which paths need auth?
+  // Paths that need auth
   const needsAuth =
     pathname === "/dashboard" ||
     pathname.startsWith("/dashboard/") ||
@@ -56,19 +37,18 @@ export async function middleware(req: NextRequest) {
     pathname === "/admin" ||
     pathname.startsWith("/admin/");
 
-  // 4) Not logged in -> go to /login with callbackUrl
   if (needsAuth && !token) {
     const login = url("/login");
     login.searchParams.set("callbackUrl", pathname + (search || ""));
     return NextResponse.redirect(login);
   }
 
-  // 5) Admin-only gate for /admin
+  // Non-admins cannot access /admin
   if ((pathname === "/admin" || pathname.startsWith("/admin/")) && token?.role !== "ADMIN") {
     return NextResponse.redirect(url("/dashboard"));
   }
 
-  // 6) Admins landing on /dashboard -> send to /dashboard/admin
+  // Admins visiting /dashboard go to /dashboard/admin
   if (pathname === "/dashboard" && token?.role === "ADMIN") {
     return NextResponse.redirect(url("/dashboard/admin"));
   }
@@ -76,20 +56,7 @@ export async function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
+// Match everything except _next assets and files with an extension (e.g., .png, .css, .ico)
 export const config = {
-  // Include root ("/") and login in the matcher so we can gateway at the edge
-  matcher: [
-    "/",                 // 👈 root gateway
-    "/login",            // 👈 redirect logged-in users away from login
-    "/dashboard",
-    "/dashboard/:path*",
-    "/files",
-    "/files/:path*",
-    "/assignments",
-    "/assignments/:path*",
-    "/support",
-    "/support/:path*",
-    "/admin",
-    "/admin/:path*",
-  ],
+  matcher: ["/((?!_next|.*\\..*).*)"],
 };
