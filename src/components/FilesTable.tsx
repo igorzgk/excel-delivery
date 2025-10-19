@@ -14,9 +14,36 @@ type FileRow = {
   assignments?: { user: { id: string; email: string | null; name: string | null } }[];
 };
 
+type Labels = {
+  search: string;
+  countSuffix: string;  // e.g., "αρχείο(α)"
+  title: string;
+  original: string;
+  uploaded: string;
+  size: string;
+  assignees: string;
+  action: string;
+  download: string;
+  empty: string;
+};
+
 type Props = {
   initialFiles: FileRow[];
   adminMode?: boolean; // when true, show Assignees column
+  labels?: Partial<Labels>;
+};
+
+const DEFAULT_LABELS: Labels = {
+  search: "Search files…",
+  countSuffix: "file(s)",
+  title: "Title",
+  original: "Original",
+  uploaded: "Uploaded",
+  size: "Size",
+  assignees: "Assignees",
+  action: "Action",
+  download: "Download",
+  empty: "No files found.",
 };
 
 function formatBytes(n?: number) {
@@ -37,7 +64,8 @@ function formatDate(iso: string) {
   return d.toLocaleString();
 }
 
-export default function FilesTable({ initialFiles, adminMode = false }: Props) {
+export default function FilesTable({ initialFiles, adminMode = false, labels: lbl }: Props) {
+  const labels = { ...DEFAULT_LABELS, ...(lbl || {}) };
   const [query, setQuery] = React.useState("");
   const [rows, setRows] = React.useState<FileRow[]>(initialFiles);
 
@@ -58,24 +86,26 @@ export default function FilesTable({ initialFiles, adminMode = false }: Props) {
       <div className="mb-3 flex items-center justify-between gap-3">
         <input
           type="text"
-          placeholder="Search files…"
+          placeholder={labels.search}
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
           className="w-full max-w-md rounded-xl border border-gray-300 bg-white p-2 text-sm"
         />
-        <span className="text-xs text-gray-500">{filtered.length} file(s)</span>
+        <span className="text-xs text-gray-500">
+          {filtered.length} {labels.countSuffix}
+        </span>
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-sm">
         <table className="min-w-full text-left text-sm">
           <thead className="bg-gray-50 text-gray-600">
             <tr>
-              <th className="px-4 py-3 font-semibold">Title</th>
-              <th className="px-4 py-3 font-semibold">Original</th>
-              <th className="px-4 py-3 font-semibold">Uploaded</th>
-              <th className="px-4 py-3 font-semibold">Size</th>
-              {adminMode && <th className="px-4 py-3 font-semibold">Assignees</th>}
-              <th className="px-4 py-3 font-semibold">Action</th>
+              <th className="px-4 py-3 font-semibold">{labels.title}</th>
+              <th className="px-4 py-3 font-semibold">{labels.original}</th>
+              <th className="px-4 py-3 font-semibold">{labels.uploaded}</th>
+              <th className="px-4 py-3 font-semibold">{labels.size}</th>
+              {adminMode && <th className="px-4 py-3 font-semibold">{labels.assignees}</th>}
+              <th className="px-4 py-3 font-semibold">{labels.action}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -86,7 +116,7 @@ export default function FilesTable({ initialFiles, adminMode = false }: Props) {
                     <span className="font-medium text-gray-900">{f.title}</span>
                     {f.uploadedBy?.email && (
                       <span className="text-xs text-gray-500">
-                        by {f.uploadedBy.name || f.uploadedBy.email}
+                        {f.uploadedBy.name || f.uploadedBy.email}
                       </span>
                     )}
                   </div>
@@ -108,7 +138,7 @@ export default function FilesTable({ initialFiles, adminMode = false }: Props) {
                     href={f.url}
                     className="inline-flex rounded-xl bg-black px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
                   >
-                    Download
+                    {labels.download}
                   </a>
                 </td>
               </tr>
@@ -116,7 +146,7 @@ export default function FilesTable({ initialFiles, adminMode = false }: Props) {
             {!filtered.length && (
               <tr>
                 <td colSpan={adminMode ? 6 : 5} className="px-4 py-8 text-center text-sm text-gray-500">
-                  No files found.
+                  {labels.empty}
                 </td>
               </tr>
             )}
