@@ -3,20 +3,21 @@ import { PrismaClient } from "@prisma/client";
 
 declare global {
   // eslint-disable-next-line no-var
-  var __PRISMA: PrismaClient | undefined;
+  var __PRISMA__: PrismaClient | undefined;
 }
 
-// recommended logging during debug:
-// const log: any = ["error", "warn"];
-const log: any = ["error"];
-
+/**
+ * Use a single PrismaClient across hot reloads in dev
+ * and a new one per serverless worker in production.
+ */
 export const prisma =
-  global.__PRISMA ??
+  global.__PRISMA__ ||
   new PrismaClient({
-    log,
-    // Prisma 6 respects DATABASE_URL params (pgbouncer=true disables prepared statements).
+    log: process.env.NODE_ENV === "development"
+      ? ["query", "error", "warn"]
+      : ["error"],
   });
 
 if (process.env.NODE_ENV !== "production") {
-  global.__PRISMA = prisma;
+  global.__PRISMA__ = prisma;
 }

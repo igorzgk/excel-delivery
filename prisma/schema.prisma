@@ -2,11 +2,18 @@ generator client {
   provider = "prisma-client-js"
 }
 
+
+// prisma/schema.prisma
+
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")          // pooled, 6543
-  directUrl = env("DATABASE_DIRECT_URL")   // direct, 5432 (optional)
+  provider   = "postgresql"
+  // Pooled connection for your running app (goes through PgBouncer on port 6543)
+  url        = env("DATABASE_URL")
+  // Direct connection for migrations & prisma studio (5432)
+  directUrl  = env("DATABASE_DIRECT_URL")
 }
+
+
 
 
 enum Role {
