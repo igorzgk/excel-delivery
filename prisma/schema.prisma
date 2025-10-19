@@ -29,6 +29,7 @@ enum AuditAction {
   APIKEY_CREATED
   APIKEY_REVOKED
   DOWNLOAD_GRANTED
+  SUPPORT_TICKET
 }
 
 enum AccountStatus {
