@@ -23,6 +23,15 @@ aside a:hover{ background-color: rgba(255,255,255,.06); }
 
 html,body{background:var(--bg);color:var(--text)}
 
+/* Gentle defaults for card-like blocks (border + rounded) */
+.card, .panel, .box, .surface {
+  padding: 1rem;           /* 16px */
+}
+@media (min-width: 768px) {
+  .card, .panel, .box, .surface {
+    padding: 1rem;         /* keep it tidy on md+ too */
+  }
+}
 
 
 

@@ -27,7 +27,6 @@ export default function Sidebar({
 
   return (
     <aside
-      // Full height inside its sticky wrapper
       className="flex h-screen w-60 shrink-0 flex-col border-r"
       style={{
         backgroundColor: "var(--sidebar-bg,#061630)",
@@ -35,10 +34,12 @@ export default function Sidebar({
         borderColor: "var(--sidebar-border,rgba(255,255,255,.08))",
       }}
     >
-      {/* Top: company logo + status */}
-      <div className="flex items-center gap-2 px-4 py-4 border-b" style={{ borderColor: "var(--sidebar-border,rgba(255,255,255,.08))" }}>
-        <div className="relative h-8 w-8 overflow-hidden rounded-md bg-white/5">
-          {/* Put your file in /public/logo.png */}
+      {/* Top: logo ABOVE the status block */}
+      <div
+        className="px-4 py-4 border-b"
+        style={{ borderColor: "var(--sidebar-border,rgba(255,255,255,.08))" }}
+      >
+        <div className="relative h-10 w-10 overflow-hidden rounded-md bg-white/5 mb-2">
           <Image src="/logo.png" alt="Company logo" fill className="object-contain p-1" priority />
         </div>
         <div className="leading-tight">
