@@ -1,4 +1,3 @@
-// src/components/AppShell.tsx
 "use client";
 
 import React from "react";
@@ -13,18 +12,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen w-full bg-[var(--app-bg,#F6FAFC)] text-[var(--app-fg,#0A0F2C)]">
-      {/* Mobile header (hamburger) */}
+      {/* Mobile header */}
       <MobileHeader role={role} name={name} />
 
       <div className="flex min-h-screen">
-        {/* Desktop sidebar only from md and up */}
+        {/* Desktop sidebar */}
         <div className="hidden md:block md:sticky md:top-0 md:h-screen">
           <Sidebar role={role} name={name} />
         </div>
 
-        {/* Content: allow safe horizontal scroll for wide tables */}
+        {/* Content */}
         <main className="app-main flex-1 min-w-0 px-3 md:px-4 py-4 md:py-5">
-          <div className="overflow-x-auto">{children}</div>
+          {/* One guard wrapper so children never overflow horizontally */}
+          <div className="max-w-full">{children}</div>
         </main>
       </div>
     </div>
