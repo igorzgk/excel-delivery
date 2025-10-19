@@ -17,7 +17,7 @@ export default async function AppShell({
 
   return (
     <div className="min-h-screen grid grid-cols-[240px_1fr]">
-      <aside className="bg-[#0D2435] text-white">
+      <aside className="text-white">
         <Sidebar role={role} name={name} />
       </aside>
       <main className="bg-[#F9FAFB] p-6">{children}</main>

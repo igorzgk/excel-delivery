@@ -10,12 +10,12 @@
   --border:#E5E7EB;
   --radius:14px;
 
-  /* NEW: high-contrast sidebar */
-  --sidebar-bg:#0D2435;
+  --sidebar-bg:#061630;                 /* <- requested color */
   --sidebar-text:#ECF5F8;
   --sidebar-muted:#A7BECC;
   --sidebar-active-bg:rgba(37,195,244,.15);
   --sidebar-active-text:#FFFFFF;
+  --sidebar-hover-bg:rgba(255,255,255,.06);  /* <- used on hover */
   --sidebar-border:rgba(255,255,255,.08);
 }
 
