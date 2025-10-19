@@ -29,16 +29,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  // Admin only
+  // Admin-only /admin area
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
     if (token?.role !== "ADMIN") {
       return NextResponse.redirect(url("/dashboard"));
     }
   }
 
-  // If ADMIN hits /dashboard, route to /admin
+  // ✅ If ADMIN hits /dashboard, route to the admin dashboard
   if (pathname === "/dashboard" && token?.role === "ADMIN") {
-    return NextResponse.redirect(url("/admin"));
+    return NextResponse.redirect(url("/dashboard/admin"));
   }
 
   return NextResponse.next();
