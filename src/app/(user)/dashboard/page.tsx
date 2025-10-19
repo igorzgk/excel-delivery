@@ -2,95 +2,113 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import DashboardCard from "@/components/DashboardCard";
-import TrendMini from "@/components/TrendMini";
 import Link from "next/link";
+import TrendMini from "@/components/TrendMini";
 
-type Stats = { myFiles:number; myAssigned:number };
-type FileRow = { id:string; title:string; originalName?:string|null; url?:string|null; createdAt:string };
+type StatsUser = {
+  assignedTotal: number;
+  myUploadsTotal: number;
+  series: { x: string; y: number }[];
+};
+
+type FileRow = { id: string; title: string; originalName: string; createdAt: string; url: string };
 
 export default function UserDashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<StatsUser | null>(null);
   const [assigned, setAssigned] = useState<FileRow[]>([]);
 
   useEffect(() => {
     (async () => {
-      const s = await fetch("/api/stats", { cache: "no-store" });
-      if (s.ok) setStats(await s.json());
-      const a = await fetch("/api/files?scope=assigned", { cache: "no-store" });
-      if (a.ok) setAssigned((await a.json()).files);
+      // user stats
+      try {
+        const r = await fetch("/api/stats-user", { cache: "no-store" });
+        if (r.ok) setStats(await r.json());
+      } catch {}
+
+      // files visible to me (your /api/files already returns uploads + assignments for user scope)
+      try {
+        const f = await fetch("/api/files", { cache: "no-store" });
+        if (f.ok) {
+          const json = await f.json();
+          // Keep the ones assigned to me most recently for the small list below
+          const rows: FileRow[] = (json.files as any[]).map((x) => ({
+            id: x.id,
+            title: x.title,
+            originalName: x.originalName,
+            createdAt: x.createdAt,
+            url: x.url,
+          }));
+          setAssigned(rows.slice(0, 10));
+        }
+      } catch {}
     })();
   }, []);
 
-  const assignedSeries = useMemo(() => {
-    const byDay = new Map<string, number>();
-    const fmt = (d:Date)=> d.toISOString().slice(0,10);
-    const today = new Date();
-    for (let i=29;i>=0;i--){
-      const d = new Date(today); d.setDate(today.getDate()-i);
-      byDay.set(fmt(d), 0);
-    }
-    for (const f of assigned) {
-      const k = fmt(new Date(f.createdAt));
-      if (byDay.has(k)) byDay.set(k, (byDay.get(k) || 0) + 1);
-    }
-    return Array.from(byDay.entries()).map(([k,v])=>({ x:k, y:v }));
-  }, [assigned]);
+  const totalUploads30d = useMemo(
+    () => (stats?.series || []).reduce((a, b) => a + b.y, 0),
+    [stats]
+  );
 
   return (
     <div className="grid gap-4">
+      {/* Top cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <DashboardCard title="Αρχεία που μου έχουν ανατεθεί" value={stats?.myAssigned ?? "—"} subtitle="Σύνολο αναθέσεων" />
-        <DashboardCard title="Τα δικά μου ανεβάσματα" value={stats?.myFiles ?? "—"} subtitle="Αρχεία που ανέβασα" />
-        <DashboardCard title="Τάση (30 ημέρες)">
-          <TrendMini data={assignedSeries} />
-        </DashboardCard>
-        <DashboardCard title="Συντομεύσεις" subtitle="Συνηθισμένες ενέργειες">
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link href="/files" className="rounded border px-3 py-1 text-sm">Τα αρχεία μου</Link>
-            <Link href="/support" className="rounded border px-3 py-1 text-sm">Υποστήριξη</Link>
-          </div>
-        </DashboardCard>
+        <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4">
+          <div className="text-sm text-[color:var(--muted)] mb-3">Αρχεία που μου έχουν ανατεθεί</div>
+          <div className="h-1 w-10 rounded bg-[color:var(--primary,#25C3F4)] mb-3" />
+          <div className="text-sm">Σύνολο αναθέσεων</div>
+          <div className="mt-2 text-2xl font-semibold">{stats ? stats.assignedTotal.toLocaleString() : "—"}</div>
+        </div>
+
+        <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4">
+          <div className="text-sm text-[color:var(--muted)] mb-3">Τα δικά μου ανεβάσματα</div>
+          <div className="h-1 w-10 rounded bg-[color:var(--primary,#25C3F4)] mb-3" />
+          <div className="text-sm">Αρχεία που ανέβασα</div>
+          <div className="mt-2 text-2xl font-semibold">{stats ? stats.myUploadsTotal.toLocaleString() : "—"}</div>
+        </div>
+
+        <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4 lg:col-span-2">
+          <div className="text-sm text-[color:var(--muted)] mb-2">Τάση (30 ημέρες)</div>
+          <TrendMini data={stats?.series || []} />
+          <div className="mt-2 text-xs text-[color:var(--muted)]">{totalUploads30d} σύνολο</div>
+        </div>
       </div>
 
-      <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4 overflow-x-auto">
-        <div className="flex items-center justify-between mb-2">
+      {/* ONLY recent assigned files list (removed the separate "my uploads" table) */}
+      <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-0">
+        <div className="flex items-center justify-between px-4 pt-3 pb-2">
           <h2 className="font-semibold">Πρόσφατα ανατεθειμένα αρχεία</h2>
           <Link href="/files" className="text-sm underline">Προβολή όλων</Link>
         </div>
-        {assigned.length === 0 ? (
-          <p className="text-sm text-[color:var(--muted)]">Δεν υπάρχουν αρχεία ακόμη.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
-                <th className="py-2 pr-3">Τίτλος</th>
-                <th className="py-2 pr-3">Ανάθεση</th>
-                <th className="py-2 pr-3">Ενέργειες</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assigned.slice(0,6).map(f => (
-                <tr key={f.id} className="border-b last:border-0 border-[color:var(--border)]">
-                  <td className="py-2 pr-3">
-                    {f.title}
-                    {f.originalName ? <span className="text-[color:var(--muted)]"> · {f.originalName}</span> : null}
-                  </td>
-                  <td className="py-2 pr-3">{new Date(f.createdAt).toLocaleString()}</td>
-                  <td className="py-2 pr-3">
-                    {f.url ? (
-                      <a href={f.url} target="_blank" rel="noreferrer" className="rounded border px-3 py-1 hover:bg-black/5">
+
+        <div className="px-4 pb-4 overflow-x-auto">
+          {!assigned.length ? (
+            <p className="text-sm text-[color:var(--muted)]">Δεν υπάρχουν αρχεία ακόμη.</p>
+          ) : (
+            <table className="min-w-[720px] w-full text-sm">
+              <thead>
+                <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
+                  <th className="py-2 pr-3">Τίτλος</th>
+                  <th className="py-2 pr-3">Ανέβηκε</th>
+                  <th className="py-2 pr-3">Ενέργειες</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assigned.map((f) => (
+                  <tr key={f.id} className="border-b last:border-0 border-[color:var(--border)]">
+                    <td className="py-2 pr-3">{f.title} · <span className="text-[color:var(--muted)]">{f.originalName}</span></td>
+                    <td className="py-2 pr-3 whitespace-nowrap">{new Date(f.createdAt).toLocaleString()}</td>
+                    <td className="py-2 pr-3">
+                      <a href={f.url} className="inline-flex rounded-xl bg-black px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90">
                         Λήψη
                       </a>
-                    ) : (
-                      <span className="text-[color:var(--muted)]">Δεν υπάρχει URL</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </section>
     </div>
   );
