@@ -1,26 +1,47 @@
+// src/app/api/stats/route.ts
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { currentUser } from "@/lib/auth-helpers";
+import { requireRole } from "@/lib/auth-helpers";
 
 export async function GET() {
-  const me = await currentUser();
-  if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-
-  const role = (me as any).role;
-
-  if (role === "ADMIN") {
-    const [users, pending, files] = await Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { status: "PENDING" } }),
-      prisma.file.count(),
-    ]);
-    return NextResponse.json({ users, pending, files });
+  // Admin-only stats (adjust if you want user-level stats)
+  const guard = await requireRole("ADMIN");
+  if (!guard.ok) {
+    return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
   }
 
-  // USER stats
-  const [myFiles, myAssigned] = await Promise.all([
-    prisma.file.count({ where: { uploadedById: (me as any).id } }),
-    prisma.fileAssignment.count({ where: { userId: (me as any).id } }),
-  ]);
-  return NextResponse.json({ myFiles, myAssigned });
+  try {
+    // Run all counts on the SAME connection to avoid any pool hop weirdness.
+    const [totalUsers, activeUsers, totalFiles, assignedLinks] = await prisma.$transaction([
+      prisma.user.count(),
+      prisma.user.count({ where: { status: "ACTIVE" } }),
+      prisma.file.count(),
+      prisma.fileAssignment.count(),
+    ]);
+
+    return NextResponse.json({
+      ok: true,
+      stats: {
+        users: { total: totalUsers, active: activeUsers },
+        files: { total: totalFiles },
+        assignments: { total: assignedLinks },
+        // add more if you like (downloads, audits, etc.)
+      },
+    });
+  } catch (err: any) {
+    // Helpful hints if PgBouncer/prepared statements ever crop up again
+    const message = err?.message || String(err);
+    const hint =
+      /26000|42P05/.test(message)
+        ? "Check Vercel DATABASE_URL uses the Transaction Pooler and includes '?sslmode=require&pgbouncer=true'."
+        : undefined;
+
+    console.error("stats:error", { message, hint });
+    return NextResponse.json(
+      { ok: false, error: "stats_failed", detail: message, hint },
+      { status: 500 }
+    );
+  }
 }
