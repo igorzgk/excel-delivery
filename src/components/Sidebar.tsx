@@ -27,29 +27,30 @@ export default function Sidebar({
 
   return (
     <aside
-      className="hidden md:flex md:flex-col w-60 shrink-0 border-r"
+      // Full height inside its sticky wrapper
+      className="flex h-screen w-60 shrink-0 flex-col border-r"
       style={{
-        backgroundColor: "var(--sidebar-bg)",
-        color: "var(--sidebar-text)",
-        borderColor: "var(--sidebar-border)",
+        backgroundColor: "var(--sidebar-bg,#061630)",
+        color: "var(--sidebar-text,#ECF5F8)",
+        borderColor: "var(--sidebar-border,rgba(255,255,255,.08))",
       }}
     >
-      {/* Top: company logo */}
-      <div className="flex items-center gap-2 px-4 py-4 border-b" style={{ borderColor: "var(--sidebar-border)" }}>
+      {/* Top: company logo + status */}
+      <div className="flex items-center gap-2 px-4 py-4 border-b" style={{ borderColor: "var(--sidebar-border,rgba(255,255,255,.08))" }}>
         <div className="relative h-8 w-8 overflow-hidden rounded-md bg-white/5">
-          {/* place a 64x64 (or similar) PNG in /public/logo.png */}
+          {/* Put your file in /public/logo.png */}
           <Image src="/logo.png" alt="Company logo" fill className="object-contain p-1" priority />
         </div>
         <div className="leading-tight">
           <div className="text-sm font-semibold">Hygiene&nbsp;Plus</div>
-          <div className="text-[11px]" style={{ color: "var(--sidebar-muted)" }}>
+          <div className="text-[11px]" style={{ color: "var(--sidebar-muted,#A7BECC)" }}>
             Συνδεδεμένος — {name || (role === "ADMIN" ? "Διαχειριστής" : "Χρήστης")}
           </div>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="p-2 space-y-1">
+      <nav className="p-2 space-y-1 overflow-auto">
         {items.map((i) => {
           const active = isActive(pathname, i.href);
           return (
@@ -59,12 +60,11 @@ export default function Sidebar({
               onClick={() => router.push(i.href)}
               className="w-full text-left flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors"
               style={{
-                backgroundColor: active ? "var(--sidebar-active-bg)" : "transparent",
-                color: active ? "var(--sidebar-active-text)" : "var(--sidebar-text)",
+                backgroundColor: active ? "var(--sidebar-active-bg,rgba(37,195,244,.15))" : "transparent",
+                color: active ? "var(--sidebar-active-text,#FFFFFF)" : "var(--sidebar-text,#ECF5F8)",
               }}
-              // hover color via CSS var (set in globals.css)
               onMouseEnter={(e) => {
-                if (!active) (e.currentTarget.style.backgroundColor = "var(--sidebar-hover-bg)");
+                if (!active) (e.currentTarget.style.backgroundColor = "var(--sidebar-hover-bg,rgba(255,255,255,.06))");
               }}
               onMouseLeave={(e) => {
                 if (!active) (e.currentTarget.style.backgroundColor = "transparent");
@@ -77,21 +77,20 @@ export default function Sidebar({
       </nav>
 
       {/* Bottom: sign out + contact block */}
-      <div className="mt-auto p-4 border-t space-y-3" style={{ borderColor: "var(--sidebar-border)" }}>
+      <div className="mt-auto p-4 border-t" style={{ borderColor: "var(--sidebar-border,rgba(255,255,255,.08))" }}>
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/login" })}
           className="w-full text-left rounded-md px-3 py-2 text-sm transition-colors"
           style={{ backgroundColor: "transparent" }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover-bg)")}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover-bg,rgba(255,255,255,.06))")}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
         >
           Αποσύνδεση
         </button>
 
-        {/* Contact info */}
-        <div className="text-[11px] leading-5" style={{ color: "var(--sidebar-muted)" }}>
-          <div className="font-semibold mb-1" style={{ color: "var(--sidebar-text)" }}>Επικοινωνία</div>
+        <div className="mt-3 text-[11px] leading-5" style={{ color: "var(--sidebar-muted,#A7BECC)" }}>
+          <div className="font-semibold mb-1" style={{ color: "var(--sidebar-text,#ECF5F8)" }}>Επικοινωνία</div>
           <div>
             Τηλ: <a className="underline underline-offset-2" href="tel:+302100000000">+30 210 000 0000</a>
           </div>

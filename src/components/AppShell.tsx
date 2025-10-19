@@ -1,26 +1,29 @@
 // src/components/AppShell.tsx
+"use client";
+
 import React from "react";
+import { useSession } from "next-auth/react";
 import Sidebar from "@/components/Sidebar";
-import { currentUser } from "@/lib/auth-helpers";
 
-type Role = "ADMIN" | "USER";
-
-export default async function AppShell({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  // Server-side: fetch the current user once so Sidebar knows the role.
-  const user = await currentUser();
-  const role: Role = (user?.role as Role) || "USER";
-  const name = user?.name ?? null;
+export default function AppShell({ children }: { children: React.ReactNode }) {
+  const { data } = useSession();
+  const role = ((data?.user as any)?.role ?? "USER") as "ADMIN" | "USER";
+  const name = data?.user?.name ?? null;
 
   return (
-    <div className="min-h-screen grid grid-cols-[240px_1fr]">
-      <aside className="text-white">
-        <Sidebar role={role} name={name} />
-      </aside>
-      <main className="bg-[#F9FAFB] p-6">{children}</main>
+    <div className="min-h-screen w-full bg-[var(--app-bg,#F6FAFC)] text-[var(--app-fg,#0A0F2C)]">
+      {/* 2-column app layout */}
+      <div className="flex min-h-screen">
+        {/* Left column: sticky, full-height sidebar on md+ */}
+        <div className="hidden md:block md:sticky md:top-0 md:h-screen">
+          <Sidebar role={role} name={name} />
+        </div>
+
+        {/* Main content */}
+        <main className="flex-1 min-w-0">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
