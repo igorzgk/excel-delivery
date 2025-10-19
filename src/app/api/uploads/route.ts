@@ -1,131 +1,78 @@
+// src/app/api/uploads/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import { logAudit } from "@/lib/audit";
 import { extractEmailsFromText, resolveAssigneeIdsByEmails } from "@/lib/assignmentRules";
+import { supabasePutBuffer } from "@/lib/storage-supabase";
 
-export const runtime = "nodejs"; // needed for file IO
+// No filesystem usage → works on Vercel
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   // Admin-only
   const guard = await requireRole("ADMIN");
   if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
 
+  // ✅ Guard: multipart only
   const contentType = req.headers.get("content-type") || "";
   if (!contentType.includes("multipart/form-data")) {
-    return NextResponse.json({ error: "invalid_content_type" }, { status: 400 });
+    return NextResponse.json({ error: "invalid_content_type", expected: "multipart/form-data" }, { status: 400 });
   }
 
   const form = await req.formData();
+  const file = form.get("file") as unknown as File | null;
+  const title = (form.get("title") as string | null) ?? undefined;
 
-  // The <input name="file" type="file" />
-  const file = form.get("file") as File | null;
-  if (!file) return NextResponse.json({ error: "missing_file" }, { status: 400 });
+  if (!file) return NextResponse.json({ error: "file_missing" }, { status: 400 });
 
-  // Optional <input name="title" />
-  const titleFromForm = (form.get("title") as string) || "";
+  const rawName = (file as any).name as string | undefined;
+  const mime = ((file as any).type as string | undefined) || "application/octet-stream";
+  const ab = await file.arrayBuffer();
+  const buf = Buffer.from(ab);
 
-  // ---- Save the file to disk ------------------------------------------
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const uploadDir = path.join(process.cwd(), "uploads"); // served via your rewrite/proxy
-  await mkdir(uploadDir, { recursive: true });
+  const safeBase = (title || rawName || "upload.xlsx").replace(/[^\w.\-@]+/g, "_").slice(0, 100);
+  const now = new Date();
+  const keyPath = `uploads/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${Date.now()}_${safeBase}`;
 
-  const safeBase = (file.name || "file").replace(/[^\w.\-@]/g, "_");
-  const filename = `${Date.now()}-${safeBase}`;
-  const fullPath = path.join(uploadDir, filename);
-  await writeFile(fullPath, buffer);
+  // Store in Supabase Storage
+  const put = await supabasePutBuffer(keyPath, buf, mime);
 
-  const publicUrl = `/uploads/${filename}`; // what we store in DB and render in UI
-
-  // ---- Create DB record ------------------------------------------------
+  // Create DB record
+  const publicUrl = `/api/files/download/${keyPath}`; // signed on demand
   const record = await prisma.file.create({
     data: {
-      title: titleFromForm || file.name || "Untitled",
-      originalName: file.name,
-      mime: file.type,
-      size: buffer.length,
-      uploadedById: (guard.user as any).id,
+      title: title || safeBase,
+      originalName: rawName || safeBase,
       url: publicUrl,
+      mime,
+      size: buf.byteLength,
+      uploadedById: (guard.user as any).id,
     },
     select: { id: true, title: true, originalName: true, url: true, createdAt: true },
   });
 
-  // ---- Targeted auto-assignment from filename/title/url ----------------
-  // Extract candidate emails from any available text
-  const candidates = Array.from(
-    new Set([
-      ...extractEmailsFromText(record.originalName),
-      ...extractEmailsFromText(record.title),
-      ...extractEmailsFromText(record.url),
-    ])
-  );
-
-  // Match only ACTIVE USERs
-  const assigneeIds = await resolveAssigneeIdsByEmails(candidates);
-
-  // Create assignments (assignedBy = current admin)
-  let assignedCount = 0;
-  if (assigneeIds.length > 0) {
+  // Optional: auto-assign based on emails in the filename/title
+  const candidates = extractEmailsFromText(`${record.originalName} ${record.title}`);
+  const assigneeIds = candidates.length ? await resolveAssigneeIdsByEmails(candidates) : [];
+  if (assigneeIds.length) {
     await prisma.fileAssignment.createMany({
       data: assigneeIds.map((userId) => ({
         fileId: record.id,
         userId,
         assignedById: (guard.user as any).id,
-        note: "Auto-assigned via filename email (manual upload)",
       })),
       skipDuplicates: true,
     });
-    assignedCount = assigneeIds.length;
-
-    await logAudit({
-      actorId: (guard.user as any).id,
-      action: "FILE_ASSIGNED",
-      targetId: record.id,
-      target: "File",
-      meta: {
-        via: "admin_manual_upload",
-        strategy: "emails_in_filename",
-        emails: candidates,
-        matched: assigneeIds.length,
-      },
-    });
-  } else {
-    // Log that no matches were found (still successful upload)
-    await logAudit({
-      actorId: (guard.user as any).id,
-      action: "FILE_ASSIGNED",
-      targetId: record.id,
-      target: "File",
-      meta: {
-        via: "admin_manual_upload",
-        strategy: "emails_in_filename",
-        emails: candidates,
-        matched: 0,
-        note: "No assignees matched",
-      },
-    });
   }
 
-  // ---- Audit the upload itself ----------------------------------------
   await logAudit({
-    actorId: (guard.user as any).id,
     action: "FILE_UPLOADED",
-    targetId: record.id,
     target: "File",
-    meta: {
-      title: record.title,
-      originalName: record.originalName,
-      size: buffer.length,
-      mime: file.type,
-      via: "admin_manual_upload",
-      url: publicUrl,
-    },
+    targetId: record.id,
+    actorId: (guard.user as any).id,
+    meta: { via: "admin", storageKey: keyPath, mime, size: buf.byteLength, assigned: assigneeIds.length, emails: candidates },
   });
 
-  return NextResponse.json(
-    { ok: true, file: record, assignments: assignedCount, matchedEmails: candidates },
-    { status: 201 }
-  );
+  return NextResponse.json({ ok: true, file: record, key: keyPath, signedUrl: put.signedUrl, assignedCount: assigneeIds.length }, { status: 201 });
 }

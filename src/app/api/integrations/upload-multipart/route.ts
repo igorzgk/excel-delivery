@@ -32,8 +32,18 @@ async function getAssignerId(uploadedById?: string | null) {
 }
 
 export async function POST(req: Request) {
+  // API key auth
   const auth = requireApiKey(req);
   if (!auth.ok) return auth.res;
+
+  // ✅ Guard: only accept multipart/form-data to avoid “Failed to parse body as FormData”
+  const contentType = req.headers.get("content-type") || "";
+  if (!contentType.includes("multipart/form-data")) {
+    return NextResponse.json(
+      { error: "invalid_content_type", expected: "multipart/form-data" },
+      { status: 400 }
+    );
+  }
 
   const form = await req.formData();
   const file = form.get("file") as unknown as File | null;
@@ -41,19 +51,22 @@ export async function POST(req: Request) {
   const uploadedByEmail = form.get("uploadedByEmail") ? String(form.get("uploadedByEmail")) : undefined;
 
   if (!file) {
-    return NextResponse.json({ error: "No file provided (form-data key 'file' missing or not a File)" }, { status: 400 });
+    return NextResponse.json(
+      { error: "No file provided (form-data key 'file' missing or not a File)" },
+      { status: 400 }
+    );
   }
 
   const rawName = (file as any).name as string | undefined; // may be "blob"
-  const contentType = ((file as any).type as string | undefined) || "application/octet-stream";
+  const mime = ((file as any).type as string | undefined) || "application/octet-stream";
 
   let ext = pickExtFromName(rawName);
   if (!ext || !ALLOWED_EXT.has(ext)) {
-    const mimeExt = MIME_TO_EXT[contentType];
+    const mimeExt = MIME_TO_EXT[mime];
     if (mimeExt && ALLOWED_EXT.has(mimeExt)) ext = mimeExt;
   }
   if (!ext || !ALLOWED_EXT.has(ext)) {
-    return NextResponse.json({ error: "Unsupported file type", details: { rawName, contentType } }, { status: 415 });
+    return NextResponse.json({ error: "Unsupported file type", details: { rawName, mime } }, { status: 415 });
   }
 
   // Size guard
@@ -67,21 +80,12 @@ export async function POST(req: Request) {
   const buf = Buffer.from(ab);
   const safeBase = (rawName && rawName !== "blob" ? rawName : `upload${ext}`).replace(/[^\w.\-@]+/g, "_");
 
-  // Upload to Supabase
+  // Store in Supabase Storage
   const now = new Date();
   const keyPath = `uploads/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${Date.now()}_${safeBase}`;
-  const effType =
-    contentType !== "application/octet-stream"
-      ? contentType
-      : ext === ".xlsx"
-      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      : ext === ".xlsm"
-      ? "application/vnd.ms-excel.sheet.macroEnabled.12"
-      : "application/vnd.ms-excel";
+  const put = await supabasePutBuffer(keyPath, buf, mime);
 
-  const put = await supabasePutBuffer(keyPath, buf, effType);
-
-  // Attribution
+  // Attribution (who uploaded & who assigns)
   let uploadedById: string | undefined;
   if (uploadedByEmail) {
     const u = await prisma.user.findUnique({ where: { email: uploadedByEmail }, select: { id: true } });
@@ -89,21 +93,21 @@ export async function POST(req: Request) {
   }
   const assignerId = await getAssignerId(uploadedById);
 
-  // Create DB file row (dashboard reads this)
-  const publicUrl = `/api/files/download/${keyPath}`;
+  // Create DB record (dashboard reads this)
+  const publicUrl = `/api/files/download/${keyPath}`; // signed on demand
   const record = await prisma.file.create({
     data: {
       title: title || safeBase,
-      originalName: rawName || safeBase,
-      url: publicUrl,                      // <- important
-      mime: effType,
+      originalName: safeBase,
+      url: publicUrl,
+      mime,
       size: buf.byteLength,
       uploadedById,
     },
     select: { id: true, title: true, originalName: true, url: true, createdAt: true },
   });
 
-  // Auto-assign based on emails in filename/title
+  // Auto-assign by emails in filename/title
   const candidates = extractEmailsFromText(`${record.originalName} ${record.title}`);
   const assigneeIds = candidates.length ? await resolveAssigneeIdsByEmails(candidates) : [];
   if (assigneeIds.length && assignerId) {
@@ -111,7 +115,7 @@ export async function POST(req: Request) {
       data: assigneeIds.map((userId) => ({
         fileId: record.id,
         userId,
-        assignedById: assignerId,
+        assignedById: assignerId!,
       })),
       skipDuplicates: true,
     });
@@ -125,18 +129,15 @@ export async function POST(req: Request) {
     meta: {
       via: "integration_multipart",
       storageKey: keyPath,
-      mime: effType,
+      mime,
       size: buf.byteLength,
       assigned: assigneeIds.length,
       emails: candidates,
     },
   });
 
-  return NextResponse.json({
-    ok: true,
-    file: record,
-    assignedCount: assigneeIds.length,
-    key: keyPath,
-    signedUrl: put.signedUrl,
-  }, { status: 201 });
+  return NextResponse.json(
+    { ok: true, file: record, assignedCount: assigneeIds.length, key: keyPath, signedUrl: put.signedUrl },
+    { status: 201 }
+  );
 }

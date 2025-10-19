@@ -1,50 +1,51 @@
-// src/app/(admin)/admin/uploads/page.tsx
-"use client";
-import { useState } from "react";
+// src/app/(admin)/uploads/page.tsx
+import React from "react";
+import { cookies } from "next/headers";
+import UploadForm from "@/components/UploadForm";
+import FilesTable from "@/components/FilesTable";
 
-export default function AdminUploadPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [title, setTitle] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
+export const dynamic = "force-dynamic";
 
-  async function handleUpload(e: React.FormEvent) {
-    e.preventDefault();
-    if (!file) return setStatus("Δεν επιλέχθηκε αρχείο.");
+async function fetchAdminFiles() {
+  const base = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const cookie = cookies().toString();
 
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("title", title || file.name);
+  const res = await fetch(`${base}/api/files?scope=all`, {
+    cache: "no-store",
+    headers: { cookie },
+  });
 
-    const res = await fetch("/api/uploads", { method: "POST", body: fd });
-    const json = await res.json();
-    if (!res.ok) return setStatus(`❌ ${json.error}`);
-    setStatus(`✅ Ανέβηκε: ${json.file.title}`);
-    setFile(null);
-    setTitle("");
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Failed to load files (${res.status}): ${detail}`);
   }
+  const data = await res.json();
+  return data.files as any[];
+}
+
+export default async function AdminUploadsPage() {
+  const files = await fetchAdminFiles();
 
   return (
-    <main className="grid gap-4 max-w-lg">
-      <h1 className="text-xl font-semibold">Ανέβασμα αρχείου Excel</h1>
-      <form onSubmit={handleUpload} className="grid gap-3">
-        <input
-          type="text"
-          placeholder="Τίτλος (προαιρετικά)"
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          className="border rounded px-3 py-2"
-        />
-        <input
-          type="file"
-          accept=".xlsx,.xls"
-          onChange={e => setFile(e.target.files?.[0] || null)}
-          className="border rounded px-3 py-2"
-        />
-        <button className="rounded bg-[color:var(--brand)] text-black px-4 py-2">
-          Ανέβασμα
-        </button>
-      </form>
-      {status && <p className="text-sm">{status}</p>}
-    </main>
+    <div className="mx-auto max-w-5xl space-y-6 p-6">
+      <header className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Admin Uploads</h1>
+          <p className="text-sm text-gray-500">Upload Excel files and manage all users’ files.</p>
+        </div>
+      </header>
+
+      {/* Client upload form */}
+      <UploadForm
+        buttonText="Upload Excel"
+        onUploaded={() => {
+          // No-op here; table refresh is handled by manual reload or you can enhance with SWR.
+          // Keeping this simple and drop-in friendly.
+        }}
+      />
+
+      {/* Files table (admin mode shows assignees) */}
+      <FilesTable initialFiles={files} adminMode />
+    </div>
   );
 }

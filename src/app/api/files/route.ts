@@ -1,58 +1,52 @@
+// src/app/api/files/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { currentUser } from "@/lib/auth-helpers";
+import { currentUser, requireRole } from "@/lib/auth-helpers";
 
 export async function GET(req: Request) {
   const me = await currentUser();
   if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const scope = (searchParams.get("scope") || "mine") as "mine" | "assigned" | "all";
-  const isAdmin = (me as any).role === "ADMIN";
-  const meId = (me as any).id;
+  const scope = searchParams.get("scope"); // "all" for admin view, otherwise user's files
+  const isAdmin = (me as any).role === "ADMIN" && scope === "all";
 
-  let where: any = {};
-  if (isAdmin) {
-    if (scope === "mine") where = { uploadedById: meId };
-    else if (scope === "assigned") {
-      const ids = (await prisma.fileAssignment.findMany({
-        where: { userId: meId }, select: { fileId: true }
-      })).map(a => a.fileId);
-      where = { id: { in: ids } };
-    } else { // all
-      where = {};
-    }
-  } else {
-    if (scope === "assigned") {
-      const ids = (await prisma.fileAssignment.findMany({
-        where: { userId: meId }, select: { fileId: true }
-      })).map(a => a.fileId);
-      where = { id: { in: ids } };
-    } else {
-      where = { uploadedById: meId };
-    }
-  }
+  const where = isAdmin
+    ? undefined
+    : {
+        // for users: show uploads they made OR assignments to them
+        OR: [
+          { uploadedById: (me as any).id },
+          { assignments: { some: { userId: (me as any).id } } },
+        ],
+      };
 
   const files = await prisma.file.findMany({
     where,
     orderBy: { createdAt: "desc" },
     select: {
-      id: true, title: true, originalName: true, url: true, mime: true, size: true, createdAt: true,
+      id: true,
+      title: true,
+      originalName: true,
+      url: true,
+      mime: true,
+      size: true,
+      createdAt: true,
       uploadedBy: { select: { id: true, name: true, email: true } },
-      // For admin, include assignment recipients
-      ...(isAdmin ? {
-        assignments: {
-          select: { user: { select: { id: true, email: true, name: true } } }
-        }
-      } : {})
+      ...(isAdmin
+        ? {
+            assignments: {
+              select: { user: { select: { id: true, email: true, name: true } } },
+            },
+          }
+        : {}),
     },
   });
 
   return NextResponse.json({ files });
 }
 
-
-// 🚫 No public POST here anymore unless admin explicitly uses it
+// Admin-only manual create (rarely used; your UIs mostly use POST /api/uploads)
 export async function POST(req: Request) {
   const guard = await requireRole("ADMIN");
   if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
@@ -67,7 +61,7 @@ export async function POST(req: Request) {
       size: body.size,
       uploadedById: (guard.user as any).id,
     },
-    select: { id: true, title: true, createdAt: true }
+    select: { id: true, title: true, createdAt: true },
   });
 
   return NextResponse.json({ file }, { status: 201 });

@@ -37,4 +37,13 @@
     "tsx": "^4.20.5",
     "typescript": "^5"
   }
+   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "postbuild": "prisma migrate deploy && prisma generate",
+    "start": "next start",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy"
+  }
 }
+
