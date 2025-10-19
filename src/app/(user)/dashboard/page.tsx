@@ -60,13 +60,6 @@ export default function UserDashboard() {
           <div className="mt-2 text-2xl font-semibold">{stats ? stats.assignedTotal.toLocaleString() : "—"}</div>
         </div>
 
-        <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4">
-          <div className="text-sm text-[color:var(--muted)] mb-3">Τα δικά μου ανεβάσματα</div>
-          <div className="h-1 w-10 rounded bg-[color:var(--primary,#25C3F4)] mb-3" />
-          <div className="text-sm">Αρχεία που ανέβασα</div>
-          <div className="mt-2 text-2xl font-semibold">{stats ? stats.myUploadsTotal.toLocaleString() : "—"}</div>
-        </div>
-
         <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4 lg:col-span-2">
           <div className="text-sm text-[color:var(--muted)] mb-2">Τάση (30 ημέρες)</div>
           <TrendMini data={stats?.series || []} />
