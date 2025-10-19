@@ -42,9 +42,7 @@ function buildWhere(sp: SearchParams) {
   return where;
 }
 
-export default async function AdminSupportPage({
-  searchParams,
-}: { searchParams: SearchParams }) {
+export default async function AdminSupportPage({ searchParams }: { searchParams: SearchParams }) {
   const me = await currentUser();
   if (!me) redirect("/login?next=/admin/support");
   if (me.role !== "ADMIN") redirect("/dashboard");
@@ -84,59 +82,59 @@ export default async function AdminSupportPage({
   };
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
-      <div className="flex items-center justify-between gap-4">
+    <main className="mx-auto max-w-6xl px-3 md:px-6 py-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Support Tickets</h1>
-          <p className="mt-1 text-sm text-gray-600">{total} ticket{total === 1 ? "" : "s"} total</p>
+          <h1 className="text-xl md:text-2xl font-semibold">Αιτήματα Υποστήριξης</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            {total.toLocaleString()} σύνολο
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <form className="flex items-center gap-2" action="/admin/support" method="get">
-            <input
-              type="text"
-              name="q"
-              defaultValue={q}
-              placeholder="Search subject, message, user…"
-              className="w-64 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring"
-            />
-            <select
-              name="priority"
-              defaultValue={priority}
-              className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="">All priorities</option>
-              <option value="normal">Normal</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </select>
-            <select
-              name="sort"
-              defaultValue={searchParams.sort === "oldest" ? "oldest" : "newest"}
-              className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-            </select>
-            <button
-              type="submit"
-              className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              Apply
-            </button>
-          </form>
-        </div>
+        <form className="flex flex-wrap items-center gap-2" action="/admin/support" method="get">
+          <input
+            type="text"
+            name="q"
+            defaultValue={q}
+            placeholder="Αναζήτηση θέμα, μήνυμα ή χρήστη…"
+            className="w-full sm:w-64 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring"
+          />
+          <select
+            name="priority"
+            defaultValue={priority}
+            className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">Όλες οι προτεραιότητες</option>
+            <option value="normal">Κανονική</option>
+            <option value="high">Υψηλή</option>
+            <option value="urgent">Επείγον</option>
+          </select>
+          <select
+            name="sort"
+            defaultValue={searchParams.sort === "oldest" ? "oldest" : "newest"}
+            className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="newest">Νεότερα πρώτα</option>
+            <option value="oldest">Παλαιότερα πρώτα</option>
+          </select>
+          <button
+            type="submit"
+            className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            Εφαρμογή
+          </button>
+        </form>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr className="text-left text-sm font-semibold text-gray-700">
-              <th className="px-4 py-3">Created</th>
-              <th className="px-4 py-3">Subject</th>
-              <th className="px-4 py-3">From</th>
-              <th className="px-4 py-3">Priority</th>
-              <th className="px-4 py-3">Preview</th>
+      <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-gray-50 text-gray-700">
+            <tr className="text-left font-semibold">
+              <th className="px-3 md:px-4 py-3">Ημερ./Ώρα</th>
+              <th className="px-3 md:px-4 py-3">Θέμα</th>
+              <th className="px-3 md:px-4 py-3 hidden md:table-cell">Από</th>
+              <th className="px-3 md:px-4 py-3">Προτεραιότητα</th>
+              <th className="px-3 md:px-4 py-3 hidden md:table-cell">Προεπισκόπηση</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
@@ -152,15 +150,23 @@ export default async function AdminSupportPage({
 
               return (
                 <tr key={r.id} className="align-top">
-                  <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{created}</td>
-                  <td className="px-4 py-3 text-sm">{subject || <span className="text-gray-400">—</span>}</td>
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-3 md:px-4 py-3 text-xs md:text-sm text-gray-600 whitespace-nowrap">{created}</td>
+                  <td className="px-3 md:px-4 py-3">
+                    <div className="font-medium">{subject || <span className="text-gray-400">—</span>}</div>
+                    {/* On mobile show the sender under the subject */}
+                    <div className="mt-1 text-xs text-gray-500 md:hidden">
+                      {userName || "Άγνωστο"}{userEmail ? ` · ${userEmail}` : ""}
+                    </div>
+                    {/* On mobile also show a short preview */}
+                    <div className="mt-1 text-xs text-gray-600 md:hidden">{preview || "—"}</div>
+                  </td>
+                  <td className="px-3 md:px-4 py-3 hidden md:table-cell text-sm">
                     <div className="flex flex-col">
-                      <span className="font-medium">{userName || "Unknown"}</span>
+                      <span className="font-medium">{userName || "Άγνωστο"}</span>
                       <span className="text-gray-500">{userEmail}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 md:px-4 py-3">
                     <span
                       className={[
                         "inline-flex rounded-full px-2 py-1 text-xs font-medium",
@@ -171,17 +177,17 @@ export default async function AdminSupportPage({
                           : "bg-gray-100 text-gray-700",
                       ].join(" ")}
                     >
-                      {priority}
+                      {priority === "urgent" ? "Επείγον" : priority === "high" ? "Υψηλή" : "Κανονική"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{preview || "—"}</td>
+                  <td className="px-3 md:px-4 py-3 hidden md:table-cell text-gray-600">{preview || "—"}</td>
                 </tr>
               );
             })}
             {rows.length === 0 && (
               <tr>
                 <td className="px-4 py-8 text-center text-sm text-gray-500" colSpan={5}>
-                  No tickets found.
+                  Δεν βρέθηκαν αιτήματα.
                 </td>
               </tr>
             )}
@@ -189,23 +195,23 @@ export default async function AdminSupportPage({
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* Σελιδοποίηση */}
       <div className="mt-4 flex items-center justify-between">
-        <div className="text-sm text-gray-600">Page {page} of {pages}</div>
+        <div className="text-sm text-gray-600">Σελίδα {page} από {pages}</div>
         <div className="flex items-center gap-2">
           <Link
             aria-disabled={page <= 1}
             className={`rounded-xl border px-3 py-1.5 text-sm ${page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-gray-50"}`}
             href={linkWith({ page: String(page - 1) })}
           >
-            Prev
+            Προηγούμενη
           </Link>
           <Link
             aria-disabled={page >= pages}
             className={`rounded-xl border px-3 py-1.5 text-sm ${page >= pages ? "pointer-events-none opacity-40" : "hover:bg-gray-50"}`}
             href={linkWith({ page: String(page + 1) })}
           >
-            Next
+            Επόμενη
           </Link>
         </div>
       </div>

@@ -60,4 +60,30 @@ html,body{background:var(--bg);color:var(--text)}
   width: 100%;
 }
 
+/* --- Mobile-friendly defaults (add at the end) --- */
+
+/* Shrink table padding & font slightly on <640px screens */
+@media (max-width: 639px) {
+  table thead th,
+  table tbody td {
+    padding-left: 0.75rem;   /* px-3 */
+    padding-right: 0.75rem;
+    padding-top: 0.5rem;     /* py-2 */
+    padding-bottom: 0.5rem;
+  }
+  table {
+    font-size: 0.9375rem; /* ~15px for better fit */
+  }
+}
+
+/* Ensure long words (emails, filenames) wrap instead of overflowing */
+.break-words, .truncate-soft {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Utility: horizontally scrollable container for wide content */
+.scroll-x {
+  overflow-x: auto;
+}
 
