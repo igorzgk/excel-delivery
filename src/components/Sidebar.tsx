@@ -34,13 +34,14 @@ export default function Sidebar({
         borderColor: "var(--sidebar-border,rgba(255,255,255,.08))",
       }}
     >
-      {/* Top: logo ABOVE the status block */}
+      {/* Top: full-width logo ABOVE the status */}
       <div
-        className="px-4 py-4 border-b"
+        className="px-4 pt-4 pb-3 border-b"
         style={{ borderColor: "var(--sidebar-border,rgba(255,255,255,.08))" }}
       >
-        <div className="relative h-10 w-10 overflow-hidden rounded-md bg-white/5 mb-2">
-          <Image src="/logo.png" alt="Company logo" fill className="object-contain p-1" priority />
+        <div className="relative w-full h-12 overflow-hidden rounded-md bg-white/5 mb-2">
+          {/* Put your PNG in /public/logo.png; this fills the whole width */}
+          <Image src="/logo.png" alt="Company logo" fill className="object-contain" priority />
         </div>
         <div className="leading-tight">
           <div className="text-sm font-semibold">Hygiene&nbsp;Plus</div>

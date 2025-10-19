@@ -33,5 +33,31 @@ html,body{background:var(--bg);color:var(--text)}
   }
 }
 
+/* --- Dashboard layout helpers --- */
+
+/* Add comfortable inner padding to any rounded+border containers (your dashboard cards) */
+.rounded-2xl.border {
+  padding: 12px;              /* inner space */
+}
+
+/* Inside cards, avoid content clipping on the right; let wide content scroll horizontally */
+.rounded-2xl.border,
+.rounded-xl.border,
+.card {
+  overflow: visible;           /* don't cut off inner content */
+}
+
+.rounded-2xl.border .scroll-x,
+.rounded-xl.border .scroll-x,
+.card .scroll-x {
+  overflow-x: auto;            /* opt-in horizontal scroll wrapper */
+}
+
+/* Tables should span the container width by default */
+.rounded-2xl.border table,
+.rounded-xl.border table,
+.card table {
+  width: 100%;
+}
 
 
