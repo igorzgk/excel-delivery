@@ -1,18 +1,17 @@
 // src/app/page.tsx
+export const runtime = "nodejs"; // ensure NextAuth runs on Node
+
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { currentUser } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export default async function RootPage() {
-  // If middleware didn’t run for any reason, SSR-redirect based on session here.
-  const session = await getServerSession(authOptions);
+  const me = await currentUser(); // null if not logged in
 
-  if (!session) {
+  if (!me) {
     redirect("/login");
   }
 
-  const role = (session.user as any)?.role;
-  redirect(role === "ADMIN" ? "/dashboard/admin" : "/dashboard");
+  redirect(me.role === "ADMIN" ? "/dashboard/admin" : "/dashboard");
 }
