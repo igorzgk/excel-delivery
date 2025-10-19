@@ -44,7 +44,6 @@ export default function Sidebar({
           <Image src="/logo.png" alt="Company logo" fill className="object-contain" priority />
         </div>
         <div className="leading-tight">
-          <div className="text-sm font-semibold">Hygiene&nbsp;Plus</div>
           <div className="text-[11px]" style={{ color: "var(--sidebar-muted,#A7BECC)" }}>
             Συνδεδεμένος — {name || (role === "ADMIN" ? "Διαχειριστής" : "Χρήστης")}
           </div>
