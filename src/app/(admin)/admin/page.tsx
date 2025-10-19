@@ -83,44 +83,54 @@ export default function AdminDashboard() {
           <TrendMini data={uploadsSeries} />
         </DashboardCard>
 
-        <section className="lg:col-span-2 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4 overflow-x-auto">
-          <div className="flex items-center justify-between mb-2">
+        <section className="lg:col-span-2 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-0">
+          {/* header (own padding) */}
+          <div className="flex items-center justify-between px-4 pt-3 pb-2">
             <h2 className="font-semibold">Πρόσφατη δραστηριότητα</h2>
             <Link href="/admin/audit" className="text-sm underline">Προβολή όλων</Link>
           </div>
-          {audit.length === 0 ? (
-            <p className="text-sm text-[color:var(--muted)]">Δεν υπάρχουν δραστηριότητες ακόμη.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
-                  <th className="py-2 pr-3">Ώρα</th>
-                  <th className="py-2 pr-3">Ενέργεια</th>
-                  <th className="py-2 pr-3">Χρήστης</th>
-                  <th className="py-2 pr-3">Στόχος</th>
-                  <th className="py-2 pr-3">Meta</th>
-                </tr>
-              </thead>
-              <tbody>
-                {audit.map((r) => (
-                  <tr key={r.id} className="border-b last:border-0 border-[color:var(--border)] align-top">
-                    <td className="py-2 pr-3 whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</td>
-                    <td className="py-2 pr-3 font-medium">{r.action}</td>
-                    <td className="py-2 pr-3">{r.actor ? (r.actor.email + (r.actor.name ? ` (${r.actor.name})` : "")) : "—"}</td>
-                    <td className="py-2 pr-3">
-                      {r.target ?? "—"} {r.targetId ? <span className="text-[color:var(--muted)]">#{r.targetId}</span> : null}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <pre className="max-w-[40ch] whitespace-pre-wrap break-words text-xs bg-black/5 rounded p-2">
-                        {r.meta ? JSON.stringify(r.meta, null, 2) : "—"}
-                      </pre>
-                    </td>
+
+          {/* body: padding + horizontal scroll for wide content */}
+          <div className="px-4 pb-4 overflow-x-auto">
+            {audit.length === 0 ? (
+              <p className="text-sm text-[color:var(--muted)]">Δεν υπάρχουν δραστηριότητες ακόμη.</p>
+            ) : (
+              <table className="min-w-[920px] w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
+                    <th className="py-2 pr-3">Ώρα</th>
+                    <th className="py-2 pr-3">Ενέργεια</th>
+                    <th className="py-2 pr-3">Χρήστης</th>
+                    <th className="py-2 pr-3">Στόχος</th>
+                    <th className="py-2 pr-3">Meta</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody>
+                  {audit.map((r) => (
+                    <tr key={r.id} className="border-b last:border-0 border-[color:var(--border)] align-top">
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {new Date(r.createdAt).toLocaleString()}
+                      </td>
+                      <td className="py-2 pr-3 font-medium">{r.action}</td>
+                      <td className="py-2 pr-3">
+                        {r.actor ? (r.actor.email + (r.actor.name ? ` (${r.actor.name})` : "")) : "—"}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {r.target ?? "—"} {r.targetId ? <span className="text-[color:var(--muted)]">#{r.targetId}</span> : null}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words text-xs bg-black/5 rounded p-2">
+                          {r.meta ? JSON.stringify(r.meta, null, 2) : "—"}
+                        </pre>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </section>
+
       </div>
     </div>
   );
