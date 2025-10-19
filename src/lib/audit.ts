@@ -9,11 +9,13 @@ type LogParams = {
     | "FILE_ASSIGNED"
     | "APIKEY_CREATED"
     | "APIKEY_REVOKED"
-    | "DOWNLOAD_GRANTED";
+    | "DOWNLOAD_GRANTED"
+    | "SUPPORT_TICKET"; // <-- add this
   targetId?: string | null;
   target?: string | null;
   meta?: Record<string, any> | null;
 };
+
 
 export async function logAudit(p: LogParams) {
   await prisma.auditLog.create({
