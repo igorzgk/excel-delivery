@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
+// 👇 Force Node.js runtime so Prisma doesn't run on Edge (prevents 500)
+export const runtime = "nodejs";
 
 type SearchParams = {
   page?: string;
@@ -44,7 +46,8 @@ function buildWhere(sp: SearchParams) {
 
 export default async function AdminSupportPage({ searchParams }: { searchParams: SearchParams }) {
   const me = await currentUser();
-  if (!me) redirect("/login?next=/admin/support");
+  // 👇 keep paths consistent with your app structure (/dashboard/admin/…)
+  if (!me) redirect("/login?next=/dashboard/admin/support");
   if (me.role !== "ADMIN") redirect("/dashboard");
 
   const page = toInt(searchParams.page, 1);
@@ -53,16 +56,25 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
   const sort = searchParams.sort === "oldest" ? "asc" : "desc";
   const where = buildWhere(searchParams);
 
-  const [total, rows] = await Promise.all([
-    prisma.auditLog.count({ where }),
-    prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: sort },
-      take,
-      skip,
-      select: { id: true, createdAt: true, meta: true },
-    }),
-  ]);
+  let total = 0;
+  let rows:
+    { id: string; createdAt: Date; meta: unknown }[] = [];
+  try {
+    [total, rows] = await Promise.all([
+      prisma.auditLog.count({ where }),
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: sort },
+        take,
+        skip,
+        select: { id: true, createdAt: true, meta: true },
+      }),
+    ]);
+  } catch (e) {
+    // If something goes wrong, fail gracefully instead of a 500
+    total = 0;
+    rows = [];
+  }
 
   const pages = Math.max(1, Math.ceil(total / take));
   const q = searchParams.q ?? "";
@@ -78,7 +90,8 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
       if (v === "" || v == null) continue;
       sp.set(k, String(v));
     }
-    return `/admin/support?${sp.toString()}`;
+    // 👇 correct URL base for your routing
+    return `/dashboard/admin/support?${sp.toString()}`;
   };
 
   return (
@@ -89,7 +102,7 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
           <p className="mt-1 text-sm text-gray-600">{total.toLocaleString()} σύνολο</p>
         </div>
 
-        <form className="flex flex-wrap items-center gap-2" action="/admin/support" method="get">
+        <form className="flex flex-wrap items-center gap-2" action="/dashboard/admin/support" method="get">
           <input
             type="text"
             name="q"
@@ -137,14 +150,14 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
             {rows.map((r) => {
-              const meta: any = r.meta ?? {};
+              const meta: any = (r as any).meta ?? {};
               const subject = String(meta.subject ?? "");
               const message = String(meta.message ?? "");
               const preview = message.length > 120 ? message.slice(0, 120) + "…" : message;
               const pri = String(meta.priority ?? "normal");
               const userEmail = String(meta.userEmail ?? "");
               const userName = String(meta.userName ?? "");
-              const created = new Date(r.createdAt).toLocaleString();
+              const created = new Date((r as any).createdAt).toLocaleString();
 
               return (
                 <tr key={r.id} className="align-top">
@@ -152,11 +165,9 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
 
                   <td className="px-3 md:px-4 py-3 whitespace-normal break-words">
                     <div className="font-medium text-[inherit]">{subject || <span className="text-gray-400">—</span>}</div>
-                    {/* Mobile sender under subject */}
                     <div className="mt-1 text-xs text-gray-500 md:hidden">
                       {userName || "Άγνωστο"}{userEmail ? ` · ${userEmail}` : ""}
                     </div>
-                    {/* Mobile short preview */}
                     <div className="mt-1 text-xs text-gray-600 md:hidden">{preview || "—"}</div>
                   </td>
 
