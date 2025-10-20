@@ -26,27 +26,21 @@ export default function AdminUsersPage() {
     role: "USER" as "USER" | "ADMIN",
     subscriptionActive: false,
   });
-
   const canCreate = useMemo(() => {
     return form.name.trim().length >= 2 && /\S+@\S+\.\S+/.test(form.email) && form.password.length >= 6;
   }, [form]);
 
   async function load() {
-    setLoading(true);
-    setErr(null);
+    setLoading(true); setErr(null);
     try {
       const q = filter === "ALL" ? "" : `?status=${filter}`;
       const res = await fetch(`/api/admin/users${q}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Αποτυχία φόρτωσης χρηστών");
       setUsers(json.users);
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setErr(e.message); }
+    finally { setLoading(false); }
   }
-
   useEffect(() => { load(); }, [filter]);
   useEffect(() => { load(); }, []);
 
@@ -184,8 +178,92 @@ export default function AdminUsersPage() {
         </form>
       </section>
 
-      {/* Πίνακας χρηστών (mobile-first) */}
-      <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
+      {/* --- MOBILE LIST (2 σειρές) --- */}
+      <section className="sm:hidden grid gap-3">
+        {err ? (
+          <div className="text-sm text-red-600">{err}</div>
+        ) : loading ? (
+          <div className="text-sm text-[color:var(--muted)]">Φόρτωση…</div>
+        ) : users.length === 0 ? (
+          <div className="text-sm text-[color:var(--muted)]">Δεν βρέθηκαν χρήστες.</div>
+        ) : (
+          users.map(u => (
+            <div key={u.id} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-3">
+              {/* Row 1: Όνομα / Email */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium break-words">{u.name || "—"}</div>
+                  <div className="text-xs text-gray-600 break-words">{u.email}</div>
+                </div>
+                {/* Κατάσταση pill */}
+                <span
+                  className={[
+                    "nowrap inline-flex items-center rounded-full px-2 py-0.5 border text-xs",
+                    u.status === "ACTIVE"
+                      ? "border-green-300 text-green-700 bg-green-50"
+                      : u.status === "PENDING"
+                      ? "border-amber-300 text-amber-700 bg-amber-50"
+                      : "border-red-300 text-red-700 bg-red-50",
+                  ].join(" ")}
+                >
+                  {u.status === "ACTIVE" ? "ΕΝΕΡΓΟΣ" : u.status === "PENDING" ? "ΕΚΚΡΕΜΕΙ" : "ΑΝΑΣΤΟΛΗ"}
+                </span>
+              </div>
+
+              {/* Row 2: Ρόλος / Συνδρομή / Ενέργειες */}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={u.role}
+                    onChange={e => changeRole(u, e.target.value as "USER" | "ADMIN")}
+                    className="w-full rounded-md border border-[color:var(--border)] bg-white/90 px-2 py-1 text-[inherit]"
+                  >
+                    <option value="USER">USER</option>
+                    <option value="ADMIN">ADMIN</option>
+                  </select>
+                </div>
+                <label className="flex items-center justify-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={u.subscriptionActive}
+                    onChange={() => toggleSubscription(u)}
+                    disabled={u.status !== "ACTIVE"}
+                  />
+                  <span className="text-sm">{u.subscriptionActive ? "Ενεργό" : "Ανενεργό"}</span>
+                </label>
+
+                <div className="col-span-2 flex flex-wrap gap-2">
+                  {u.status !== "ACTIVE" && (
+                    <button
+                      onClick={() => setStatus(u, "ACTIVE")}
+                      className="rounded-md bg-green-600/90 text-white px-3 py-1 hover:bg-green-700"
+                    >
+                      Έγκριση
+                    </button>
+                  )}
+                  {u.status === "ACTIVE" && (
+                    <button
+                      onClick={() => setStatus(u, "SUSPENDED")}
+                      className="rounded-md bg-yellow-500/90 text-black px-3 py-1 hover:bg-yellow-500"
+                    >
+                      Αναστολή
+                    </button>
+                  )}
+                  <button
+                    onClick={() => remove(u)}
+                    className="rounded-md border border-red-200 text-red-700 px-3 py-1 hover:bg-red-50"
+                  >
+                    Διαγραφή
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      {/* --- DESKTOP/TABLET TABLE --- */}
+      <section className="hidden sm:block rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
         {err ? (
           <div className="text-sm text-red-600">{err}</div>
         ) : loading ? (
@@ -198,11 +276,11 @@ export default function AdminUsersPage() {
               <thead className="bg-gray-50 text-gray-700">
                 <tr className="text-left">
                   <Th className="w-[20%]">Όνομα</Th>
-                  <Th className="w-[25%] hidden sm:table-cell">Email</Th>
+                  <Th className="w-[25%]">Email</Th>
                   <Th className="w-[15%]">Ρόλος</Th>
                   <Th className="w-[15%]">Κατάσταση</Th>
                   <Th className="w-[15%]">Συνδρομή</Th>
-                  <Th className="w-[10%] hidden lg:table-cell">Δημιουργήθηκε</Th>
+                  <Th className="w-[10%]">Δημιουργήθηκε</Th>
                   <Th className="w-[20%]">Ενέργειες</Th>
                 </tr>
               </thead>
@@ -210,11 +288,7 @@ export default function AdminUsersPage() {
                 {users.map(u => (
                   <tr key={u.id} className="align-top">
                     <Td className="whitespace-normal break-words">{u.name ?? "—"}</Td>
-
-                    <Td className="whitespace-normal break-words hidden sm:table-cell">
-                      {u.email}
-                    </Td>
-
+                    <Td className="whitespace-normal break-words">{u.email}</Td>
                     <Td>
                       <select
                         value={u.role}
@@ -225,7 +299,6 @@ export default function AdminUsersPage() {
                         <option value="ADMIN">ADMIN</option>
                       </select>
                     </Td>
-
                     <Td>
                       <span
                         className={[
@@ -240,7 +313,6 @@ export default function AdminUsersPage() {
                         {u.status === "ACTIVE" ? "ΕΝΕΡΓΟΣ" : u.status === "PENDING" ? "ΕΚΚΡΕΜΕΙ" : "ΑΝΑΣΤΟΛΗ"}
                       </span>
                     </Td>
-
                     <Td>
                       <label className="inline-flex items-center gap-2">
                         <input
@@ -252,11 +324,9 @@ export default function AdminUsersPage() {
                         {u.subscriptionActive ? "Ενεργό" : "Ανενεργό"}
                       </label>
                     </Td>
-
-                    <Td className="hidden lg:table-cell whitespace-nowrap">
+                    <Td className="whitespace-nowrap">
                       {new Date(u.createdAt).toLocaleDateString()}
                     </Td>
-
                     <Td>
                       <div className="flex flex-wrap gap-2">
                         {u.status !== "ACTIVE" && (
