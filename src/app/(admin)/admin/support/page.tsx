@@ -82,13 +82,11 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
   };
 
   return (
-    <main className="mx-auto max-w-6xl px-3 md:px-6 py-6">
+    <main className="mx-auto max-w-6xl px-3 md:px-6 py-6 text-[inherit]">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl md:text-2xl font-semibold">Αιτήματα Υποστήριξης</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            {total.toLocaleString()} σύνολο
-          </p>
+          <h1 className="text-xl md:text-2xl font-semibold text-[inherit]">Αιτήματα Υποστήριξης</h1>
+          <p className="mt-1 text-sm text-gray-600">{total.toLocaleString()} σύνολο</p>
         </div>
 
         <form className="flex flex-wrap items-center gap-2" action="/admin/support" method="get">
@@ -97,12 +95,12 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
             name="q"
             defaultValue={q}
             placeholder="Αναζήτηση θέμα, μήνυμα ή χρήστη…"
-            className="w-full sm:w-64 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring"
+            className="w-full sm:w-64 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring text-[inherit] bg-white/90"
           />
           <select
             name="priority"
             defaultValue={priority}
-            className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
+            className="rounded-xl border border-gray-300 px-3 py-2 text-sm bg-white/90 text-[inherit]"
           >
             <option value="">Όλες οι προτεραιότητες</option>
             <option value="normal">Κανονική</option>
@@ -112,7 +110,7 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
           <select
             name="sort"
             defaultValue={searchParams.sort === "oldest" ? "oldest" : "newest"}
-            className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
+            className="rounded-xl border border-gray-300 px-3 py-2 text-sm bg-white/90 text-[inherit]"
           >
             <option value="newest">Νεότερα πρώτα</option>
             <option value="oldest">Παλαιότερα πρώτα</option>
@@ -127,14 +125,14 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
       </div>
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <table className="w-full table-fixed text-sm text-[inherit]">
           <thead className="bg-gray-50 text-gray-700">
             <tr className="text-left font-semibold">
-              <th className="px-3 md:px-4 py-3">Ημερ./Ώρα</th>
-              <th className="px-3 md:px-4 py-3">Θέμα</th>
-              <th className="px-3 md:px-4 py-3 hidden md:table-cell">Από</th>
-              <th className="px-3 md:px-4 py-3">Προτεραιότητα</th>
-              <th className="px-3 md:px-4 py-3 hidden md:table-cell">Προεπισκόπηση</th>
+              <th className="px-3 md:px-4 py-3 w-[20%]">Ημερ./Ώρα</th>
+              <th className="px-3 md:px-4 py-3 w-[35%]">Θέμα</th>
+              <th className="px-3 md:px-4 py-3 hidden md:table-cell w-[20%]">Από</th>
+              <th className="px-3 md:px-4 py-3 w-[15%]">Προτεραιότητα</th>
+              <th className="px-3 md:px-4 py-3 hidden md:table-cell w-[25%]">Προεπισκόπηση</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
@@ -143,7 +141,7 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
               const subject = String(meta.subject ?? "");
               const message = String(meta.message ?? "");
               const preview = message.length > 120 ? message.slice(0, 120) + "…" : message;
-              const priority = String(meta.priority ?? "normal");
+              const pri = String(meta.priority ?? "normal");
               const userEmail = String(meta.userEmail ?? "");
               const userName = String(meta.userName ?? "");
               const created = new Date(r.createdAt).toLocaleString();
@@ -151,36 +149,42 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
               return (
                 <tr key={r.id} className="align-top">
                   <td className="px-3 md:px-4 py-3 text-xs md:text-sm text-gray-600 whitespace-nowrap">{created}</td>
-                  <td className="px-3 md:px-4 py-3">
-                    <div className="font-medium">{subject || <span className="text-gray-400">—</span>}</div>
-                    {/* On mobile show the sender under the subject */}
+
+                  <td className="px-3 md:px-4 py-3 whitespace-normal break-words">
+                    <div className="font-medium text-[inherit]">{subject || <span className="text-gray-400">—</span>}</div>
+                    {/* Mobile sender under subject */}
                     <div className="mt-1 text-xs text-gray-500 md:hidden">
                       {userName || "Άγνωστο"}{userEmail ? ` · ${userEmail}` : ""}
                     </div>
-                    {/* On mobile also show a short preview */}
+                    {/* Mobile short preview */}
                     <div className="mt-1 text-xs text-gray-600 md:hidden">{preview || "—"}</div>
                   </td>
+
                   <td className="px-3 md:px-4 py-3 hidden md:table-cell text-sm">
                     <div className="flex flex-col">
-                      <span className="font-medium">{userName || "Άγνωστο"}</span>
+                      <span className="font-medium text-[inherit]">{userName || "Άγνωστο"}</span>
                       <span className="text-gray-500">{userEmail}</span>
                     </div>
                   </td>
+
                   <td className="px-3 md:px-4 py-3">
                     <span
                       className={[
-                        "inline-flex rounded-full px-2 py-1 text-xs font-medium",
-                        priority === "urgent"
+                        "nowrap inline-flex rounded-full px-2 py-1 text-xs font-medium",
+                        pri === "urgent"
                           ? "bg-red-100 text-red-700"
-                          : priority === "high"
+                          : pri === "high"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-gray-100 text-gray-700",
                       ].join(" ")}
                     >
-                      {priority === "urgent" ? "Επείγον" : priority === "high" ? "Υψηλή" : "Κανονική"}
+                      {pri === "urgent" ? "Επείγον" : pri === "high" ? "Υψηλή" : "Κανονική"}
                     </span>
                   </td>
-                  <td className="px-3 md:px-4 py-3 hidden md:table-cell text-gray-600">{preview || "—"}</td>
+
+                  <td className="px-3 md:px-4 py-3 hidden md:table-cell text-gray-600 whitespace-normal break-words">
+                    {preview || "—"}
+                  </td>
                 </tr>
               );
             })}
