@@ -1,27 +1,28 @@
-// middleware.ts (must be at repo root, next to package.json)
+// middleware.ts (repo root)
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-/**
- * Global middleware with safe matcher:
- * - Matches all paths except Next assets and files with extensions.
- * - Handles "/" and "/login" routing, plus protected areas.
- */
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const url = (p: string) => new URL(p, req.url);
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
+  // --- Canonicalize: if anyone hits /dashboard/admin, send to /admin (one hop) ---
+  if (pathname === "/dashboard/admin" || pathname.startsWith("/dashboard/admin/")) {
+    const dest = url(pathname.replace("/dashboard/admin", "/admin") || "/admin");
+    return NextResponse.redirect(dest);
+  }
+
   // Root gateway
   if (pathname === "/") {
     if (!token) return NextResponse.redirect(url("/login"));
-    return NextResponse.redirect(url(token.role === "ADMIN" ? "/dashboard/admin" : "/dashboard"));
+    return NextResponse.redirect(url(token.role === "ADMIN" ? "/admin" : "/dashboard"));
   }
 
   // Logged-in users should not see /login
   if (pathname === "/login" && token) {
-    return NextResponse.redirect(url(token.role === "ADMIN" ? "/dashboard/admin" : "/dashboard"));
+    return NextResponse.redirect(url(token.role === "ADMIN" ? "/admin" : "/dashboard"));
   }
 
   // Paths that need auth
@@ -48,15 +49,15 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url("/dashboard"));
   }
 
-  // Admins visiting /dashboard go to /dashboard/admin
+  // Admins landing on /dashboard should go to /admin (single hop, no loops)
   if (pathname === "/dashboard" && token?.role === "ADMIN") {
-    return NextResponse.redirect(url("/dashboard/admin"));
+    return NextResponse.redirect(url("/admin"));
   }
 
   return NextResponse.next();
 }
 
-// Match everything except _next assets and files with an extension (e.g., .png, .css, .ico)
 export const config = {
+  // Match everything except Next assets and files with extensions (e.g., .png, .css, .ico)
   matcher: ["/((?!_next|.*\\..*).*)"],
 };
