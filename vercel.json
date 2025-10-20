@@ -1,6 +1,9 @@
 {
-  "buildCommand": "npm ci --no-audit --no-fund",
+  "installCommand": "npm ci --no-audit --no-fund",
+  "buildCommand": "npm run build",
   "functions": {
-    "app/**": { "runtime": "nodejs18.x" }
-  }
+    "api/**": { "runtime": "nodejs20.x" },
+    "app/**": { "runtime": "nodejs20.x" }
+  },
+  "regions": ["fra1", "sfo1"]
 }
