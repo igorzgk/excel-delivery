@@ -18,10 +18,10 @@ export default function AdminFilesPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // --- manual add state ---
+  // --- manual add state (LOCAL FILE) ---
   const [newTitle, setNewTitle] = useState("");
-  const [newUrl, setNewUrl] = useState("");
   const [newAssignee, setNewAssignee] = useState("");
+  const [newFile, setNewFile] = useState<File | null>(null);
   const [savingNew, setSavingNew] = useState(false);
 
   async function load() {
@@ -45,29 +45,31 @@ export default function AdminFilesPage() {
   }
 
   async function createManual() {
-    if (!newTitle.trim() || !newUrl.trim()) {
-      alert("Συμπληρώστε Τίτλο και URL.");
+    if (!newTitle.trim() || !newFile) {
+      alert("Συμπληρώστε Τίτλο και επιλέξτε αρχείο.");
       return;
     }
     setSavingNew(true);
     try {
+      const fd = new FormData();
+      fd.append("title", newTitle.trim());
+      fd.append("file", newFile); // <- local file
+      if (newAssignee) fd.append("assignTo", newAssignee);
+
       const res = await fetch("/api/files", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newTitle.trim(),
-          url: newUrl.trim(),
-          assignTo: newAssignee || undefined, // optional
-        }),
+        body: fd, // NOTE: do NOT set Content-Type; browser sets it with boundary
       });
+
       if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        throw new Error(msg || "Αποτυχία δημιουργίας αρχείου");
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || "Αποτυχία δημιουργίας αρχείου");
       }
+
       // reset + reload
       setNewTitle("");
-      setNewUrl("");
       setNewAssignee("");
+      setNewFile(null);
       await load();
     } catch (err: any) {
       alert(err?.message || "Σφάλμα");
@@ -80,7 +82,7 @@ export default function AdminFilesPage() {
     <div className="grid gap-4 text-[inherit]">
       <h2 className="text-xl font-semibold">Όλα τα αρχεία</h2>
 
-      {/* ===== MOBILE: Manual add card ===== */}
+      {/* ===== MOBILE: Manual add card (LOCAL FILE) ===== */}
       <section className="sm:hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-3">
         <h3 className="mb-2 font-medium">Προσθήκη αρχείου (χειροκίνητα)</h3>
         <div className="grid gap-2">
@@ -90,12 +92,13 @@ export default function AdminFilesPage() {
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
           />
+
           <input
-            className="w-full border rounded px-2 py-1"
-            placeholder="URL αρχείου (https://...)"
-            value={newUrl}
-            onChange={(e) => setNewUrl(e.target.value)}
+            type="file"
+            className="w-full border rounded px-2 py-1 bg-white"
+            onChange={(e) => setNewFile(e.currentTarget.files?.[0] ?? null)}
           />
+
           <select
             className="w-full border rounded px-2 py-1 bg-white/90"
             value={newAssignee}
@@ -110,6 +113,7 @@ export default function AdminFilesPage() {
                 </option>
               ))}
           </select>
+
           <button
             disabled={savingNew}
             onClick={createManual}
@@ -124,21 +128,21 @@ export default function AdminFilesPage() {
         <div className="text-sm text-[color:var(--muted)]">Φόρτωση…</div>
       ) : (
         <>
-          {/* ===== DESKTOP/TABLET: Manual add mini-table ===== */}
+          {/* ===== DESKTOP/TABLET: Manual add mini-table (LOCAL FILE) ===== */}
           <section className="hidden sm:block rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
             <h3 className="mb-3 font-medium">Προσθήκη αρχείου (χειροκίνητα)</h3>
             <div className="overflow-hidden">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[36%]" /> {/* Τίτλος */}
-                  <col className="w-[32%]" /> {/* URL */}
-                  <col className="w-[20%]" /> {/* Ανάθεση σε */}
+                  <col className="w-[32%]" /> {/* Τίτλος */}
+                  <col className="w-[32%]" /> {/* Επιλογή αρχείου */}
+                  <col className="w-[24%]" /> {/* Ανάθεση σε */}
                   <col className="w-[12%]" /> {/* Ενέργειες */}
                 </colgroup>
                 <thead className="bg-gray-50 text-gray-700">
                   <tr className="text-left">
                     <Th>Τίτλος</Th>
-                    <Th>URL</Th>
+                    <Th>Αρχείο</Th>
                     <Th>Ανάθεση σε</Th>
                     <Th className="text-right">Ενέργειες</Th>
                   </tr>
@@ -155,10 +159,9 @@ export default function AdminFilesPage() {
                     </Td>
                     <Td>
                       <input
-                        className="w-full border rounded px-2 py-1"
-                        placeholder="URL αρχείου (https://...)"
-                        value={newUrl}
-                        onChange={(e) => setNewUrl(e.target.value)}
+                        type="file"
+                        className="w-full border rounded px-2 py-1 bg-white"
+                        onChange={(e) => setNewFile(e.currentTarget.files?.[0] ?? null)}
                       />
                     </Td>
                     <Td>
@@ -255,7 +258,6 @@ export default function AdminFilesPage() {
           <section className="hidden sm:block rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
             <div className="overflow-hidden">
               <table className="w-full table-fixed text-sm text-[inherit]">
-                {/* stabilize column widths so Actions doesn't get crowded */}
                 <colgroup>
                   <col className="w-[35%]" />  {/* Τίτλος */}
                   <col className="w-[20%]" />  {/* Ημερομηνία δημιουργίας */}
