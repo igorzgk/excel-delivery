@@ -9,7 +9,6 @@ export function getMenu(role: Role): MenuItem[] {
       { label: "Χρήστες", href: "/admin/users" },
       { label: "Αρχεία", href: "/admin/files" },
       { label: "Υποστήριξη", href: "/admin/support" }, // ← add this
-      { label: "Ρυθμίσεις", href: "/admin/settings" },
       { label: "Αρχεία Καταγραφής", href: "/admin/audit" },
     ];
   }

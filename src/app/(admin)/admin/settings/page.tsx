@@ -1,9 +1,0 @@
-// src/app/(admin)/admin/settings/page.tsx
-export default function AdminSettingsPage() {
-  return (
-    <div className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4">
-      <h2 className="font-semibold">Ρυθμίσεις</h2>
-      <p className="text-sm text-[color:var(--muted)]">Ρυθμίσεις πλατφόρμας.</p>
-    </div>
-  );
-}

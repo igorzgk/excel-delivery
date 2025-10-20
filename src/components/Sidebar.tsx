@@ -17,9 +17,11 @@ function isActive(pathname: string, href: string) {
 export default function Sidebar({
   role,
   name,
+  onNavigate, // <-- NEW
 }: {
   role: Role;
   name?: string | null;
+  onNavigate?: () => void; // <-- NEW
 }) {
   const pathname = usePathname() || "/";
   const router = useRouter();
@@ -40,7 +42,6 @@ export default function Sidebar({
         style={{ borderColor: "var(--sidebar-border,rgba(255,255,255,.08))" }}
       >
         <div className="relative w-full h-12 overflow-hidden rounded-md bg-white/5 mb-2">
-          {/* Put your PNG in /public/logo.png; this fills the whole width */}
           <Image src="/logo.png" alt="Company logo" fill className="object-contain" priority />
         </div>
         <div className="leading-tight">
@@ -58,7 +59,10 @@ export default function Sidebar({
             <button
               key={i.href}
               type="button"
-              onClick={() => router.push(i.href)}
+              onClick={() => {
+                router.push(i.href);
+                onNavigate?.(); // <-- CLOSE DRAWER IF PROVIDED
+              }}
               className="w-full text-left flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors"
               style={{
                 backgroundColor: active ? "var(--sidebar-active-bg,rgba(37,195,244,.15))" : "transparent",
