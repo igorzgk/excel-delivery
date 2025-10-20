@@ -28,31 +28,56 @@ html,body{background:var(--bg);color:var(--text)}
   padding: 1rem;           /* 16px */
 }
 /* ===== Mobile Tables: fit within the screen (no horizontal scroll) ===== */
+/* ===== Mobile Tables: fit within the screen (no horizontal scroll) ===== */
 @media (max-width: 639px) {
-  /* Keep native table rendering, but force wrapping */
-  table {
+  /* Scope to main content so we don't affect other layouts */
+  .app-main table {
     width: 100%;
-    table-layout: fixed;      /* columns shrink to fit */
+    table-layout: fixed;           /* columns shrink to fit screen */
     border-collapse: collapse;
   }
-  thead th,
-  tbody td {
-    white-space: normal !important;    /* allow wrapping */
-    overflow-wrap: anywhere !important;
-    word-break: break-word !important;
-    padding: 0.5rem 0.75rem;           /* compact padding */
+
+  .app-main table thead th,
+  .app-main table tbody td {
+    white-space: normal;           /* allow wrapping for text */
+    overflow-wrap: anywhere;       /* wrap long emails/filenames */
+    word-break: break-word;
+    padding: 0.5rem 0.75rem;       /* compact */
     vertical-align: top;
   }
-  /* Slightly smaller font for dense tables */
-  table { font-size: 0.9375rem; line-height: 1.35; }
 
-  /* If a table cell uses utility classes that force nowrap, override them */
-  .whitespace-nowrap { white-space: normal !important; }
-  .truncate, .text-ellipsis { text-overflow: clip !important; white-space: normal !important; }
+  .app-main table { 
+    font-size: 0.9375rem; 
+    line-height: 1.35; 
+  }
+
+  /* Keep badges/pills in one line so they don't stack vertically */
+  .app-main table .inline-flex.rounded-full,
+  .app-main table .badge,
+  .app-main table .tag,
+  .app-main table .btn,
+  .app-main table .nowrap {
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  /* If any header cells were marked nowrap, keep them too */
+  .app-main table thead .whitespace-nowrap {
+    white-space: nowrap !important;
+  }
 }
 
-/* Utility to wrap long strings anywhere (emails, filenames) */
+/* Utility for explicit wrapping anywhere (safe outside tables too) */
 .break-words, .truncate-soft {
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* Make charts/media never push layout wider than screen */
+.app-main canvas,
+.app-main img,
+.app-main svg {
+  max-width: 100%;
+  height: auto;
 }

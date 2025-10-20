@@ -9,11 +9,9 @@ type Role = "ADMIN" | "USER";
 export default function MobileHeader({
   role,
   name,
-  brand = "Hygiene+",
 }: {
   role: Role;
   name?: string | null;
-  brand?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -31,18 +29,12 @@ export default function MobileHeader({
         style={{ background: "#061630", borderColor: "rgba(255,255,255,.08)" }}
       >
         <div className="flex items-center gap-3 px-3 py-2">
-          {/* LOGO on the left – full width area */}
+          {/* LOGO — left, full width */}
           <div className="relative h-9 flex-1 overflow-hidden">
-            <Image
-              src="/logo.png"
-              alt={brand}
-              fill
-              className="object-contain"
-              priority
-            />
+            <Image src="/logo.png" alt="HygienePlus" fill className="object-contain" priority />
           </div>
 
-          {/* Hamburger on the right */}
+          {/* Hamburger — right */}
           <button
             aria-label="Άνοιγμα μενού"
             onClick={() => setOpen(true)}
@@ -58,27 +50,19 @@ export default function MobileHeader({
 
       {/* Backdrop */}
       <div
-        className={`md:hidden fixed inset-0 z-50 bg-black/40 transition-opacity ${
-          open ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
+        className={`md:hidden fixed inset-0 z-50 bg-black/40 transition-opacity ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
         onClick={() => setOpen(false)}
       />
 
-      {/* Drawer with your existing Sidebar inside */}
+      {/* Drawer with your existing Sidebar */}
       <aside
-        className={`md:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transform transition-transform ${
-          open ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`md:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transform transition-transform ${open ? "translate-x-0" : "-translate-x-full"}`}
         style={{ background: "#061630" }}
         role="dialog"
         aria-modal="true"
       >
         <div className="h-screen overflow-hidden flex flex-col">
-          {/* Close row */}
-          <div
-            className="flex items-center justify-between px-3 py-3 border-b"
-            style={{ borderColor: "rgba(255,255,255,.08)" }}
-          >
+          <div className="flex items-center justify-between px-3 py-3 border-b" style={{ borderColor: "rgba(255,255,255,.08)" }}>
             <div className="text-sm font-semibold" style={{ color: "#ECF5F8" }}>
               {name || (role === "ADMIN" ? "Διαχειριστής" : "Χρήστης")}
             </div>
@@ -93,9 +77,7 @@ export default function MobileHeader({
               </svg>
             </button>
           </div>
-
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {/* Re-use your Sidebar exactly as-is */}
             <Sidebar role={role} name={name ?? undefined} />
           </div>
         </div>
