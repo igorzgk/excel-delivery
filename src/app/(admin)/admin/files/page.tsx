@@ -1,5 +1,6 @@
 // src/app/(admin)/admin/files/page.tsx
 "use client";
+
 import { useEffect, useState } from "react";
 
 type FileRow = {
@@ -38,68 +39,96 @@ export default function AdminFilesPage() {
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4 text-[inherit]">
       <h2 className="text-xl font-semibold">Όλα τα αρχεία</h2>
-      {loading ? "Φόρτωση…" : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
-              <th className="py-2 pr-3">Τίτλος</th>
-              <th className="py-2 pr-3">Ημερομηνία δημιουργίας</th>
-              <th className="py-2 pr-3">Ανατεθειμένο σε</th>
-              <th className="py-2 pr-3">Ανάθεση</th>
-              <th className="py-2 pr-3">Ενέργειες</th>
-            </tr>
-          </thead>
-          <tbody>
-            {files.map(f => {
-              const assigned = (f.assignments || []).map(a => a.user.email).join(", ");
-              return (
-                <tr key={f.id} className="border-b last:border-0 border-[color:var(--border)]">
-                  <td className="py-2 pr-3">
-                    {f.title}
-                  </td>
-                  <td className="py-2 pr-3">{new Date(f.createdAt).toLocaleString()}</td>
-                  <td className="py-2 pr-3">
-                    {assigned ? assigned : <span className="text-[color:var(--muted)]">Δεν έχει ανατεθεί</span>}
-                  </td>
-                  <td className="py-2 pr-3">
-                    <form
-                      onSubmit={e => {
-                        e.preventDefault();
-                        const userId = (new FormData(e.currentTarget).get("userId") as string) || "";
-                        assign(f.id, userId);
-                      }}
-                      className="flex gap-2"
-                    >
-                      <select name="userId" className="border rounded px-2 py-1">
-                        <option value="">Επιλογή χρήστη…</option>
-                        {users
-                          .filter(u => u.status === "ACTIVE")
-                          .map(u => (
-                            <option key={u.id} value={u.id}>
-                              {u.email}{u.name ? ` (${u.name})` : ""}
-                            </option>
-                          ))}
-                      </select>
-                      <button className="rounded bg-[color:var(--brand)] text-black px-3 py-1">Ανάθεση</button>
-                    </form>
-                  </td>
-                  <td className="py-2 pr-3">
-                    {f.url ? (
-                      <a href={f.url} target="_blank" rel="noreferrer" className="rounded border px-3 py-1 hover:bg-black/5">
-                        Λήψη
-                      </a>
-                    ) : (
-                      <span className="text-[color:var(--muted)]">Δεν υπάρχει URL αρχείου</span>
-                    )}
-                  </td>
+
+      {loading ? (
+        <div className="text-sm text-[color:var(--muted)]">Φόρτωση…</div>
+      ) : (
+        <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
+          <div className="overflow-hidden">
+            <table className="w-full table-fixed text-sm text-[inherit]">
+              <thead className="bg-gray-50 text-gray-700">
+                <tr className="text-left">
+                  <Th className="w-[35%]">Τίτλος</Th>
+                  <Th className="w-[20%] hidden md:table-cell">Ημερομηνία δημιουργίας</Th>
+                  <Th className="w-[25%] hidden sm:table-cell">Ανατεθειμένο σε</Th>
+                  <Th className="w-[20%]">Ανάθεση</Th>
+                  <Th className="w-[15%]">Ενέργειες</Th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {files.map(f => {
+                  const assigned = (f.assignments || []).map(a => a.user.email).join(", ");
+                  return (
+                    <tr key={f.id} className="align-top">
+                      <Td className="whitespace-normal break-words">
+                        {f.title}
+                      </Td>
+
+                      <Td className="hidden md:table-cell whitespace-nowrap">
+                        {new Date(f.createdAt).toLocaleString()}
+                      </Td>
+
+                      <Td className="hidden sm:table-cell whitespace-normal break-words">
+                        {assigned ? assigned : <span className="text-[color:var(--muted)]">Δεν έχει ανατεθεί</span>}
+                      </Td>
+
+                      <Td>
+                        <form
+                          onSubmit={e => {
+                            e.preventDefault();
+                            const userId = (new FormData(e.currentTarget).get("userId") as string) || "";
+                            assign(f.id, userId);
+                          }}
+                          className="flex flex-wrap gap-2"
+                        >
+                          <select name="userId" className="border rounded px-2 py-1 text-[inherit] bg-white/90">
+                            <option value="">Επιλογή χρήστη…</option>
+                            {users
+                              .filter(u => u.status === "ACTIVE")
+                              .map(u => (
+                                <option key={u.id} value={u.id}>
+                                  {u.email}{u.name ? ` (${u.name})` : ""}
+                                </option>
+                              ))}
+                          </select>
+                          <button className="rounded bg-[color:var(--brand)] text-black px-3 py-1 hover:opacity-90">
+                            Ανάθεση
+                          </button>
+                        </form>
+                      </Td>
+
+                      <Td>
+                        {f.url ? (
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded border px-3 py-1 hover:bg-black/5"
+                          >
+                            Λήψη
+                          </a>
+                        ) : (
+                          <span className="text-[color:var(--muted)]">Δεν υπάρχει URL αρχείου</span>
+                        )}
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   );
+}
+
+/* helpers */
+function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
+}
+function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-3 py-3 ${className}`}>{children}</td>;
 }

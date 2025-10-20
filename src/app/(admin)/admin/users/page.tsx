@@ -26,21 +26,27 @@ export default function AdminUsersPage() {
     role: "USER" as "USER" | "ADMIN",
     subscriptionActive: false,
   });
+
   const canCreate = useMemo(() => {
     return form.name.trim().length >= 2 && /\S+@\S+\.\S+/.test(form.email) && form.password.length >= 6;
   }, [form]);
 
   async function load() {
-    setLoading(true); setErr(null);
+    setLoading(true);
+    setErr(null);
     try {
       const q = filter === "ALL" ? "" : `?status=${filter}`;
       const res = await fetch(`/api/admin/users${q}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Αποτυχία φόρτωσης χρηστών");
       setUsers(json.users);
-    } catch (e: any) { setErr(e.message); }
-    finally { setLoading(false); }
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
   }
+
   useEffect(() => { load(); }, [filter]);
   useEffect(() => { load(); }, []);
 
@@ -99,9 +105,9 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-6 text-[inherit]">
       {/* Φίλτρα */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {(["ALL","PENDING","ACTIVE","SUSPENDED"] as const).map(f => (
           <button
             key={f}
@@ -122,11 +128,11 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Δημιουργία χρήστη */}
-      <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4">
-        <h2 className="font-semibold mb-3">Δημιουργία Χρήστη</h2>
+      <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
+        <h2 className="font-semibold mb-3 text-[inherit]">Δημιουργία Χρήστη</h2>
         <form onSubmit={createUser} className="grid gap-3 md:grid-cols-5">
           <input
-            className="rounded-md border border-[color:var(--border)] bg-white/90 px-3 py-2 md:col-span-1"
+            className="rounded-md border border-[color:var(--border)] bg-white/90 px-3 py-2 md:col-span-1 text-[inherit]"
             placeholder="Όνομα"
             value={form.name}
             onChange={e => setForm({ ...form, name: e.target.value })}
@@ -134,7 +140,7 @@ export default function AdminUsersPage() {
           />
           <input
             type="email"
-            className="rounded-md border border-[color:var(--border)] bg-white/90 px-3 py-2 md:col-span-2"
+            className="rounded-md border border-[color:var(--border)] bg-white/90 px-3 py-2 md:col-span-2 text-[inherit]"
             placeholder="Ηλεκτρονικό ταχυδρομείο"
             value={form.email}
             onChange={e => setForm({ ...form, email: e.target.value })}
@@ -142,7 +148,7 @@ export default function AdminUsersPage() {
           />
           <input
             type="password"
-            className="rounded-md border border-[color:var(--border)] bg-white/90 px-3 py-2 md:col-span-1"
+            className="rounded-md border border-[color:var(--border)] bg-white/90 px-3 py-2 md:col-span-1 text-[inherit]"
             placeholder="Κωδικός πρόσβασης"
             value={form.password}
             onChange={e => setForm({ ...form, password: e.target.value })}
@@ -150,7 +156,7 @@ export default function AdminUsersPage() {
           />
           <div className="flex items-center gap-2 md:col-span-1">
             <select
-              className="rounded-md border border-[color:var(--border)] bg-white/90 px-3 py-2"
+              className="rounded-md border border-[color:var(--border)] bg-white/90 px-3 py-2 text-[inherit]"
               value={form.role}
               onChange={e => setForm({ ...form, role: e.target.value as any })}
             >
@@ -178,8 +184,8 @@ export default function AdminUsersPage() {
         </form>
       </section>
 
-      {/* Πίνακας χρηστών */}
-      <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] p-4 overflow-x-auto">
+      {/* Πίνακας χρηστών (mobile-first) */}
+      <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
         {err ? (
           <div className="text-sm text-red-600">{err}</div>
         ) : loading ? (
@@ -187,85 +193,111 @@ export default function AdminUsersPage() {
         ) : users.length === 0 ? (
           <div className="text-sm text-[color:var(--muted)]">Δεν βρέθηκαν χρήστες.</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
-                <th className="py-2 pr-3">Όνομα</th>
-                <th className="py-2 pr-3">Email</th>
-                <th className="py-2 pr-3">Ρόλος</th>
-                <th className="py-2 pr-3">Κατάσταση</th>
-                <th className="py-2 pr-3">Συνδρομή</th>
-                <th className="py-2 pr-3">Δημιουργήθηκε</th>
-                <th className="py-2 pr-3">Ενέργειες</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(u => (
-                <tr key={u.id} className="border-b last:border-0 border-[color:var(--border)]">
-                  <td className="py-2 pr-3">{u.name ?? "—"}</td>
-                  <td className="py-2 pr-3">{u.email}</td>
-                  <td className="py-2 pr-3">
-                    <select
-                      value={u.role}
-                      onChange={e => changeRole(u, e.target.value as "USER" | "ADMIN")}
-                      className="rounded-md border border-[color:var(--border)] bg-white/90 px-2 py-1"
-                    >
-                      <option value="USER">USER</option>
-                      <option value="ADMIN">ADMIN</option>
-                    </select>
-                  </td>
-                  <td className="py-2 pr-3">
-                    <span className={[
-                      "inline-flex items-center rounded-full px-2 py-0.5 border",
-                      u.status === "ACTIVE" ? "border-green-300 text-green-700 bg-green-50" :
-                      u.status === "PENDING" ? "border-amber-300 text-amber-700 bg-amber-50" :
-                      "border-red-300 text-red-700 bg-red-50"
-                    ].join(" ")}>
-                      {u.status === "ACTIVE" ? "ΕΝΕΡΓΟΣ" : u.status === "PENDING" ? "ΕΚΚΡΕΜΕΙ" : "ΑΝΑΣΤΟΛΗ"}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-3">
-                    <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={u.subscriptionActive}
-                        onChange={() => toggleSubscription(u)}
-                        disabled={u.status !== "ACTIVE"}
-                      />
-                      {u.subscriptionActive ? "Ενεργό" : "Ανενεργό"}
-                    </label>
-                  </td>
-                  <td className="py-2 pr-3">{new Date(u.createdAt).toLocaleDateString()}</td>
-                  <td className="py-2 pr-3 flex gap-2">
-                    {u.status !== "ACTIVE" && (
-                      <button
-                        onClick={() => setStatus(u, "ACTIVE")}
-                        className="rounded-md bg-green-600/90 text-white px-3 py-1 hover:bg-green-700"
-                      >
-                        Έγκριση
-                      </button>
-                    )}
-                    {u.status === "ACTIVE" && (
-                      <button
-                        onClick={() => setStatus(u, "SUSPENDED")}
-                        className="rounded-md bg-yellow-500/90 text-black px-3 py-1 hover:bg-yellow-500"
-                      >
-                        Αναστολή
-                      </button>
-                    )}
-                    <button
-                      onClick={() => remove(u)}
-                      className="rounded-md border border-red-200 text-red-700 px-3 py-1 hover:bg-red-50"
-                    >
-                      Διαγραφή
-                    </button>
-                  </td>
+          <div className="overflow-hidden">
+            <table className="w-full table-fixed text-sm text-[inherit]">
+              <thead className="bg-gray-50 text-gray-700">
+                <tr className="text-left">
+                  <Th className="w-[20%]">Όνομα</Th>
+                  <Th className="w-[25%] hidden sm:table-cell">Email</Th>
+                  <Th className="w-[15%]">Ρόλος</Th>
+                  <Th className="w-[15%]">Κατάσταση</Th>
+                  <Th className="w-[15%]">Συνδρομή</Th>
+                  <Th className="w-[10%] hidden lg:table-cell">Δημιουργήθηκε</Th>
+                  <Th className="w-[20%]">Ενέργειες</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {users.map(u => (
+                  <tr key={u.id} className="align-top">
+                    <Td className="whitespace-normal break-words">{u.name ?? "—"}</Td>
+
+                    <Td className="whitespace-normal break-words hidden sm:table-cell">
+                      {u.email}
+                    </Td>
+
+                    <Td>
+                      <select
+                        value={u.role}
+                        onChange={e => changeRole(u, e.target.value as "USER" | "ADMIN")}
+                        className="rounded-md border border-[color:var(--border)] bg-white/90 px-2 py-1 text-[inherit]"
+                      >
+                        <option value="USER">USER</option>
+                        <option value="ADMIN">ADMIN</option>
+                      </select>
+                    </Td>
+
+                    <Td>
+                      <span
+                        className={[
+                          "nowrap inline-flex items-center rounded-full px-2 py-0.5 border text-xs",
+                          u.status === "ACTIVE"
+                            ? "border-green-300 text-green-700 bg-green-50"
+                            : u.status === "PENDING"
+                            ? "border-amber-300 text-amber-700 bg-amber-50"
+                            : "border-red-300 text-red-700 bg-red-50",
+                        ].join(" ")}
+                      >
+                        {u.status === "ACTIVE" ? "ΕΝΕΡΓΟΣ" : u.status === "PENDING" ? "ΕΚΚΡΕΜΕΙ" : "ΑΝΑΣΤΟΛΗ"}
+                      </span>
+                    </Td>
+
+                    <Td>
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={u.subscriptionActive}
+                          onChange={() => toggleSubscription(u)}
+                          disabled={u.status !== "ACTIVE"}
+                        />
+                        {u.subscriptionActive ? "Ενεργό" : "Ανενεργό"}
+                      </label>
+                    </Td>
+
+                    <Td className="hidden lg:table-cell whitespace-nowrap">
+                      {new Date(u.createdAt).toLocaleDateString()}
+                    </Td>
+
+                    <Td>
+                      <div className="flex flex-wrap gap-2">
+                        {u.status !== "ACTIVE" && (
+                          <button
+                            onClick={() => setStatus(u, "ACTIVE")}
+                            className="rounded-md bg-green-600/90 text-white px-3 py-1 hover:bg-green-700"
+                          >
+                            Έγκριση
+                          </button>
+                        )}
+                        {u.status === "ACTIVE" && (
+                          <button
+                            onClick={() => setStatus(u, "SUSPENDED")}
+                            className="rounded-md bg-yellow-500/90 text-black px-3 py-1 hover:bg-yellow-500"
+                          >
+                            Αναστολή
+                          </button>
+                        )}
+                        <button
+                          onClick={() => remove(u)}
+                          className="rounded-md border border-red-200 text-red-700 px-3 py-1 hover:bg-red-50"
+                        >
+                          Διαγραφή
+                        </button>
+                      </div>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>
   );
+}
+
+/* helpers */
+function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
+}
+function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-3 py-3 ${className}`}>{children}</td>;
 }
