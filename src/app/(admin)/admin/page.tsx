@@ -1,137 +1,215 @@
 // src/app/(admin)/admin/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import DashboardCard from "@/components/DashboardCard";
-import TrendMini from "@/components/TrendMini";
 
 type Stats = { users: number; pending: number; files: number };
-type FileRow = { id: string; createdAt: string };
 type AuditRow = {
   id: string;
   createdAt: string;
   action: string;
   target?: string | null;
   targetId?: string | null;
-  actor?: { email: string; name?: string | null } | null;
+  actor?: { id: string; email: string; name?: string | null } | null;
   meta?: any;
 };
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
-  const [audit, setAudit] = useState<AuditRow[]>([]);
-  const [files, setFiles] = useState<FileRow[]>([]);
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  const [rows, setRows] = useState<AuditRow[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(true);
 
   useEffect(() => {
+    // Στατιστικά
     (async () => {
-      const s = await fetch("/api/stats", { cache: "no-store" });
-      if (s.ok) setStats(await s.json());
+      try {
+        const r = await fetch("/api/stats", { cache: "no-store" });
+        if (r.ok) setStats(await r.json());
+      } catch {}
+      setLoadingStats(false);
+    })();
 
-      const a = await fetch("/api/admin/audit?limit=10", { cache: "no-store" });
-      if (a.ok) setAudit((await a.json()).items);
-
-      const f = await fetch("/api/files?scope=all", { cache: "no-store" });
-      if (f.ok) {
-        const json = await f.json();
-        setFiles(json.files.map((x: any) => ({ id: x.id, createdAt: x.createdAt })));
-      }
+    // Πρόσφατη δραστηριότητα (20 εγγραφές)
+    (async () => {
+      try {
+        const r = await fetch("/api/admin/audit?limit=20", { cache: "no-store" });
+        if (r.ok) {
+          const { items } = await r.json();
+          setRows(items as AuditRow[]);
+        }
+      } catch {}
+      setLoadingAudit(false);
     })();
   }, []);
 
-  const uploadsSeries = useMemo(() => {
-    const byDay = new Map<string, number>();
-    const fmt = (d: Date) => d.toISOString().slice(0, 10);
-    const today = new Date();
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      byDay.set(fmt(d), 0);
-    }
-    for (const f of files) {
-      const k = fmt(new Date(f.createdAt));
-      if (byDay.has(k)) byDay.set(k, (byDay.get(k) || 0) + 1);
-    }
-    return Array.from(byDay.entries()).map(([k, v]) => ({ x: k, y: v }));
-  }, [files]);
-
-  const totalUploads = uploadsSeries.reduce((a, b) => a + b.y, 0);
-
   return (
     <div className="grid gap-4">
-      {/* Επάνω σειρά στατιστικών */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <DashboardCard title="Χρήστες" value={stats?.users ?? "—"} subtitle="Σύνολο εγγεγραμμένων" />
-        <DashboardCard title="Εκκρεμείς εγκρίσεις" value={stats?.pending ?? "—"} subtitle="Αναμονή ενεργοποίησης" />
-        <DashboardCard title="Αρχεία" value={stats?.files ?? "—"} subtitle="Σύνολο ανεβασμένων" />
-        <DashboardCard title="Γρήγορες ενέργειες" subtitle="Συνηθισμένες εργασίες">
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link href="/admin/users" className="rounded border px-3 py-1 text-sm">Διαχείριση χρηστών</Link>
-            <Link href="/admin/uploads" className="rounded border px-3 py-1 text-sm">Ανέβασμα αρχείου</Link>
-            <Link href="/admin/audit" className="rounded border px-3 py-1 text-sm">Προβολή καταγραφών</Link>
-          </div>
-        </DashboardCard>
+      {/* Επάνω κάρτες: 1-στήλη στο κινητό, 3-στήλες σε desktop */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card
+          title="Χρήστες"
+          value={loadingStats || !stats ? "—" : stats.users.toLocaleString()}
+          subtitle="Σύνολο εγγεγραμμένων"
+        />
+        <Card
+          title="Εκκρεμείς εγκρίσεις"
+          value={loadingStats || !stats ? "—" : stats.pending.toLocaleString()}
+          subtitle="Αναμονή ενεργοποίησης"
+        />
+        <Card
+          title="Αρχεία"
+          value={loadingStats || !stats ? "—" : stats.files.toLocaleString()}
+          subtitle="Σύνολο ανεβασμένων"
+        />
       </div>
 
-      {/* Τάση ανεβασμάτων + πρόσφατη δραστηριότητα */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <DashboardCard title="Ανεβάσματα — τελευταίες 30 ημέρες">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm text-[color:var(--muted)]">Καθημερινός αριθμός</span>
-            <span className="text-xs text-[color:var(--muted)]">{totalUploads} σύνολο</span>
-          </div>
-          <TrendMini data={uploadsSeries} />
-        </DashboardCard>
+      {/* Γρήγορες ενέργειες */}
+      <section className="rounded-2xl border border-[var(--border,#E5E7EB)] bg-[var(--card,#fff)] p-4">
+        <div className="text-sm text-[var(--muted,#6B7280)]">Γρήγορες ενέργειες</div>
+        <div className="text-xs text-[var(--muted,#6B7280)] mb-3">Συνηθισμένες εργασίες</div>
+        <div className="flex flex-wrap gap-2">
+          <LinkBtn href="/admin/users">Διαχείριση χρηστών</LinkBtn>
+          <LinkBtn href="/admin/uploads">Ανέβασμα αρχείου</LinkBtn>
+          <LinkBtn href="/admin/audit">Προβολή καταγραφών</LinkBtn>
+          <LinkBtn href="/admin/files">Αρχεία</LinkBtn>
+        </div>
+      </section>
 
-        <section className="lg:col-span-2 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-0">
-          {/* header (own padding) */}
-          <div className="flex items-center justify-between px-4 pt-3 pb-2">
-            <h2 className="font-semibold">Πρόσφατη δραστηριότητα</h2>
-            <Link href="/admin/audit" className="text-sm underline">Προβολή όλων</Link>
-          </div>
+      {/* Πρόσφατη δραστηριότητα — ΠΙΝΑΚΑΣ ΦΙΛΙΚΟΣ ΣΕ ΚΙΝΗΤΟ */}
+      <section className="rounded-2xl border border-[var(--border,#E5E7EB)] bg-[var(--card,#fff)]">
+        <div className="flex items-center justify-between gap-2 px-4 pt-4">
+          <h2 className="text-base font-semibold">Πρόσφατη δραστηριότητα</h2>
+          <Link href="/admin/audit" className="text-sm underline underline-offset-4">
+            Προβολή όλων
+          </Link>
+        </div>
 
-          {/* body: padding + horizontal scroll for wide content */}
-          <div className="px-4 pb-4 overflow-x-auto">
-            {audit.length === 0 ? (
-              <p className="text-sm text-[color:var(--muted)]">Δεν υπάρχουν δραστηριότητες ακόμη.</p>
-            ) : (
-              <table className="min-w-[920px] w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
-                    <th className="py-2 pr-3">Ώρα</th>
-                    <th className="py-2 pr-3">Ενέργεια</th>
-                    <th className="py-2 pr-3">Χρήστης</th>
-                    <th className="py-2 pr-3">Στόχος</th>
-                    <th className="py-2 pr-3">Meta</th>
+        {loadingAudit ? (
+          <div className="px-4 py-6 text-sm text-[var(--muted,#6B7280)]">Φόρτωση…</div>
+        ) : rows.length === 0 ? (
+          <div className="px-4 py-6 text-sm text-[var(--muted,#6B7280)]">Δεν υπάρχουν δραστηριότητες ακόμη.</div>
+        ) : (
+          <div className="mt-3 overflow-hidden">
+            {/* ΣΗΜΑΝΤΙΚΟ: Ο πίνακας είναι mobile-first.
+               - table-layout: fixed για να χωράει
+               - τα βαριά columns κρύβονται σε μικρές οθόνες με hidden sm:table-cell
+               - κείμενα τυλίγονται (whitespace-normal + break-words)
+            */}
+            <table className="w-full table-fixed text-sm">
+              <thead className="bg-gray-50 text-gray-700">
+                <tr className="text-left">
+                  <Th className="w-[40%]">Ενέργεια</Th>
+                  <Th className="w-[35%]">Χρήστης</Th>
+                  <Th className="w-[25%] hidden sm:table-cell">Ώρα</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rows.map((r) => (
+                  <tr key={r.id} className="align-top">
+                    {/* Ενέργεια + στόχος/λεπτομέρειες */}
+                    <Td className="whitespace-normal break-words">
+                      <div className="font-medium">{humanizeAction(r.action)}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {r.target ? r.target : "—"}
+                        {r.targetId ? ` · ${r.targetId}` : ""}
+                      </div>
+                      {/* Επιλογικά: μικρό preview από meta */}
+                      {r.meta?.subject && (
+                        <div className="text-xs text-gray-600 mt-1">{String(r.meta.subject).slice(0, 100)}</div>
+                      )}
+                    </Td>
+
+                    {/* Χρήστης */}
+                    <Td className="whitespace-normal break-words">
+                      {r.actor?.name || r.actor?.email || "Σύστημα"}
+                      {r.actor?.email && (
+                        <div className="text-xs text-gray-500">{r.actor.email}</div>
+                      )}
+                    </Td>
+
+                    {/* Ώρα (κρυφό στο κινητό) */}
+                    <Td className="hidden sm:table-cell whitespace-nowrap">
+                      {new Date(r.createdAt).toLocaleString()}
+                    </Td>
                   </tr>
-                </thead>
-                <tbody>
-                  {audit.map((r) => (
-                    <tr key={r.id} className="border-b last:border-0 border-[color:var(--border)] align-top">
-                      <td className="py-2 pr-3 whitespace-nowrap">
-                        {new Date(r.createdAt).toLocaleString()}
-                      </td>
-                      <td className="py-2 pr-3 font-medium">{r.action}</td>
-                      <td className="py-2 pr-3">
-                        {r.actor ? (r.actor.email + (r.actor.name ? ` (${r.actor.name})` : "")) : "—"}
-                      </td>
-                      <td className="py-2 pr-3">
-                        {r.target ?? "—"} {r.targetId ? <span className="text-[color:var(--muted)]">#{r.targetId}</span> : null}
-                      </td>
-                      <td className="py-2 pr-3">
-                        <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words text-xs bg-black/5 rounded p-2">
-                          {r.meta ? JSON.stringify(r.meta, null, 2) : "—"}
-                        </pre>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                ))}
+              </tbody>
+            </table>
           </div>
-        </section>
-
-      </div>
+        )}
+      </section>
     </div>
   );
+}
+
+/* --------------------- Βοηθητικά components --------------------- */
+
+function Card({
+  title,
+  value,
+  subtitle,
+  right,
+}: {
+  title: string;
+  value?: string | number;
+  subtitle?: string;
+  right?: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-[var(--border,#E5E7EB)] bg-[var(--card,#fff)] shadow-sm p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h3 className="text-xs font-medium text-[var(--muted,#6B7280)]">{title}</h3>
+          {value !== undefined && <div className="text-3xl font-semibold mt-2">{value}</div>}
+          {subtitle && <p className="text-xs text-[var(--muted,#6B7280)] mt-1">{subtitle}</p>}
+        </div>
+        {right}
+      </div>
+    </section>
+  );
+}
+
+function LinkBtn({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
+    >
+      {children}
+    </Link>
+  );
+}
+
+function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
+}
+function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-3 py-3 ${className}`}>{children}</td>;
+}
+
+/** Μετατροπή κωδικών ενεργειών σε ανθρώπινους τίτλους (ελληνικά) */
+function humanizeAction(a: string) {
+  switch (a) {
+    case "FILE_UPLOADED":
+      return "Ανέβασμα αρχείου";
+    case "FILE_ASSIGNED":
+      return "Ανάθεση αρχείου";
+    case "DOWNLOAD_GRANTED":
+      return "Παραχώρηση λήψης";
+    case "USER_CREATED":
+      return "Δημιουργία χρήστη";
+    case "APIKEY_CREATED":
+      return "Δημιουργία API Key";
+    case "APIKEY_REVOKED":
+      return "Ανάκληση API Key";
+    case "SUBSCRIPTION_TOGGLED":
+      return "Εναλλαγή συνδρομής";
+    case "SUPPORT_TICKET":
+      return "Αίτημα υποστήριξης";
+    default:
+      return a;
+  }
 }
