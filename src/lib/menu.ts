@@ -5,7 +5,7 @@ export type MenuItem = { label: string; href: string };
 export function getMenu(role: Role): MenuItem[] {
   if (role === "ADMIN") {
     return [
-      { label: "Πίνακας Ελέγχου", href: "/dashboard/admin" },
+      { label: "Πίνακας Ελέγχου", href: "/admin" },
       { label: "Χρήστες", href: "/admin/users" },
       { label: "Αρχεία", href: "/admin/files" },
       { label: "Υποστήριξη", href: "/admin/support" }, // ← add this

@@ -8,7 +8,7 @@ export async function middleware(req: NextRequest) {
   const url = (p: string) => new URL(p, req.url);
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
-  // --- Canonicalize: if anyone hits /dashboard/admin, send to /admin (one hop) ---
+  // --- Canonicalize any old /dashboard/admin -> /admin (single hop) ---
   if (pathname === "/dashboard/admin" || pathname.startsWith("/dashboard/admin/")) {
     const dest = url(pathname.replace("/dashboard/admin", "/admin") || "/admin");
     return NextResponse.redirect(dest);
@@ -17,12 +17,12 @@ export async function middleware(req: NextRequest) {
   // Root gateway
   if (pathname === "/") {
     if (!token) return NextResponse.redirect(url("/login"));
-    return NextResponse.redirect(url(token.role === "ADMIN" ? "/admin" : "/dashboard"));
+    return NextResponse.redirect(url(token?.role === "ADMIN" ? "/admin" : "/dashboard"));
   }
 
   // Logged-in users should not see /login
   if (pathname === "/login" && token) {
-    return NextResponse.redirect(url(token.role === "ADMIN" ? "/admin" : "/dashboard"));
+    return NextResponse.redirect(url(token?.role === "ADMIN" ? "/admin" : "/dashboard"));
   }
 
   // Paths that need auth
@@ -49,7 +49,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url("/dashboard"));
   }
 
-  // Admins landing on /dashboard should go to /admin (single hop, no loops)
+  // Admins landing on /dashboard go to /admin (one hop)
   if (pathname === "/dashboard" && token?.role === "ADMIN") {
     return NextResponse.redirect(url("/admin"));
   }
@@ -58,6 +58,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Match everything except Next assets and files with extensions (e.g., .png, .css, .ico)
   matcher: ["/((?!_next|.*\\..*).*)"],
 };
