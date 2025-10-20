@@ -1,158 +1,193 @@
+// src/components/FilesTable.tsx
 "use client";
 
-import React from "react";
+import { useMemo, useState } from "react";
 
-type FileRow = {
+type FileItem = {
   id: string;
   title: string;
-  originalName: string;
-  url: string;     // /api/files/download/<key>
-  mime?: string;
-  size?: number;
-  createdAt: string;
-  uploadedBy?: { id: string; name: string | null; email: string | null } | null;
-  assignments?: { user: { id: string; email: string | null; name: string | null } }[];
+  originalName?: string | null;
+  createdAt: string | Date;
+  size?: number | null;       // bytes
+  url?: string | null;
 };
 
 type Labels = {
   search: string;
-  countSuffix: string;  // e.g., "αρχείο(α)"
+  countSuffix: string;
   title: string;
   original: string;
   uploaded: string;
   size: string;
-  assignees: string;
   action: string;
   download: string;
   empty: string;
 };
 
-type Props = {
-  initialFiles: FileRow[];
-  adminMode?: boolean; // when true, show Assignees column
-  labels?: Partial<Labels>;
-};
+export default function FilesTable({
+  initialFiles,
+  labels,
+}: {
+  initialFiles: FileItem[];
+  labels: Labels;
+}) {
+  const [query, setQuery] = useState("");
+  const [files] = useState<FileItem[]>(initialFiles ?? []);
 
-const DEFAULT_LABELS: Labels = {
-  search: "Search files…",
-  countSuffix: "file(s)",
-  title: "Title",
-  original: "Original",
-  uploaded: "Uploaded",
-  size: "Size",
-  assignees: "Assignees",
-  action: "Action",
-  download: "Download",
-  empty: "No files found.",
-};
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return files;
+    return files.filter((f) => {
+      const title = (f.title || "").toLowerCase();
+      const original = (f.originalName || "").toLowerCase();
+      return title.includes(q) || original.includes(q);
+    });
+  }, [files, query]);
 
-function formatBytes(n?: number) {
-  if (!n && n !== 0) return "";
+  return (
+    <div className="grid gap-4">
+      {/* toolbar */}
+      <div className="flex items-center justify-between gap-3">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={labels.search}
+          className="w-full max-w-[420px] rounded-xl border px-3 py-2 text-sm"
+        />
+        <div className="shrink-0 text-sm text-gray-500">
+          {filtered.length} {labels.countSuffix}
+        </div>
+      </div>
+
+      {/* ======= MOBILE (cards: 2 rows) ======= */}
+      <section className="grid gap-3 sm:hidden">
+        {filtered.length === 0 ? (
+          <div className="text-sm text-gray-500">{labels.empty}</div>
+        ) : (
+          filtered.map((f) => {
+            const dt = new Date(f.createdAt);
+            return (
+              <div
+                key={f.id}
+                className="rounded-2xl border bg-white p-3 shadow-sm"
+              >
+                {/* Row 1: Title + download */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium break-words">{f.title}</div>
+                    <div className="text-xs text-gray-600">
+                      {labels.uploaded}: {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
+                    </div>
+                  </div>
+                  {f.url ? (
+                    <a
+                      href={f.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 rounded-lg px-3 py-1 text-sm font-semibold text-black"
+                      style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                    >
+                      {labels.download}
+                    </a>
+                  ) : null}
+                </div>
+
+                {/* Row 2: Original + size */}
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div className="space-y-1">
+                    <div className="text-gray-600">{labels.original}</div>
+                    <div className="break-words">
+                      {f.originalName || "—"}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-gray-600">{labels.size}</div>
+                    <div>{formatSize(f.size)}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </section>
+
+      {/* ======= TABLET / DESKTOP ======= */}
+      <section className="hidden sm:block rounded-2xl border bg-white p-4">
+        {filtered.length === 0 ? (
+          <div className="text-sm text-gray-500">{labels.empty}</div>
+        ) : (
+          <div className="overflow-hidden">
+            <table className="w-full table-fixed text-sm">
+              {/* keep consistent widths so buttons don’t overlap */}
+              <colgroup>
+                <col className="w-[36%]" /> {/* Title */}
+                <col className="w-[26%]" /> {/* Original */}
+                <col className="w-[18%]" /> {/* Uploaded */}
+                <col className="w-[10%]" /> {/* Size */}
+                <col className="w-[10%]" /> {/* Action */}
+              </colgroup>
+              <thead className="bg-gray-50 text-gray-700">
+                <tr className="text-left">
+                  <Th>{labels.title}</Th>
+                  <Th>{labels.original}</Th>
+                  <Th>{labels.uploaded}</Th>
+                  <Th>{labels.size}</Th>
+                  <Th className="text-right">{labels.action}</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((f) => {
+                  const dt = new Date(f.createdAt);
+                  return (
+                    <tr key={f.id} className="align-top">
+                      <Td className="break-words">{f.title}</Td>
+                      <Td className="break-words">{f.originalName || "—"}</Td>
+                      <Td className="whitespace-nowrap">
+                        {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
+                      </Td>
+                      <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
+                      <Td className="text-right whitespace-nowrap">
+                        {f.url ? (
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
+                            style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                          >
+                            {labels.download}
+                          </a>
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
+}
+function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-3 py-3 ${className}`}>{children}</td>;
+}
+
+function formatSize(bytes: number | null | undefined) {
+  if (!bytes || bytes <= 0) return "—";
   const units = ["B", "KB", "MB", "GB", "TB"];
   let i = 0;
-  let v = n;
+  let v = bytes;
   while (v >= 1024 && i < units.length - 1) {
     v /= 1024;
     i++;
   }
   return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
-}
-
-function formatDate(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
-}
-
-export default function FilesTable({ initialFiles, adminMode = false, labels: lbl }: Props) {
-  const labels = { ...DEFAULT_LABELS, ...(lbl || {}) };
-  const [query, setQuery] = React.useState("");
-  const [rows, setRows] = React.useState<FileRow[]>(initialFiles);
-
-  React.useEffect(() => setRows(initialFiles), [initialFiles]);
-
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      [r.title, r.originalName, r.uploadedBy?.email, r.uploadedBy?.name]
-        .filter(Boolean)
-        .some((s) => String(s).toLowerCase().includes(q))
-    );
-  }, [rows, query]);
-
-  return (
-    <div className="w-full">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <input
-          type="text"
-          placeholder={labels.search}
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          className="w-full max-w-md rounded-xl border border-gray-300 bg-white p-2 text-sm"
-        />
-        <span className="text-xs text-gray-500">
-          {filtered.length} {labels.countSuffix}
-        </span>
-      </div>
-
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-sm">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-gray-50 text-gray-600">
-            <tr>
-              <th className="px-4 py-3 font-semibold">{labels.title}</th>
-              <th className="px-4 py-3 font-semibold">{labels.original}</th>
-              <th className="px-4 py-3 font-semibold">{labels.uploaded}</th>
-              <th className="px-4 py-3 font-semibold">{labels.size}</th>
-              {adminMode && <th className="px-4 py-3 font-semibold">{labels.assignees}</th>}
-              <th className="px-4 py-3 font-semibold">{labels.action}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {filtered.map((f) => (
-              <tr key={f.id} className="hover:bg-gray-50/50">
-                <td className="px-4 py-3">
-                  <div className="flex flex-col">
-                    <span className="font-medium text-gray-900">{f.title}</span>
-                    {f.uploadedBy?.email && (
-                      <span className="text-xs text-gray-500">
-                        {f.uploadedBy.name || f.uploadedBy.email}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-gray-700">{f.originalName}</td>
-                <td className="px-4 py-3 text-gray-700">{formatDate(f.createdAt)}</td>
-                <td className="px-4 py-3 text-gray-700">{formatBytes(f.size)}</td>
-                {adminMode && (
-                  <td className="px-4 py-3 text-gray-700">
-                    {f.assignments?.length
-                      ? f.assignments
-                          .map((a) => a.user.name || a.user.email || a.user.id)
-                          .join(", ")
-                      : <span className="text-gray-400">—</span>}
-                  </td>
-                )}
-                <td className="px-4 py-3">
-                  <a
-                    href={f.url}
-                    className="inline-flex rounded-xl bg-black px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
-                  >
-                    {labels.download}
-                  </a>
-                </td>
-              </tr>
-            ))}
-            {!filtered.length && (
-              <tr>
-                <td colSpan={adminMode ? 6 : 5} className="px-4 py-8 text-center text-sm text-gray-500">
-                  {labels.empty}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
 }
