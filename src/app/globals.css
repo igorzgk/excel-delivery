@@ -220,3 +220,41 @@ html,body{background:var(--bg);color:var(--text)}
     overflow-wrap: normal !important;
   }
 }
+
+/* ==== Content area (light theme) ==== */
+/* Scope to the main content wrapper so it won't affect the dark sidebar or the mobile drawer */
+.app-main {
+  --app-fg: #0A0F2C;     /* primary text */
+  --app-muted: #6B7280;  /* secondary text */
+  --app-card: #FFFFFF;   /* card bg */
+  color: var(--app-fg);
+}
+
+/* Ensure common text elements inherit the light color even after hydration */
+.app-main :where(p, span, div, li, a, button, label, input, select, textarea) {
+  color: inherit;
+}
+
+/* Muted helpers you already use in pages */
+.app-main .text-muted, 
+.app-main .muted {
+  color: var(--app-muted) !important;
+}
+
+/* Tables: make sure headers and cells use content color unless overridden explicitly */
+.app-main table thead th,
+.app-main table tbody td {
+  color: inherit;
+  background-color: transparent;
+}
+
+/* Cards that rely on CSS vars */
+.app-main .card,
+.app-main section {
+  background-color: var(--app-card);
+}
+
+/* If any utility injected 'text-white' into cells, neutralize it ONLY inside tables in the content area */
+.app-main table :where(th, td).text-white {
+  color: var(--app-fg) !important;
+}
