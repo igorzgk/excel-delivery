@@ -54,17 +54,17 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
 
-    // ✅ New: normalize any legacy /dashboard/admin → /admin
+    // ✅ New: normalize any legacy /admin → /admin
     async redirect({ url, baseUrl }) {
       try {
         const u = new URL(url, baseUrl);
-        if (u.pathname === "/dashboard/admin" || u.pathname.startsWith("/dashboard/admin/")) {
-          u.pathname = u.pathname.replace("/dashboard/admin", "/admin");
+        if (u.pathname === "/admin" || u.pathname.startsWith("/admin/")) {
+          u.pathname = u.pathname.replace("/admin", "/admin");
           return u.toString();
         }
         return u.toString();
       } catch {
-        if (url.startsWith("/dashboard/admin")) return "/admin";
+        if (url.startsWith("/admin")) return "/admin";
         return url.startsWith("/") ? url : baseUrl;
       }
     },

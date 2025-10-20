@@ -46,8 +46,8 @@ function buildWhere(sp: SearchParams) {
 
 export default async function AdminSupportPage({ searchParams }: { searchParams: SearchParams }) {
   const me = await currentUser();
-  // 👇 keep paths consistent with your app structure (/dashboard/admin/…)
-  if (!me) redirect("/login?next=/dashboard/admin/support");
+  // 👇 keep paths consistent with your app structure (/admin/…)
+  if (!me) redirect("/login?next=/admin/support");
   if (me.role !== "ADMIN") redirect("/dashboard");
 
   const page = toInt(searchParams.page, 1);
@@ -91,7 +91,7 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
       sp.set(k, String(v));
     }
     // 👇 correct URL base for your routing
-    return `/dashboard/admin/support?${sp.toString()}`;
+    return `/admin/support?${sp.toString()}`;
   };
 
   return (
@@ -102,7 +102,7 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
           <p className="mt-1 text-sm text-gray-600">{total.toLocaleString()} σύνολο</p>
         </div>
 
-        <form className="flex flex-wrap items-center gap-2" action="/dashboard/admin/support" method="get">
+        <form className="flex flex-wrap items-center gap-2" action="/admin/support" method="get">
           <input
             type="text"
             name="q"

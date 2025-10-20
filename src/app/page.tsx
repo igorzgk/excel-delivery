@@ -13,5 +13,5 @@ export default async function RootPage() {
     redirect("/login");
   }
 
-  redirect(me.role === "ADMIN" ? "/dashboard/admin" : "/dashboard");
+  redirect(me.role === "ADMIN" ? "/admin" : "/dashboard");
 }

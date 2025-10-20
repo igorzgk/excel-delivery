@@ -14,7 +14,7 @@ export default async function DashboardIndex() {
   }
 
   if (me.role === "ADMIN") {
-    redirect("/dashboard/admin");
+    redirect("/admin");
   }
 
   // Adjust if your user home is different
