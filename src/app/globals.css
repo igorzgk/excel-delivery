@@ -225,7 +225,7 @@ html,body{background:var(--bg);color:var(--text)}
 /* Scope to the main content wrapper so it won't affect the dark sidebar or the mobile drawer */
 .app-main {
   --app-fg: #0A0F2C;     /* primary text */
-  --app-muted: #6B7280;  /* secondary text */
+  --app-muted: #25c3f4;  /* secondary text */
   --app-card: #FFFFFF;   /* card bg */
   color: var(--app-fg);
 }
