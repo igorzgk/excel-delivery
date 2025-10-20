@@ -81,7 +81,7 @@ export default function AdminDashboard() {
       {/* Πρόσφατη δραστηριότητα — ΠΙΝΑΚΑΣ ΦΙΛΙΚΟΣ ΣΕ ΚΙΝΗΤΟ */}
       <section className="rounded-2xl border border-[var(--border,#E5E7EB)] bg-[var(--card,#fff)]">
         <div className="flex items-center justify-between gap-2 px-4 pt-4">
-          <h2 className="text-base font-semibold">Πρόσφατη δραστηριότητα</h2>
+          <h2 className="text-base font-semibold text-[inherit]">Πρόσφατη δραστηριότητα</h2>
           <Link href="/admin/audit" className="text-sm underline underline-offset-4">
             Προβολή όλων
           </Link>
@@ -93,12 +93,8 @@ export default function AdminDashboard() {
           <div className="px-4 py-6 text-sm text-[var(--muted,#6B7280)]">Δεν υπάρχουν δραστηριότητες ακόμη.</div>
         ) : (
           <div className="mt-3 overflow-hidden">
-            {/* ΣΗΜΑΝΤΙΚΟ: Ο πίνακας είναι mobile-first.
-               - table-layout: fixed για να χωράει
-               - τα βαριά columns κρύβονται σε μικρές οθόνες με hidden sm:table-cell
-               - κείμενα τυλίγονται (whitespace-normal + break-words)
-            */}
-            <table className="w-full table-fixed text-sm">
+            {/* mobile-first table */}
+            <table className="w-full table-fixed text-sm text-[inherit]">
               <thead className="bg-gray-50 text-gray-700">
                 <tr className="text-left">
                   <Th className="w-[40%]">Ενέργεια</Th>
@@ -111,12 +107,11 @@ export default function AdminDashboard() {
                   <tr key={r.id} className="align-top">
                     {/* Ενέργεια + στόχος/λεπτομέρειες */}
                     <Td className="whitespace-normal break-words">
-                      <div className="font-medium">{humanizeAction(r.action)}</div>
+                      <div className="font-medium text-[inherit]">{humanizeAction(r.action)}</div>
                       <div className="text-xs text-gray-500 mt-1">
                         {r.target ? r.target : "—"}
                         {r.targetId ? ` · ${r.targetId}` : ""}
                       </div>
-                      {/* Επιλογικά: μικρό preview από meta */}
                       {r.meta?.subject && (
                         <div className="text-xs text-gray-600 mt-1">{String(r.meta.subject).slice(0, 100)}</div>
                       )}
@@ -159,12 +154,28 @@ function Card({
   right?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-[var(--border,#E5E7EB)] bg-[var(--card,#fff)] shadow-sm p-4">
+    <section
+      className="rounded-2xl border border-[var(--border,#E5E7EB)] bg-[var(--card,#fff)] shadow-sm p-4"
+      style={{ color: "var(--app-fg,#0A0F2C)" }} // force dark text inside the card
+    >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-xs font-medium text-[var(--muted,#6B7280)]">{title}</h3>
-          {value !== undefined && <div className="text-3xl font-semibold mt-2">{value}</div>}
-          {subtitle && <p className="text-xs text-[var(--muted,#6B7280)] mt-1">{subtitle}</p>}
+          {/* muted (NOT white) */}
+          <h3 className="text-xs font-medium" style={{ color: "var(--app-muted,#6B7280)" }}>
+            {title}
+          </h3>
+
+          {value !== undefined && (
+            <div className="text-3xl font-semibold mt-2" style={{ color: "var(--app-fg,#0A0F2C)" }}>
+              {value}
+            </div>
+          )}
+
+          {subtitle && (
+            <p className="text-xs mt-1" style={{ color: "var(--app-muted,#6B7280)" }}>
+              {subtitle}
+            </p>
+          )}
         </div>
         {right}
       </div>
@@ -174,10 +185,7 @@ function Card({
 
 function LinkBtn({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link
-      href={href}
-      className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
-    >
+    <Link href={href} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 text-[inherit]">
       {children}
     </Link>
   );
