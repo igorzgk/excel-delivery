@@ -2,21 +2,17 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth-helpers";
 
-
-
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs"; // if currentUser hits DB/session on the server
+export const runtime = "nodejs";
 
 export default async function DashboardIndex() {
   const me = await currentUser();
   if (!me) {
     redirect("/login?next=/dashboard");
   }
-
   if (me.role === "ADMIN") {
     redirect("/dashboard/admin");
   }
-
-  // Adjust if your user home is different
+  // default user landing
   redirect("/dashboard/user");
 }
