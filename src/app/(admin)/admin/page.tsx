@@ -48,7 +48,7 @@ export default function AdminDashboard() {
   return (
     <div className="grid gap-4">
       {/* Επάνω κάρτες: 1-στήλη στο κινητό, 3-στήλες σε desktop */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 text-sm text-[inherit]">
         <Card
           title="Χρήστες"
           value={loadingStats || !stats ? "—" : stats.users.toLocaleString()}
