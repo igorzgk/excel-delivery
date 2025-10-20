@@ -109,15 +109,26 @@ export default function AdminFilesPage() {
           <section className="hidden sm:block rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
             <div className="overflow-hidden">
               <table className="w-full table-fixed text-sm text-[inherit]">
+                {/* FIX: stabilize column widths so Actions doesn't get crowded */}
+                <colgroup>
+                  <col className="w-[35%]" />  {/* Τίτλος */}
+                  <col className="w-[20%]" />  {/* Ημερομηνία δημιουργίας */}
+                  <col className="w-[28%]" />  {/* Ανατεθειμένο σε */}
+                  <col className="w-[15%]" />  {/* Ανάθεση */}
+                  <col className="w-[12%]" />  {/* Ενέργειες */}
+                </colgroup>
+
                 <thead className="bg-gray-50 text-gray-700">
                   <tr className="text-left">
-                    <Th className="w-[35%]">Τίτλος</Th>
-                    <Th className="w-[20%]">Ημερομηνία δημιουργίας</Th>
-                    <Th className="w-[25%]">Ανατεθειμένο σε</Th>
-                    <Th className="w-[20%]">Ανάθεση</Th>
-                    <Th className="w-[15%]">Ενέργειες</Th>
+                    <Th>Τίτλος</Th>
+                    <Th>Ημερομηνία δημιουργίας</Th>
+                    <Th>Ανατεθειμένο σε</Th>
+                    <Th>Ανάθεση</Th>
+                    {/* FIX: right-align header of Actions */}
+                    <Th className="text-right">Ενέργειες</Th>
                   </tr>
                 </thead>
+
                 <tbody className="divide-y divide-gray-100">
                   {files.map(f => {
                     const assigned = (f.assignments || []).map(a => a.user.email).join(", ");
@@ -152,13 +163,14 @@ export default function AdminFilesPage() {
                             </button>
                           </form>
                         </Td>
-                        <Td>
+                        {/* FIX: right-align Actions cell, keep to one line */}
+                        <Td className="text-right w-[12%] whitespace-nowrap">
                           {f.url ? (
                             <a
                               href={f.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="rounded border px-3 py-1 hover:bg-black/5"
+                              className="inline-block rounded border px-3 py-1 hover:bg-black/5"
                             >
                               Λήψη
                             </a>

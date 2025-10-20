@@ -37,7 +37,8 @@ export default function LoginPage() {
       if (res.error === "AccountSuspended") return setError("Ο λογαριασμός σας έχει ανασταλεί. Επικοινωνήστε με την υποστήριξη.");
       return setError("Λάθος email ή κωδικός");
     }
-    router.push("/dashboard");
+    // ✅ Let middleware route by role (Admin -> /admin, User -> /dashboard)
+    router.push("/");
   }
 
   return (
