@@ -3,16 +3,18 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs"; // safe default if currentUser touches Prisma/session server-side
+export const runtime = "nodejs"; // if currentUser hits DB/session on the server
 
 export default async function DashboardIndex() {
-  const me = await currentUser(); // should return null or { role: "ADMIN" | "USER", ... }
-  if (!me) redirect("/login?next=/dashboard");
+  const me = await currentUser();
+  if (!me) {
+    redirect("/login?next=/dashboard");
+  }
 
   if (me.role === "ADMIN") {
     redirect("/dashboard/admin");
   }
 
-  // Default for regular users — adjust if your user dashboard path differs
+  // Adjust if your user home is different
   redirect("/dashboard/user");
 }
