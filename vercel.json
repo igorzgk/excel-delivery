@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm ci --no-audit --no-fund",
+  "functions": {
+    "app/**": { "runtime": "nodejs18.x" }
+  }
+}
