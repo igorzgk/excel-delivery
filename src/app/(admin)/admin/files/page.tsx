@@ -261,9 +261,9 @@ export default function AdminFilesPage() {
                 <colgroup>
                   <col className="w-[35%]" />  {/* Τίτλος */}
                   <col className="w-[20%]" />  {/* Ημερομηνία δημιουργίας */}
-                  <col className="w-[28%]" />  {/* Ανατεθειμένο σε */}
+                  <col className="w-[20%]" />  {/* Ανατεθειμένο σε */}
                   <col className="w-[15%]" />  {/* Ανάθεση */}
-                  <col className="w-[12%]" />  {/* Ενέργειες */}
+                  <col className="w-[20%]" />  {/* Ενέργειες */}
                 </colgroup>
 
                 <thead className="bg-gray-50 text-gray-700">
