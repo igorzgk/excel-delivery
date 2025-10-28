@@ -84,8 +84,13 @@ export default function MobileHeader({
               </svg>
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <Sidebar role={role} name={name ?? undefined} onNavigate={() => setOpen(false)} />
+          <div className="h-full">
+            <Sidebar
+              role={role}
+              name={name ?? undefined}
+              onNavigate={() => setOpen(false)}
+              heightMode="full"   // <-- IMPORTANT
+            />
           </div>
         </div>
       </aside>
