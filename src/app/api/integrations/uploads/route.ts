@@ -111,9 +111,12 @@ export async function POST(req: Request) {
     select: { id: true, title: true, originalName: true, url: true, createdAt: true },
   });
 
-  // 5) Auto-assign by emails in filename/title/url
-  //    (μικρή βελτίωση: συμπεριλαμβάνουμε και το url, όπως ζητήθηκε)
-  const candidates = extractEmailsFromText(`${record.originalName} ${record.title} ${data.url}`);
+    // 5) Auto-assign by emails in filename/title/url + uploadedByEmail
+  const candidates = Array.from(new Set([
+    ...extractEmailsFromText(`${record.originalName} ${record.title} ${data.url}`),
+    ...(data.uploadedByEmail ? [data.uploadedByEmail] : []), // <- treat uploadedByEmail as assignee, too
+  ]));
+
   const assigneeIds = candidates.length ? await resolveAssigneeIdsByEmails(candidates) : [];
   if (assigneeIds.length && assignerId) {
     await prisma.fileAssignment.createMany({
@@ -125,6 +128,7 @@ export async function POST(req: Request) {
       skipDuplicates: true,
     });
   }
+
 
   // 6) Audit
   await logAudit({

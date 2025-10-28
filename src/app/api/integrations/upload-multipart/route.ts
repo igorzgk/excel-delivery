@@ -119,8 +119,12 @@ export async function POST(req: Request) {
     select: { id: true, title: true, originalName: true, url: true, createdAt: true },
   });
 
-  // 5) Auto-assign by emails found in title and/or original filename
-  const candidates = extractEmailsFromText(`${title} ${safeName}`);
+    // 5) Auto-assign by emails found in title/original filename + uploadedByEmail
+  const candidates = Array.from(new Set([
+    ...extractEmailsFromText(`${title} ${safeName}`),
+    ...(uploadedByEmail ? [uploadedByEmail] : []), // <- include uploader
+  ]));
+
   const assigneeIds = candidates.length ? await resolveAssigneeIdsByEmails(candidates) : [];
   if (assigneeIds.length && assignerId) {
     await prisma.fileAssignment.createMany({
@@ -132,6 +136,7 @@ export async function POST(req: Request) {
       skipDuplicates: true,
     });
   }
+
 
   // 6) Audit log
   await logAudit({
