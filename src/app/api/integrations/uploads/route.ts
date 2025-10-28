@@ -16,6 +16,26 @@ const BodySchema = z.object({
   uploadedByEmail: z.string().email().optional(),
 });
 
+// (NEW) Simple schema object for GET response (self-doc/health)
+const SchemaDoc = {
+  endpoint: "POST /api/integrations/uploads",
+  expectsHeaders: {
+    "x-api-key": "YOUR_PLAIN_KEY",
+    "Content-Type": "application/json"
+  },
+  expectsBody: {
+    title: "string (optional, used as display title; falls back to filename)",
+    url: "string (required, public or signed URL)",
+    originalName: "string (optional; if given, used for display/filename heuristics)",
+    uploadedByEmail: "string (optional; attribution if it matches a user)"
+  },
+  notes: [
+    "Auto-assign: ανιχνεύουμε emails μέσα σε title/originalName και (βελτίωση) και στο url.",
+    "ΜΗΝ βάζετε email στο URL path (privacy/logging). Αν είναι στο ίδιο το url string, το εντοπίζουμε.",
+    "Επιστρέφουμε πάντα JSON. Αν δείτε HTML, λείπουν headers ή είναι λάθος μέθοδος/URL."
+  ]
+};
+
 async function getAssignerId(uploadedById?: string | null) {
   if (uploadedById) {
     const u = await prisma.user.findUnique({ where: { id: uploadedById }, select: { role: true } });
@@ -25,17 +45,40 @@ async function getAssignerId(uploadedById?: string | null) {
   return admin?.id ?? null;
 }
 
+/**
+ * GET: Health + schema (για scheduler/diagnostics). Πάντα JSON.
+ */
+export async function GET(req: Request) {
+  const auth = requireApiKey(req);
+  if (!auth.ok) return auth.res;
+
+  return NextResponse.json(
+    {
+      ok: true,
+      ...SchemaDoc,
+      time: new Date().toISOString()
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
+}
+
+/**
+ * POST: JSON by URL (title, url, uploadedByEmail?, originalName?)
+ */
 export async function POST(req: Request) {
   const auth = requireApiKey(req);
   if (!auth.ok) return auth.res;
 
   let data: z.infer<typeof BodySchema>;
-  try { data = BodySchema.parse(await req.json()); }
-  catch { return NextResponse.json({ error: "invalid_payload" }, { status: 400 }); }
+  try {
+    data = BodySchema.parse(await req.json());
+  } catch {
+    return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
+  }
 
   // 1) Download the file bytes
   const r = await fetch(data.url, { redirect: "follow" });
-  if (!r.ok) return NextResponse.json({ error: `Fetch failed (${r.status})` }, { status: 400 });
+  if (!r.ok) return NextResponse.json({ ok: false, error: `Fetch failed (${r.status})` }, { status: 400 });
   const contentType = r.headers.get("content-type") || "application/octet-stream";
   const ab = await r.arrayBuffer();
   const buf = Buffer.from(ab);
@@ -68,8 +111,9 @@ export async function POST(req: Request) {
     select: { id: true, title: true, originalName: true, url: true, createdAt: true },
   });
 
-  // 5) Auto-assign by emails in filename/title (optional)
-  const candidates = extractEmailsFromText(`${record.originalName} ${record.title}`);
+  // 5) Auto-assign by emails in filename/title/url
+  //    (μικρή βελτίωση: συμπεριλαμβάνουμε και το url, όπως ζητήθηκε)
+  const candidates = extractEmailsFromText(`${record.originalName} ${record.title} ${data.url}`);
   const assigneeIds = candidates.length ? await resolveAssigneeIdsByEmails(candidates) : [];
   if (assigneeIds.length && assignerId) {
     await prisma.fileAssignment.createMany({
@@ -104,5 +148,5 @@ export async function POST(req: Request) {
     assignedCount: assigneeIds.length,
     key: keyPath,
     signedUrl: put.signedUrl,
-  }, { status: 201 });
+  }, { status: 201, headers: { "Cache-Control": "no-store" } });
 }

@@ -8,20 +8,7 @@ import { extractEmailsFromText, resolveAssigneeIdsByEmails } from "@/lib/assignm
 
 export const runtime = "nodejs";
 
-const ALLOWED_EXT = new Set([".xlsx", ".xlsm", ".xls"]);
-const MIME_TO_EXT: Record<string, string> = {
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
-  "application/vnd.ms-excel.sheet.macroEnabled.12": ".xlsm",
-  "application/vnd.ms-excel": ".xls",
-};
-const MAX_BYTES = 50 * 1024 * 1024;
-
-function pickExtFromName(name?: string | null) {
-  if (!name) return null;
-  const m = /\.[A-Za-z0-9]+$/.exec(name);
-  return m ? m[0].toLowerCase() : null;
-}
-
+// (shared with uploads route) - find who "assigns" (admin if uploader isn't admin)
 async function getAssignerId(uploadedById?: string | null) {
   if (uploadedById) {
     const u = await prisma.user.findUnique({ where: { id: uploadedById }, select: { role: true } });
@@ -31,61 +18,86 @@ async function getAssignerId(uploadedById?: string | null) {
   return admin?.id ?? null;
 }
 
-export async function POST(req: Request) {
-  // API key auth
+// -------- GET (scheduler / health / spec) --------
+export async function GET(req: Request) {
   const auth = requireApiKey(req);
   if (!auth.ok) return auth.res;
 
-  // ✅ Guard: only accept multipart/form-data to avoid “Failed to parse body as FormData”
-  const contentType = req.headers.get("content-type") || "";
-  if (!contentType.includes("multipart/form-data")) {
+  return NextResponse.json(
+    {
+      ok: true,
+      endpoint: "POST /api/integrations/upload-multipart",
+      expectsHeaders: {
+        "x-api-key": "YOUR_PLAIN_KEY",
+        // Content-Type το ορίζει αυτόματα ο client για multipart (boundary)
+      },
+      expectsBody: {
+        // multipart/form-data fields:
+        title: "string (required)",
+        file: "File (required, .xlsx from local disk)",
+        uploadedByEmail: "string (optional, attribution if it matches a user)",
+      },
+      notes: [
+        "Ανάθεση: ανιχνεύουμε emails μέσα στο title (και σε άλλα flows στο url).",
+        "ΜΗΝ βάζετε email στο URL path (privacy/logging).",
+        "Πάντα JSON responses (όχι HTML/redirect).",
+      ],
+      time: new Date().toISOString(),
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
+}
+
+// -------- POST (multipart upload: title + file [+ uploadedByEmail]) --------
+export async function POST(req: Request) {
+  const auth = requireApiKey(req);
+  if (!auth.ok) return auth.res;
+
+  const ct = (req.headers.get("content-type") || "").toLowerCase();
+  if (!ct.includes("multipart/form-data")) {
     return NextResponse.json(
-      { error: "invalid_content_type", expected: "multipart/form-data" },
-      { status: 400 }
+      { ok: false, error: "unsupported_media_type", hint: "Use multipart/form-data" },
+      { status: 415, headers: { "Cache-Control": "no-store" } }
     );
   }
 
-  const form = await req.formData();
-  const file = form.get("file") as unknown as File | null;
-  const title = String(form.get("title") || "");
-  const uploadedByEmail = form.get("uploadedByEmail") ? String(form.get("uploadedByEmail")) : undefined;
-
-  if (!file) {
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
     return NextResponse.json(
-      { error: "No file provided (form-data key 'file' missing or not a File)" },
-      { status: 400 }
+      { ok: false, error: "invalid_multipart" },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
     );
   }
 
-  const rawName = (file as any).name as string | undefined; // may be "blob"
-  const mime = ((file as any).type as string | undefined) || "application/octet-stream";
+  const title = String(form.get("title") || "").trim();
+  const file = form.get("file") as File | null;
+  const uploadedByEmail = (String(form.get("uploadedByEmail") || "").trim() || undefined) as
+    | string
+    | undefined;
 
-  let ext = pickExtFromName(rawName);
-  if (!ext || !ALLOWED_EXT.has(ext)) {
-    const mimeExt = MIME_TO_EXT[mime];
-    if (mimeExt && ALLOWED_EXT.has(mimeExt)) ext = mimeExt;
-  }
-  if (!ext || !ALLOWED_EXT.has(ext)) {
-    return NextResponse.json({ error: "Unsupported file type", details: { rawName, mime } }, { status: 415 });
+  if (!title || !file) {
+    return NextResponse.json(
+      { ok: false, error: "missing_fields", detail: "title and file are required" },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
-  // Size guard
-  // @ts-ignore
-  const declaredSize = (file as any).size as number | undefined;
+  // 1) Read file bytes
+  const contentType = file.type || "application/octet-stream";
   const ab = await file.arrayBuffer();
-  if ((declaredSize ?? ab.byteLength) > MAX_BYTES) {
-    return NextResponse.json({ error: `File too large (> ${Math.floor(MAX_BYTES / (1024 * 1024))} MB)` }, { status: 413 });
-  }
-
   const buf = Buffer.from(ab);
-  const safeBase = (rawName && rawName !== "blob" ? rawName : `upload${ext}`).replace(/[^\w.\-@]+/g, "_");
 
-  // Store in Supabase Storage
+  // 2) Store in Supabase Storage
   const now = new Date();
-  const keyPath = `uploads/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${Date.now()}_${safeBase}`;
-  const put = await supabasePutBuffer(keyPath, buf, mime);
+  // Prefer original filename if present, otherwise derive from title
+  const originalNameRaw = (file as any).name || `${title}.xlsx`;
+  const safeName = String(originalNameRaw).replace(/[^\w.\-@]+/g, "_");
+  const keyPath = `uploads/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${Date.now()}_${safeName}`;
+  const put = await supabasePutBuffer(keyPath, buf, contentType);
 
-  // Attribution (who uploaded & who assigns)
+  // 3) Attribution who uploaded & who assigns
   let uploadedById: string | undefined;
   if (uploadedByEmail) {
     const u = await prisma.user.findUnique({ where: { email: uploadedByEmail }, select: { id: true } });
@@ -93,43 +105,43 @@ export async function POST(req: Request) {
   }
   const assignerId = await getAssignerId(uploadedById);
 
-  // Create DB record (dashboard reads this)
+  // 4) Create DB record (this is what the app reads)
   const publicUrl = `/api/files/download/${keyPath}`; // signed on demand
   const record = await prisma.file.create({
     data: {
-      title: title || safeBase,
-      originalName: safeBase,
-      url: publicUrl,
-      mime,
+      title,                             // explicit title from form
+      originalName: safeName,            // original filename (sanitized)
+      url: publicUrl,                    // app uses this
+      mime: contentType,
       size: buf.byteLength,
       uploadedById,
     },
     select: { id: true, title: true, originalName: true, url: true, createdAt: true },
   });
 
-  // Auto-assign by emails in filename/title
-  const candidates = extractEmailsFromText(`${record.originalName} ${record.title}`);
+  // 5) Auto-assign by emails found in title and/or original filename
+  const candidates = extractEmailsFromText(`${title} ${safeName}`);
   const assigneeIds = candidates.length ? await resolveAssigneeIdsByEmails(candidates) : [];
   if (assigneeIds.length && assignerId) {
     await prisma.fileAssignment.createMany({
       data: assigneeIds.map((userId) => ({
         fileId: record.id,
         userId,
-        assignedById: assignerId!,
+        assignedById: assignerId,
       })),
       skipDuplicates: true,
     });
   }
 
-  // Audit
+  // 6) Audit log
   await logAudit({
     action: "FILE_UPLOADED",
     target: "File",
     targetId: record.id,
     meta: {
-      via: "integration_multipart",
+      via: "integration_multipart_ingest",
       storageKey: keyPath,
-      mime,
+      mime: contentType,
       size: buf.byteLength,
       assigned: assigneeIds.length,
       emails: candidates,
@@ -137,7 +149,13 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json(
-    { ok: true, file: record, assignedCount: assigneeIds.length, key: keyPath, signedUrl: put.signedUrl },
-    { status: 201 }
+    {
+      ok: true,
+      file: record,
+      assignedCount: assigneeIds.length,
+      key: keyPath,
+      signedUrl: put.signedUrl,
+    },
+    { status: 201, headers: { "Cache-Control": "no-store" } }
   );
 }
