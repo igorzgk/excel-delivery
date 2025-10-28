@@ -51,8 +51,10 @@ export default function SupportPage() {
         <p className="text-sm text-gray-500">Στείλτε μας ένα αίτημα ή χρησιμοποιήστε τα στοιχεία επικοινωνίας.</p>
       </header>
 
+      {/* New Ticket */}
       <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4">
         <h2 className="font-semibold mb-3">Νέο αίτημα</h2>
+
         <form onSubmit={submit} className="space-y-3">
           <div>
             <label className="block text-sm mb-1">Θέμα</label>
@@ -74,33 +76,45 @@ export default function SupportPage() {
             />
           </div>
 
-          <div className="flex items-center gap-3">
-            <label className="text-sm">Προτεραιότητα:</label>
-            <select
-              className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
-              value={priority}
-              onChange={(e) => setPriority(e.currentTarget.value as any)}
-            >
-              <option value="low">Χαμηλή</option>
-              <option value="normal">Κανονική</option>
-              <option value="high">Υψηλή</option>
-            </select>
-            <div className="ml-auto flex items-center gap-2">
+          {/* Responsive controls: 2 rows on mobile, 1 row on ≥sm */}
+          <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
+            {/* Left block: priority */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm">Προτεραιότητα:</label>
+              <select
+                className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
+                value={priority}
+                onChange={(e) => setPriority(e.currentTarget.value as any)}
+              >
+                <option value="low">Χαμηλή</option>
+                <option value="normal">Κανονική</option>
+                <option value="high">Υψηλή</option>
+              </select>
+            </div>
+
+            {/* Right block: actions (full width on mobile, right-aligned on desktop) */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => {
                   setSubject("");
                   setMessage("");
                   setPriority("normal");
+                  setStatus("idle");
+                  setHint(null);
                 }}
-                className="rounded-xl border border-gray-300 px-4 py-2 text-sm"
+                className="rounded-xl border border-gray-300 px-4 py-2 text-sm bg-white hover:bg-gray-50"
               >
                 Καθαρισμός
               </button>
+
+              {/* Primary submit with visible text on any theme */}
               <button
                 type="submit"
                 disabled={status === "sending"}
-                className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                className="rounded-xl px-4 py-2 text-sm font-semibold
+                           bg-[color:var(--primary,#25C3F4)] text-black
+                           hover:opacity-90 disabled:opacity-60"
               >
                 {status === "sending" ? "Αποστολή…" : "Υποβολή"}
               </button>
@@ -115,6 +129,7 @@ export default function SupportPage() {
         </form>
       </section>
 
+      {/* Contact */}
       <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4">
         <h2 className="font-semibold mb-3">Επικοινωνία</h2>
         <p className="text-sm">
