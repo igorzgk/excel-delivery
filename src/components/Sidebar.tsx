@@ -17,11 +17,11 @@ function isActive(pathname: string, href: string) {
 export default function Sidebar({
   role,
   name,
-  onNavigate, // <-- NEW
+  onNavigate,
 }: {
   role: Role;
   name?: string | null;
-  onNavigate?: () => void; // <-- NEW
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname() || "/";
   const router = useRouter();
@@ -36,7 +36,7 @@ export default function Sidebar({
         borderColor: "var(--sidebar-border,rgba(255,255,255,.08))",
       }}
     >
-      {/* Top: full-width logo ABOVE the status */}
+      {/* Top: logo + status */}
       <div
         className="px-4 pt-4 pb-3 border-b"
         style={{ borderColor: "var(--sidebar-border,rgba(255,255,255,.08))" }}
@@ -51,7 +51,7 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Nav */}
+      {/* Nav (scrollable) */}
       <nav className="p-2 space-y-1 overflow-auto">
         {items.map((i) => {
           const active = isActive(pathname, i.href);
@@ -61,7 +61,7 @@ export default function Sidebar({
               type="button"
               onClick={() => {
                 router.push(i.href);
-                onNavigate?.(); // <-- CLOSE DRAWER IF PROVIDED
+                onNavigate?.();
               }}
               className="w-full text-left flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors"
               style={{
@@ -81,27 +81,50 @@ export default function Sidebar({
         })}
       </nav>
 
-      {/* Bottom: sign out + contact block */}
-      <div className="mt-auto p-4 border-t" style={{ borderColor: "var(--sidebar-border,rgba(255,255,255,.08))" }}>
+      {/* Bottom: logout + contact */}
+      <div
+        className="mt-auto p-4 border-t"
+        style={{ borderColor: "var(--sidebar-border,rgba(255,255,255,.08))" }}
+      >
+        {/* Prominent logout button */}
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="w-full text-left rounded-md px-3 py-2 text-sm transition-colors"
-          style={{ backgroundColor: "transparent" }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover-bg,rgba(255,255,255,.06))")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+          className="w-full rounded-lg px-3 py-2 text-sm font-medium outline-none transition-colors"
+          style={{
+            color: "var(--sidebar-text,#ECF5F8)",
+            backgroundColor: "rgba(255,255,255,.05)",
+            border: "1px solid var(--sidebar-border,rgba(255,255,255,.12))",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "rgba(255,255,255,.08)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "rgba(255,255,255,.05)";
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.boxShadow = "0 0 0 2px rgba(37,195,244,.35)";
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.boxShadow = "none";
+          }}
         >
           Αποσύνδεση
         </button>
 
+        {/* Contact block */}
         <div className="mt-3 text-[11px] leading-5" style={{ color: "var(--sidebar-muted,#A7BECC)" }}>
-          <div className="font-semibold mb-1" style={{ color: "var(--sidebar-text,#ECF5F8)" }}>Επικοινωνία</div>
-          <div>
-            Τηλ: <a className="underline underline-offset-2" href="tel:+302100000000">+30 6942811202</a>
+          <div className="font-semibold mb-1" style={{ color: "var(--sidebar-text,#ECF5F8)" }}>
+            Επικοινωνία
           </div>
           <div>
-            Email: <a className="underline underline-offset-2" href="mailto:support@hygiene-plus.gr">info@hplus.gr</a>
-            Email: <a className="underline underline-offset-2" href="mailto:support@hygiene-plus.gr">sp.chatzinikolaou@gmail.com</a>
+            Τηλ: <a className="underline underline-offset-2" href="tel:+306942811202">+30 6942811202</a>
+          </div>
+          <div>
+            Email:{" "}
+            <a className="underline underline-offset-2" href="mailto:info@hplus.gr">
+              info@hplus.gr
+            </a>
           </div>
           <div className="mt-2">v0.1</div>
         </div>
