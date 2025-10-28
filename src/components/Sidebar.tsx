@@ -97,10 +97,11 @@ export default function Sidebar({
         <div className="mt-3 text-[11px] leading-5" style={{ color: "var(--sidebar-muted,#A7BECC)" }}>
           <div className="font-semibold mb-1" style={{ color: "var(--sidebar-text,#ECF5F8)" }}>Επικοινωνία</div>
           <div>
-            Τηλ: <a className="underline underline-offset-2" href="tel:+302100000000">+30 210 000 0000</a>
+            Τηλ: <a className="underline underline-offset-2" href="tel:+302100000000">+30 6942811202</a>
           </div>
           <div>
-            Email: <a className="underline underline-offset-2" href="mailto:support@hygiene-plus.gr">support@hygiene-plus.gr</a>
+            Email: <a className="underline underline-offset-2" href="mailto:support@hygiene-plus.gr">info@hplus.gr</a>
+            Email: <a className="underline underline-offset-2" href="mailto:support@hygiene-plus.gr">sp.chatzinikolaou@gmail.com</a>
           </div>
           <div className="mt-2">v0.1</div>
         </div>
