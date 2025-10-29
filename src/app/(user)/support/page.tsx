@@ -92,7 +92,7 @@ export default function SupportPage() {
               </select>
             </div>
 
-            {/* Right block: actions (full width on mobile, right-aligned on desktop) */}
+            {/* Right block: actions */}
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
@@ -108,13 +108,16 @@ export default function SupportPage() {
                 Καθαρισμός
               </button>
 
-              {/* Primary submit with visible text on any theme */}
+              {/* Primary submit – force brand color via inline style */}
               <button
                 type="submit"
                 disabled={status === "sending"}
-                className="rounded-xl px-4 py-2 text-sm font-semibold
-                           bg-[color:var(--primary,#25C3F4)] text-black
-                           hover:opacity-90 disabled:opacity-60"
+                className="rounded-xl px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-60"
+                style={{
+                  backgroundColor: "var(--brand, #25C3F4)",
+                  color: "#061630",
+                  border: "1px solid transparent",
+                }}
               >
                 {status === "sending" ? "Αποστολή…" : "Υποβολή"}
               </button>
