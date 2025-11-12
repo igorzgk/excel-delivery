@@ -1,4 +1,3 @@
-// src/app/api/profile/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
@@ -15,30 +14,50 @@ export async function GET() {
     where: { userId: session.user.id },
   });
 
-  return NextResponse.json({ ok: true, profile: p });
+  // convert Date objects -> YYYY-MM-DD for the UI
+  const profile = p && {
+    ...p,
+    holidayClosedDates: p.holidayClosedDates?.map(d => d.toISOString().slice(0,10)) ?? [],
+    augustRange: p.augustClosedFrom && p.augustClosedTo
+      ? { from: p.augustClosedFrom.toISOString().slice(0,10), to: p.augustClosedTo.toISOString().slice(0,10) }
+      : undefined,
+    easterRange: p.easterClosedFrom && p.easterClosedTo
+      ? { from: p.easterClosedFrom.toISOString().slice(0,10), to: p.easterClosedTo.toISOString().slice(0,10) }
+      : undefined,
+  };
+
+  return NextResponse.json({ ok: true, profile });
 }
 
 export async function PUT(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  let body: any;
-  try { body = ProfileInputSchema.parse(await req.json()); }
-  catch { return NextResponse.json({ error: "invalid_payload" }, { status: 400 }); }
+  let body = await req.json();
+  const parsed = ProfileInputSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: "invalid_payload", detail: parsed.error.flatten() }, { status: 400 });
 
-  const exists = await prisma.userProfile.findUnique({ where: { userId: session.user.id } });
+  const b = parsed.data;
   const data = {
-    businessName: body.businessName,
-    businessTypes: body.businessTypes,
-    equipmentCount: body.equipmentCount ?? null,
-    hasDryAged: body.hasDryAged ?? null,
-    supervisorInitials: body.supervisorInitials ?? null,
-    equipmentFlags: body.equipmentFlags ?? {},
+    businessName: b.businessName,
+    businessTypes: b.businessTypes,
+    equipmentCount: b.equipmentCount ?? null,
+    hasDryAged: b.hasDryAged ?? null,
+    supervisorInitials: b.supervisorInitials ?? null,
+    equipmentFlags: b.equipmentFlags ?? {},
+
+    closedDaysText: b.closedDaysText ?? null,
+    holidayClosedDates: (b.holidayClosedDates ?? []).map(s => new Date(s)),
+    augustClosedFrom: b.augustRange?.from ? new Date(b.augustRange.from) : null,
+    augustClosedTo:   b.augustRange?.to   ? new Date(b.augustRange.to)   : null,
+    easterClosedFrom: b.easterRange?.from ? new Date(b.easterRange.from) : null,
+    easterClosedTo:   b.easterRange?.to   ? new Date(b.easterRange.to)   : null,
   };
 
+  const exists = await prisma.userProfile.findUnique({ where: { userId: session.user.id } });
   const profile = exists
     ? await prisma.userProfile.update({ where: { userId: session.user.id }, data })
     : await prisma.userProfile.create({ data: { userId: session.user.id, ...data } });
 
-  return NextResponse.json({ ok: true, profile });
+  return NextResponse.json({ ok: true, profile: { ...profile } });
 }

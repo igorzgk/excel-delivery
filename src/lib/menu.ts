@@ -17,5 +17,6 @@ export function getMenu(role: Role): MenuItem[] {
     { label: "Πίνακας Ελέγχου", href: "/dashboard" },
     { label: "Τα Αρχεία μου", href: "/files" },
     { label: "Υποστήριξη", href: "/support" },
+    { label: "Προφίλ", href: "/profile" },
   ];
 }

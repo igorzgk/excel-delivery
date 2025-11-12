@@ -58,16 +58,27 @@ model UserProfile {
   id                 String   @id @default(cuid())
   userId             String   @unique
   businessName       String
-  businessTypes      String[] // multiple selections
+  businessTypes      String[]
   equipmentCount     Int?
   hasDryAged         Boolean?
   supervisorInitials String?
   equipmentFlags     Json?
 
+  // NEW — “closed” info
+  closedDaysText       String?     // 1) free text: “Κυριακές, Δευτέρα…”
+  holidayClosedDates   DateTime? // 2) many single dates (YYYY-MM-DD)
+  augustClosedFrom     DateTime?   // 3) date-range
+  augustClosedTo       DateTime?
+  easterClosedFrom     DateTime?   // 4) date-range
+  easterClosedTo       DateTime?
+
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
+
 
 model File {
   id           String   @id @default(cuid())

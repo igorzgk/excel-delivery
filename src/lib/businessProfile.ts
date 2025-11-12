@@ -1,7 +1,5 @@
-// src/lib/businessProfile.ts
 import { z } from "zod";
 
-// Allowed business types (Greek labels kept as-is)
 export const BUSINESS_TYPES = [
   "ΕΣΤΙΑΤΟΡΙΟ – ΨΗΤΟΠΩΛΕΙΟ",
   "ΕΣΤΙΑΤΟΡΙΟ – ΨΗΤΟΠΩΛΕΙΟ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ",
@@ -29,16 +27,24 @@ export const BUSINESS_TYPES = [
   "ΠΑΡΑΣΚΕΥΗ – ΠΩΛΗΣΗ ΣΦΟΛΙΑΤΟΕΙΔΩΝ ΠΡΟΪΟΝΤΩΝ",
 ] as const;
 
+// YYYY-MM-DD
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
 export const EquipmentFlagsSchema = z.object({
-  extractorHood: z.boolean().optional(),          // e1 απαγωγικό σύστημα
-  coffeeMachine: z.boolean().optional(),          // e2 μηχανή καφέ
-  dehumidifier: z.boolean().optional(),           // e3 αποχηνότητα (πιθανό τυπογραφικό)
-  foodDisplayAddons: z.boolean().optional(),      // e4 προσθήκες έκθεσης τροφίμων
-  slicerDairyColdCuts: z.boolean().optional(),    // e5 μηχανές κοπής τυροκομικών/αλλαντικών
-  meatGrinder: z.boolean().optional(),            // e6 μηχανές κοπής κιμά
-  schnitzelMachine: z.boolean().optional(),       // e7 σνιτσελομηχανή
-  iceMaker: z.boolean().optional(),               // e8 παγομηχανή
-  mixerDough: z.boolean().optional(),             // e9 μίξερ – ζυμωτήρια
+  extractorHood: z.boolean().optional(),
+  coffeeMachine: z.boolean().optional(),
+  dehumidifier: z.boolean().optional(),
+  foodDisplayAddons: z.boolean().optional(),
+  slicerDairyColdCuts: z.boolean().optional(),
+  meatGrinder: z.boolean().optional(),
+  schnitzelMachine: z.boolean().optional(),
+  iceMaker: z.boolean().optional(),
+  mixerDough: z.boolean().optional(),
+});
+
+export const DateRangeSchema = z.object({
+  from: ymd,
+  to: ymd,
 });
 
 export const ProfileInputSchema = z.object({
@@ -48,5 +54,12 @@ export const ProfileInputSchema = z.object({
   hasDryAged: z.boolean().optional(),
   supervisorInitials: z.string().max(8).optional(),
   equipmentFlags: EquipmentFlagsSchema.optional(),
+
+  // NEW:
+  closedDaysText: z.string().optional(),
+  holidayClosedDates: z.array(ymd).optional(),
+  augustRange: DateRangeSchema.optional(),
+  easterRange: DateRangeSchema.optional(),
 });
+
 export type ProfileInput = z.infer<typeof ProfileInputSchema>;
