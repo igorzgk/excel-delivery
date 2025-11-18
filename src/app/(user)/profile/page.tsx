@@ -1,101 +1,260 @@
+// src/app/(user)/profile/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import React, { useEffect, useState } from "react";
+
+// --- types matching the API shape ---
 
 type Profile = {
   businessName: string;
   businessTypes: string[];
-  equipmentCount?: number | null;
-  hasDryAged?: boolean | null;
-  supervisorInitials?: string | null;
-  equipmentFlags?: Record<string, boolean>;
-  closedDaysText?: string | null;
-  holidayClosedDates?: string[]; // YYYY-MM-DD
-  augustRange?: { from: string; to: string } | null;
-  easterRange?: { from: string; to: string } | null;
+  equipmentCount: number | null;
+  hasDryAged: boolean | null;
+  supervisorInitials: string | null;
+  equipmentFlags: Record<string, boolean> | null;
+
+  closedDaysText: string | null;
+  holidayClosedDates: string[]; // "YYYY-MM-DD"
+  augustRange: { from: string | null; to: string | null } | null;
+  easterRange: { from: string | null; to: string | null } | null;
 };
 
-const FLAG_LABELS: Record<string,string> = {
-  extractorHood: "Απαγωγικό σύστημα",
-  coffeeMachine: "Μηχανή καφέ",
-  dehumidifier: "Αποξηραντής",
-  foodDisplayAddons: "Προσθήκες έκθεσης τροφίμων",
-  slicerDairyColdCuts: "Μηχανές κοπής τυροκομικών/αλλαντικών",
-  meatGrinder: "Μηχανές κοπής κιμά",
-  schnitzelMachine: "Σνιτσελομηχανή",
-  iceMaker: "Παγομηχανή",
-  mixerDough: "Μίξερ – ζυμωτήρια",
+type ApiProfileResponse = {
+  ok: boolean;
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    status: string;
+    role: string;
+  };
+  profile: Profile | null;
 };
 
-export const dynamic = "force-dynamic";
+// business types & equipment keys
+const BUSINESS_TYPES = [
+  "ΕΣΤΙΑΤΟΡΙΟ – ΨΗΤΟΠΩΛΕΙΟ",
+  "ΕΣΤΙΑΤΟΡΙΟ – ΨΗΤΟΠΩΛΕΙΟ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ",
+  "BAR – WINE BAR",
+  "ΑΝΑΨΥΚΤΗΡΙΟ – ΚΑΦΕΤΕΡΙΑ",
+  "ΚΥΛΙΚΕΙΟ",
+  "ΠΡΑΤΗΡΙΟ ΖΑΧ/ΚΗΣ – ΓΑΛΑΚΤΟΣ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ",
+  "ΠΡΑΤΗΡΙΟ ΖΑΧ/ΚΗΣ – ΓΑΛΑΚΤΟΣ ΧΩΡΙΣ ΠΑΡΟΧΗ ΚΑΦΕ",
+  "ΠΡΑΤΗΡΙΟ ΑΡΤΟΥ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ",
+  "ΚΡΕΟΠΩΛΕΙΟ",
+  "ΚΡΕΟΠΩΛΕΙΟ ΜΕ ΖΕΣΤΗ ΓΩΝΙΑ",
+  "ΙΧΘΥΟΠΩΛΕΙΟ",
+  "ΙΧΘΥΟΠΩΛΕΙΟ ΜΕ ΖΕΣΤΗ ΓΩΝΙΑ",
+  "ΔΙΑΘΕΣΗ ΠΡΟΪΟΝΤΩΝ ΑΛΛΑΝΤΟΠΟΙΪΑΣ/ΤΥΡΟΚΟΜΙΑΣ",
+  "ΑΡΤΟΠΟΙΕΙΟ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ",
+  "ΑΡΤΟΠΟΙΕΙΟ ΧΩΡΙΣ ΠΑΡΟΧΗ ΚΑΦΕ",
+  "ΑΡΤΟΠΟΙΕΙΟ – ΖΑΧΑΡΟΠΛΑΣΤΕΙΟ",
+  "ΖΑΧΑΡΟΠΛΑΣΤΕΙΟ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ",
+  "ΖΑΧΑΡΟΠΛΑΣΤΕΙΟ ΧΩΡΙΣ ΠΑΡΟΧΗ ΚΑΦΕ",
+  "ΠΑΝΤΟΠΩΛΕΙΟ / ΟΠΩΡΟΠΩΛΕΙΟ",
+  "ΚΑΒΑ – ΚΑΤΑΣΤΗΜΑ ΞΗΡΩΝ ΚΑΡΠΩΝ",
+  "ΠΡΑΤΗΡΙΟ ΚΑΤΕΨΥΓΜΕΝΩΝ ΠΡΟΪΟΝΤΩΝ",
+  "ΣΥΣΚΕΥΑΣΜΕΝΑ ΠΡΟΪΟΝΤΑ ΝΩΠΑ / ΚΑΤΕΨΥΓΜΕΝΑ / ΞΗΡΟΥ ΦΟΡΤΙΟΥ",
+  "ΠΑΓΩΤΟΠΩΛΕΙΟ",
+  "ΠΑΡΑΣΚΕΥΗ – ΠΩΛΗΣΗ ΣΦΟΛΙΑΤΟΕΙΔΩΝ ΠΡΟΪΟΝΤΩΝ",
+];
+
+const EQUIPMENT_FLAGS: { key: string; label: string }[] = [
+  { key: "apagogiko", label: "Απαγωγικό σύστημα" },
+  { key: "mixaniKafe", label: "Μηχανή καφέ" },
+  { key: "apoxigantiras", label: "Αποξηραντής" },
+  { key: "prosthikesVitrinas", label: "Προσθήκες έκθεσης τροφίμων" },
+  { key: "kopisTyrokopikon", label: "Μηχανές κοπής τυροκομικών/αλλαντικών" },
+  { key: "kopisKima", label: "Μηχανές κοπής κιμά" },
+  { key: "snitselomixani", label: "Σνιτσελομηχανή" },
+  { key: "pagomixani", label: "Παγομηχανή" },
+  { key: "mixersZymotiria", label: "Μίξερ – ζυμωτήρια" },
+];
+
+function emptyProfile(): Profile {
+  return {
+    businessName: "",
+    businessTypes: [],
+    equipmentCount: null,
+    hasDryAged: null,
+    supervisorInitials: "",
+    equipmentFlags: {},
+
+    closedDaysText: "",
+    holidayClosedDates: [],
+    augustRange: { from: null, to: null },
+    easterRange: { from: null, to: null },
+  };
+}
 
 export default function ProfilePage() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [edit, setEdit] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [tmpHoliday, setTmpHoliday] = useState("");
+
+  // local editable copy
+  const [draft, setDraft] = useState<Profile>(emptyProfile);
 
   useEffect(() => {
     (async () => {
-      const r = await fetch("/api/profile", { cache: "no-store" });
-      const j = await r.json();
-      setProfile(
-        j.profile ?? {
-          businessName: "",
-          businessTypes: [],
-          equipmentCount: 0,
-          hasDryAged: false,
-          supervisorInitials: "",
-          equipmentFlags: {},
-          closedDaysText: "",
-          holidayClosedDates: [],
-          augustRange: { from: "", to: "" },
-          easterRange: { from: "", to: "" },
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/profile", { cache: "no-store" });
+        const json: ApiProfileResponse | any = await res.json();
+        if (!res.ok || !json.ok) {
+          throw new Error(json?.error || "Αποτυχία φόρτωσης προφίλ");
         }
-      );
+        const p = (json.profile as Profile | null) ?? emptyProfile();
+        // normalise nulls
+        const normalized: Profile = {
+          ...emptyProfile(),
+          ...p,
+          holidayClosedDates: p.holidayClosedDates || [],
+          equipmentFlags: p.equipmentFlags || {},
+          augustRange: p.augustRange ?? { from: null, to: null },
+          easterRange: p.easterRange ?? { from: null, to: null },
+        };
+        setProfile(normalized);
+        setDraft(normalized);
+      } catch (e: any) {
+        setError(e.message || "Σφάλμα");
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
-  const eqEnabled = useMemo(
-    () => Object.entries(profile?.equipmentFlags || {}).filter(([,v]) => !!v).map(([k]) => FLAG_LABELS[k] || k),
-    [profile]
-  );
-
   async function save() {
-    if (!profile) return;
     setSaving(true);
-    await fetch("/api/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profile),
-    });
-    setSaving(false);
-    setEdit(false);
+    setError(null);
+    try {
+      const body = {
+        ...draft,
+        equipmentFlags: draft.equipmentFlags ?? {},
+        holidayClosedDates: draft.holidayClosedDates || [],
+        augustRange: draft.augustRange,
+        easterRange: draft.easterRange,
+      };
+      const res = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.error) {
+        throw new Error(json?.error || "Αποτυχία αποθήκευσης");
+      }
+      setProfile(draft);
+      setEdit(false);
+    } catch (e: any) {
+      setError(e.message || "Σφάλμα αποθήκευσης");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  if (!profile) return <div className="p-6">Φόρτωση…</div>;
+  // helpers
+  const eqFlags = draft.equipmentFlags || {};
+
+  function toggleBusinessType(label: string) {
+    setDraft((prev) => {
+      const exists = prev.businessTypes.includes(label);
+      return {
+        ...prev,
+        businessTypes: exists
+          ? prev.businessTypes.filter((x) => x !== label)
+          : [...prev.businessTypes, label],
+      };
+    });
+  }
+
+  function toggleEquipmentFlag(key: string) {
+    setDraft((prev) => ({
+      ...prev,
+      equipmentFlags: {
+        ...(prev.equipmentFlags || {}),
+        [key]: !(prev.equipmentFlags || {})[key],
+      },
+    }));
+  }
+
+  function addHolidayDate() {
+    setDraft((prev) => ({
+      ...prev,
+      holidayClosedDates: [...(prev.holidayClosedDates || []), ""],
+    }));
+  }
+
+  function updateHolidayDate(index: number, value: string) {
+    setDraft((prev) => {
+      const arr = [...(prev.holidayClosedDates || [])];
+      arr[index] = value;
+      return { ...prev, holidayClosedDates: arr };
+    });
+  }
+
+  function removeHolidayDate(index: number) {
+    setDraft((prev) => {
+      const arr = [...(prev.holidayClosedDates || [])];
+      arr.splice(index, 1);
+      return { ...prev, holidayClosedDates: arr };
+    });
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold mb-4">Προφίλ επιχείρησης</h1>
+        <p>Φόρτωση…</p>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    // δεν θα συμβεί με emptyProfile, αλλά just in case
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold mb-4">Προφίλ επιχείρησης</h1>
+        <p>Δεν βρέθηκαν στοιχεία προφίλ.</p>
+      </div>
+    );
+  }
+
+  const view = edit ? draft : profile;
 
   return (
-    <div className="grid gap-4 p-6">
+    <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Προφίλ επιχείρησης</h1>
         {!edit ? (
           <button
-            className="rounded-xl px-3 py-2 text-sm font-semibold"
-            style={{ background: "var(--brand,#25C3F4)", color: "#061630" }}
-            onClick={() => setEdit(true)}
+            onClick={() => {
+              setDraft(profile);
+              setEdit(true);
+            }}
+            className="rounded-xl bg-[color:var(--brand,#07c1f6)] px-4 py-2 text-sm font-semibold text-black hover:opacity-90"
           >
             Επεξεργασία
           </button>
         ) : (
           <div className="flex gap-2">
-            <button className="rounded-xl px-3 py-2 text-sm" onClick={() => setEdit(false)}>Άκυρο</button>
             <button
-              className="rounded-xl px-3 py-2 text-sm font-semibold"
-              style={{ background: "var(--brand,#25C3F4)", color: "#061630" }}
+              onClick={() => {
+                setDraft(profile);
+                setEdit(false);
+              }}
+              className="rounded-xl border border-gray-300 px-4 py-2 text-sm"
               disabled={saving}
+            >
+              Άκυρο
+            </button>
+            <button
               onClick={save}
+              disabled={saving}
+              className="rounded-xl bg-[color:var(--brand,#07c1f6)] px-4 py-2 text-sm font-semibold text-black disabled:opacity-60"
             >
               {saving ? "Αποθήκευση…" : "Αποθήκευση"}
             </button>
@@ -103,243 +262,364 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* SUMMARY CARD (table-like) */}
-      {!edit && (
-        <section className="rounded-2xl border bg-[color:var(--card,#fff)] p-4">
-          <div className="grid md:grid-cols-2 gap-4">
-            <SummaryRow label="Επωνυμία">{profile.businessName || "—"}</SummaryRow>
-            <SummaryRow label="Αρχικά υπευθύνου">{profile.supervisorInitials || "—"}</SummaryRow>
-            <SummaryRow label="Είδη επιχείρησης">
-              {profile.businessTypes?.length ? profile.businessTypes.join(", ") : "—"}
-            </SummaryRow>
-            <SummaryRow label="Πλήθος εξοπλισμού συντήρησης (c1)">
-              {profile.equipmentCount ?? "—"}
-            </SummaryRow>
-            <SummaryRow label="Dry aged (c2)">{profile.hasDryAged ? "Ναι" : "Όχι"}</SummaryRow>
-            <SummaryRow label="Λοιπός εξοπλισμός">
-              {eqEnabled.length ? eqEnabled.join(", ") : "—"}
-            </SummaryRow>
-            <SummaryRow label="Ποιες μέρες είναι κλειστά;">
-              {profile.closedDaysText || "—"}
-            </SummaryRow>
-            <SummaryRow label="Αργίες (ημερομηνίες)">
-              {profile.holidayClosedDates?.length ? profile.holidayClosedDates.join(", ") : "—"}
-            </SummaryRow>
-            <SummaryRow label="Αύγουστος (διάστημα)">
-              {profile.augustRange?.from && profile.augustRange?.to
-                ? `${profile.augustRange.from} έως ${profile.augustRange.to}`
-                : "—"}
-            </SummaryRow>
-            <SummaryRow label="Πάσχα (διάστημα)">
-              {profile.easterRange?.from && profile.easterRange?.to
-                ? `${profile.easterRange.from} έως ${profile.easterRange.to}`
-                : "—"}
-            </SummaryRow>
-          </div>
-        </section>
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
       )}
 
-      {/* EDIT FORM */}
-      {edit && (
-        <section className="rounded-2xl border bg-[color:var(--card,#fff)] p-4 space-y-4">
-          <label className="block">
-            <span className="text-sm">Επωνυμία επιχείρησης</span>
-            <input
-              className="w-full border rounded p-2"
-              value={profile.businessName}
-              onChange={(e) => setProfile({ ...profile, businessName: e.target.value })}
-            />
-          </label>
-
-          <div>
-            <div className="text-sm mb-1">Είδος επιχείρησης (πολλαπλή)</div>
-            <div className="grid md:grid-cols-2 gap-2">
-              {(profile.businessTypes || []).concat([]) /* keep controlled */}
-            </div>
-            {/* We keep businessTypes as-is (already chosen during registration / admin can edit elsewhere if needed) */}
-            <p className="text-xs text-[color:var(--muted)]">Οι κατηγορίες έχουν οριστεί κατά την εγγραφή.</p>
-          </div>
-
-          <div className="grid sm:grid-cols-3 gap-3">
-            <label className="block">
-              <span className="text-sm">Πλήθος εξοπλισμού συντήρησης (c1)</span>
-              <input
-                type="number"
-                min={0}
-                className="w-full border rounded p-2"
-                value={profile.equipmentCount ?? 0}
-                onChange={(e) =>
-                  setProfile({ ...profile, equipmentCount: Number(e.target.value) || 0 })
-                }
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm">Dry aged (c2)</span>
-              <div className="mt-2">
-                <input
-                  type="checkbox"
-                  checked={!!profile.hasDryAged}
-                  onChange={(e) => setProfile({ ...profile, hasDryAged: e.target.checked })}
-                />
-              </div>
-            </label>
-            <label className="block">
-              <span className="text-sm">Αρχικά υπευθύνου</span>
-              <input
-                className="w-full border rounded p-2"
-                value={profile.supervisorInitials ?? ""}
-                onChange={(e) =>
-                  setProfile({ ...profile, supervisorInitials: e.target.value })
-                }
-              />
-            </label>
-          </div>
-
-          <div>
-            <div className="text-sm mb-1">Λοιπός εξοπλισμός</div>
-            <div className="grid md:grid-cols-2 gap-2">
-              {Object.entries(FLAG_LABELS).map(([k, label]) => (
-                <label key={k} className="flex items-center gap-2 border rounded p-2">
-                  <input
-                    type="checkbox"
-                    checked={!!profile.equipmentFlags?.[k]}
-                    onChange={(e) =>
-                      setProfile({
-                        ...profile,
-                        equipmentFlags: { ...(profile.equipmentFlags || {}), [k]: e.target.checked },
-                      })
-                    }
-                  />
-                  <span className="text-sm">{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <label className="block">
-            <span className="text-sm">Ποιες μέρες είναι κλειστά (κείμενο)</span>
-            <input
-              className="w-full border rounded p-2"
-              value={profile.closedDaysText ?? ""}
-              onChange={(e) => setProfile({ ...profile, closedDaysText: e.target.value })}
-            />
-          </label>
-
-          <div className="grid sm:grid-cols-2 gap-4">
+      {/* Κάρτα με 2 στήλες */}
+      <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4">
+        {!edit ? (
+          // --- READ ONLY LAYOUT (όπως στο screenshot) ---
+          <dl className="grid gap-6 md:grid-cols-2">
             <div>
-              <div className="text-sm mb-1">Αργίες (πολλαπλές ημερομηνίες)</div>
-              <div className="flex gap-2">
+              <dt className="text-xs font-medium text-gray-500">Επωνυμία</dt>
+              <dd className="mt-1 text-sm">{view.businessName || "—"}</dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-medium text-gray-500">
+                Αρχικά υπευθύνου
+              </dt>
+              <dd className="mt-1 text-sm">
+                {view.supervisorInitials || "—"}
+              </dd>
+            </div>
+
+            <div className="md:col-span-2">
+              <dt className="text-xs font-medium text-gray-500">
+                Είδη επιχείρησης
+              </dt>
+              <dd className="mt-1 text-sm">
+                {view.businessTypes && view.businessTypes.length
+                  ? view.businessTypes.join(", ")
+                  : "—"}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-medium text-gray-500">
+                Dry aged (c2)
+              </dt>
+              <dd className="mt-1 text-sm">
+                {view.hasDryAged ? "Ναι" : view.hasDryAged === false ? "Όχι" : "—"}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-medium text-gray-500">
+                Πλήθος εξοπλισμού συντήρησης (c1)
+              </dt>
+              <dd className="mt-1 text-sm">
+                {view.equipmentCount ?? "—"}
+              </dd>
+            </div>
+
+            <div className="md:col-span-2">
+              <dt className="text-xs font-medium text-gray-500">
+                Λοιπός εξοπλισμός
+              </dt>
+              <dd className="mt-1 text-sm">
+                {Object.entries(eqFlags)
+                  .filter(([, v]) => v)
+                  .map(([k]) => {
+                    const item = EQUIPMENT_FLAGS.find((x) => x.key === k);
+                    return item?.label || k;
+                  })
+                  .join(", ") || "—"}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-medium text-gray-500">
+                Ποιες μέρες είναι κλειστά;
+              </dt>
+              <dd className="mt-1 text-sm">{view.closedDaysText || "—"}</dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-medium text-gray-500">
+                Αργίες (ημερομηνίες)
+              </dt>
+              <dd className="mt-1 text-sm">
+                {view.holidayClosedDates && view.holidayClosedDates.length
+                  ? view.holidayClosedDates.join(", ")
+                  : "—"}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-medium text-gray-500">
+                Αύγουστος (διάστημα)
+              </dt>
+              <dd className="mt-1 text-sm">
+                {view.augustRange?.from && view.augustRange?.to
+                  ? `${view.augustRange.from} – ${view.augustRange.to}`
+                  : "—"}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-medium text-gray-500">
+                Πάσχα (διάστημα)
+              </dt>
+              <dd className="mt-1 text-sm">
+                {view.easterRange?.from && view.easterRange?.to
+                  ? `${view.easterRange.from} – ${view.easterRange.to}`
+                  : "—"}
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          // --- EDIT FORM ---
+          <form
+            className="space-y-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save();
+            }}
+          >
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">
+                  Επωνυμία επιχείρησης
+                </label>
                 <input
-                  type="date"
-                  className="border rounded p-2"
-                  value={tmpHoliday}
-                  onChange={(e) => setTmpHoliday(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  value={draft.businessName}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, businessName: e.target.value }))
+                  }
                 />
-                <button
-                  type="button"
-                  className="rounded px-3 py-2"
-                  style={{ background: "var(--brand,#25C3F4)", color: "#061630" }}
-                  onClick={() => {
-                    if (!tmpHoliday) return;
-                    const set = new Set(profile.holidayClosedDates || []);
-                    set.add(tmpHoliday);
-                    setProfile({ ...profile, holidayClosedDates: Array.from(set).sort() });
-                    setTmpHoliday("");
-                  }}
-                >
-                  Προσθήκη
-                </button>
               </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(profile.holidayClosedDates || []).map((d) => (
-                  <span key={d} className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs">
-                    {d}
-                    <button
-                      onClick={() =>
-                        setProfile({
-                          ...profile,
-                          holidayClosedDates: (profile.holidayClosedDates || []).filter((x) => x !== d),
-                        })
-                      }
-                    >
-                      ×
-                    </button>
-                  </span>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">
+                  Αρχικά υπευθύνου
+                </label>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  value={draft.supervisorInitials ?? ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      supervisorInitials: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-500">
+                Είδος επιχείρησης (πολλαπλή επιλογή)
+              </label>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {BUSINESS_TYPES.map((bt) => (
+                  <label
+                    key={bt}
+                    className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={draft.businessTypes.includes(bt)}
+                      onChange={() => toggleBusinessType(bt)}
+                    />
+                    <span className="truncate">{bt}</span>
+                  </label>
                 ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <div className="text-sm mb-1">Αύγουστος (από)</div>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">
+                  Πλήθος εξοπλισμού συντήρησης (c1)
+                </label>
                 <input
-                  type="date"
-                  className="w-full border rounded p-2"
-                  value={profile.augustRange?.from || ""}
+                  type="number"
+                  min={0}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  value={draft.equipmentCount ?? ""}
                   onChange={(e) =>
-                    setProfile({
-                      ...profile,
-                      augustRange: { ...(profile.augustRange || {}), from: e.target.value },
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <div className="text-sm mb-1">Αύγουστος (έως)</div>
-                <input
-                  type="date"
-                  className="w-full border rounded p-2"
-                  value={profile.augustRange?.to || ""}
-                  onChange={(e) =>
-                    setProfile({
-                      ...profile,
-                      augustRange: { ...(profile.augustRange || {}), to: e.target.value },
-                    })
+                    setDraft((p) => ({
+                      ...p,
+                      equipmentCount:
+                        e.target.value === ""
+                          ? null
+                          : Number(e.target.value),
+                    }))
                   }
                 />
               </div>
 
-              <div className="mt-2">
-                <div className="text-sm mb-1">Πάσχα (από)</div>
-                <input
-                  type="date"
-                  className="w-full border rounded p-2"
-                  value={profile.easterRange?.from || ""}
-                  onChange={(e) =>
-                    setProfile({
-                      ...profile,
-                      easterRange: { ...(profile.easterRange || {}), from: e.target.value },
-                    })
-                  }
-                />
-              </div>
-              <div className="mt-2">
-                <div className="text-sm mb-1">Πάσχα (έως)</div>
-                <input
-                  type="date"
-                  className="w-full border rounded p-2"
-                  value={profile.easterRange?.to || ""}
-                  onChange={(e) =>
-                    setProfile({
-                      ...profile,
-                      easterRange: { ...(profile.easterRange || {}), to: e.target.value },
-                    })
-                  }
-                />
+              <div className="space-y-2 flex items-center gap-3">
+                <label className="text-xs font-medium text-gray-500">
+                  Dry aged (c2)
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={!!draft.hasDryAged}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, hasDryAged: e.target.checked }))
+                    }
+                  />
+                  <span>Υπάρχει</span>
+                </label>
               </div>
             </div>
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
 
-function SummaryRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[220px,1fr] items-start gap-3 border-b last:border-0 py-2">
-      <div className="text-sm text-[color:var(--muted)]">{label}</div>
-      <div className="text-sm">{children}</div>
+            <div>
+              <label className="text-xs font-medium text-gray-500">
+                Λοιπός εξοπλισμός
+              </label>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {EQUIPMENT_FLAGS.map((eq) => (
+                  <label
+                    key={eq.key}
+                    className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!eqFlags[eq.key]}
+                      onChange={() => toggleEquipmentFlag(eq.key)}
+                    />
+                    <span className="truncate">{eq.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">
+                  Ποιες μέρες είναι κλειστά (κείμενο)
+                </label>
+                <textarea
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm min-h-[60px]"
+                  value={draft.closedDaysText ?? ""}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      closedDaysText: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">
+                  Ποιες αργίες είναι κλειστά (πολλαπλές ημερομηνίες)
+                </label>
+                <div className="space-y-2">
+                  {(draft.holidayClosedDates || []).map((d, idx) => (
+                    <div key={idx} className="flex gap-2 items-center">
+                      <input
+                        type="date"
+                        className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        value={d || ""}
+                        onChange={(e) =>
+                          updateHolidayDate(idx, e.target.value)
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeHolidayDate(idx)}
+                        className="text-xs text-red-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addHolidayDate}
+                    className="rounded-md border border-gray-300 px-3 py-1 text-xs"
+                  >
+                    Προσθήκη ημερομηνίας
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">
+                  Ποιο διάστημα του Αυγούστου είναι κλειστά;
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    value={draft.augustRange?.from || ""}
+                    onChange={(e) =>
+                      setDraft((p) => ({
+                        ...p,
+                        augustRange: {
+                          ...(p.augustRange || { from: null, to: null }),
+                          from: e.target.value || null,
+                        },
+                      }))
+                    }
+                  />
+                  <input
+                    type="date"
+                    className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    value={draft.augustRange?.to || ""}
+                    onChange={(e) =>
+                      setDraft((p) => ({
+                        ...p,
+                        augustRange: {
+                          ...(p.augustRange || { from: null, to: null }),
+                          to: e.target.value || null,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">
+                  Ποιο διάστημα του Πάσχα είναι κλειστά;
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    value={draft.easterRange?.from || ""}
+                    onChange={(e) =>
+                      setDraft((p) => ({
+                        ...p,
+                        easterRange: {
+                          ...(p.easterRange || { from: null, to: null }),
+                          from: e.target.value || null,
+                        },
+                      }))
+                    }
+                  />
+                  <input
+                    type="date"
+                    className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    value={draft.easterRange?.to || ""}
+                    onChange={(e) =>
+                      setDraft((p) => ({
+                        ...p,
+                        easterRange: {
+                          ...(p.easterRange || { from: null, to: null }),
+                          to: e.target.value || null,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          </form>
+        )}
+      </section>
     </div>
   );
 }
