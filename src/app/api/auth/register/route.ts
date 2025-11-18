@@ -3,14 +3,41 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcrypt";
 import { z } from "zod";
-import { ProfileInputSchema } from "@/lib/businessProfile"; // <-- import the schema for validation
 
-// Basic signup schema
 const SignupSchema = z.object({
   name: z.string().min(2, "Name is too short"),
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  profile: ProfileInputSchema.optional(), // optional profile data
+});
+
+// This must match your ProfilePayload in register/page.tsx
+const ProfileSchema = z.object({
+  businessName: z.string().min(1),
+  businessTypes: z.array(z.string()).default([]),
+
+  equipmentCount: z.number().int().nullable().optional(),
+  hasDryAged: z.boolean().nullable().optional(),
+  supervisorInitials: z.string().max(50).nullable().optional(),
+  equipmentFlags: z.record(z.boolean()).nullable().optional(),
+
+  closedDaysText: z.string().nullable().optional(),
+  holidayClosedDates: z.array(z.string()).optional(), // "YYYY-MM-DD"[]
+
+  augustRange: z
+    .object({
+      from: z.string().nullable().optional(),
+      to: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+
+  easterRange: z
+    .object({
+      from: z.string().nullable().optional(),
+      to: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export async function POST(req: Request) {
@@ -20,23 +47,41 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const parsed = SignupSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+
+    // 1) Validate account fields
+    const parsedAccount = SignupSchema.safeParse(body);
+    if (!parsedAccount.success) {
+      return NextResponse.json(
+        { error: parsedAccount.error.flatten() },
+        { status: 400 }
+      );
+    }
+    const { name, email, password } = parsedAccount.data;
+
+    // 2) Validate profile (if provided)
+    let profileData: z.infer<typeof ProfileSchema> | null = null;
+    if (body.profile) {
+      const parsedProfile = ProfileSchema.safeParse(body.profile);
+      if (!parsedProfile.success) {
+        return NextResponse.json(
+          { error: "invalid_payload", detail: parsedProfile.error.flatten() },
+          { status: 400 }
+        );
+      }
+      profileData = parsedProfile.data;
     }
 
-    const { name, email, password, profile } = parsed.data;
-
-    // Check if user already exists
+    // 3) Check existing user
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+      return NextResponse.json(
+        { error: "Email already in use" },
+        { status: 409 }
+      );
     }
 
-    // Hash password
+    // 4) Create user
     const hash = await bcrypt.hash(password, 10);
-
-    // Create user
     const user = await prisma.user.create({
       data: {
         name,
@@ -49,24 +94,42 @@ export async function POST(req: Request) {
       select: { id: true, email: true, name: true },
     });
 
-    // Create profile if provided
-    if (profile) {
+    // 5) Create profile (if data provided)
+    if (profileData) {
+      const p = profileData;
+
+      const augustFrom = p.augustRange?.from || "";
+      const augustTo = p.augustRange?.to || "";
+      const easterFrom = p.easterRange?.from || "";
+      const easterTo = p.easterRange?.to || "";
+
       await prisma.userProfile.create({
         data: {
           userId: user.id,
-          businessName: profile.businessName,
-          businessTypes: profile.businessTypes,
-          equipmentCount: profile.equipmentCount ?? null,
-          hasDryAged: profile.hasDryAged ?? null,
-          supervisorInitials: profile.supervisorInitials ?? null,
-          equipmentFlags: profile.equipmentFlags ?? {},
+          businessName: p.businessName,
+          businessTypes: p.businessTypes ?? [],
+
+          equipmentCount: p.equipmentCount ?? 0,
+          hasDryAged: p.hasDryAged ?? false,
+          supervisorInitials: p.supervisorInitials ?? null,
+          equipmentFlags: p.equipmentFlags ?? {},
+
+          closedDaysText: p.closedDaysText ?? "",
+          holidayClosedDates: (p.holidayClosedDates ?? []).map(
+            (d) => new Date(d)
+          ),
+
+          augustClosedFrom: augustFrom ? new Date(augustFrom) : null,
+          augustClosedTo: augustTo ? new Date(augustTo) : null,
+          easterClosedFrom: easterFrom ? new Date(easterFrom) : null,
+          easterClosedTo: easterTo ? new Date(easterTo) : null,
         },
       });
     }
 
     return NextResponse.json({ ok: true, user });
   } catch (err) {
-    console.error("Registration error:", err);
+    console.error(err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
