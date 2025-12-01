@@ -3,38 +3,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
-import { z } from "zod";
 
-// This matches your ProfilePayload on the frontend
-const ProfileSchema = z.object({
-  businessName: z.string().min(1),
-  businessTypes: z.array(z.string()).default([]),
-
-  equipmentCount: z.number().int().nullable().optional(),
-  hasDryAged: z.boolean().nullable().optional(),
-  supervisorInitials: z.string().max(50).nullable().optional(),
-  equipmentFlags: z.record(z.boolean()).nullable().optional(),
-
-  closedDaysText: z.string().nullable().optional(),
-  holidayClosedDates: z.array(z.string()).optional(), // "YYYY-MM-DD"[]
-
-  augustRange: z
-    .object({
-      from: z.string().nullable().optional(),
-      to: z.string().nullable().optional(),
-    })
-    .nullable()
-    .optional(),
-  easterRange: z
-    .object({
-      from: z.string().nullable().optional(),
-      to: z.string().nullable().optional(),
-    })
-    .nullable()
-    .optional(),
-});
-
-// Helper to shape profile → front-end format (same as user /profile)
 function serializeProfile(p: any) {
   const toISO = (d?: Date | null) =>
     d ? d.toISOString().slice(0, 10) : "";
@@ -106,17 +75,20 @@ export async function PUT(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const json = await req.json();
-  const parsed = ProfileSchema.safeParse(json);
+  const body = await req.json();
+  const p = body as any;
 
-  if (!parsed.success) {
+  const businessName = (p.businessName ?? "").toString().trim();
+  const businessTypes = Array.isArray(p.businessTypes)
+    ? p.businessTypes.map((x: any) => String(x)).filter(Boolean)
+    : [];
+
+  if (!businessName) {
     return NextResponse.json(
-      { error: "invalid_payload", detail: parsed.error.flatten() },
+      { error: "business_name_required" },
       { status: 400 }
     );
   }
-
-  const data = parsed.data;
 
   const user = await prisma.user.findUnique({
     where: { id: params.id },
@@ -126,51 +98,64 @@ export async function PUT(
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const augustFrom = data.augustRange?.from || "";
-  const augustTo = data.augustRange?.to || "";
-  const easterFrom = data.easterRange?.from || "";
-  const easterTo = data.easterRange?.to || "";
+  const equipmentCount =
+    typeof p.equipmentCount === "number"
+      ? p.equipmentCount
+      : Number(p.equipmentCount ?? 0) || 0;
+
+  const hasDryAged = !!p.hasDryAged;
+  const supervisorInitials =
+    typeof p.supervisorInitials === "string" ? p.supervisorInitials : "";
+
+  const equipmentFlags =
+    p.equipmentFlags && typeof p.equipmentFlags === "object"
+      ? p.equipmentFlags
+      : {};
+
+  const closedDaysText =
+    typeof p.closedDaysText === "string" ? p.closedDaysText : "";
+
+  const holidayClosedDates: Date[] = Array.isArray(p.holidayClosedDates)
+    ? p.holidayClosedDates
+        .filter((d: any) => !!d)
+        .map((d: any) => new Date(String(d)))
+    : [];
+
+  const augustFromStr = p.augustRange?.from || "";
+  const augustToStr = p.augustRange?.to || "";
+  const easterFromStr = p.easterRange?.from || "";
+  const easterToStr = p.easterRange?.to || "";
 
   const profile = await prisma.userProfile.upsert({
     where: { userId: user.id },
     create: {
       userId: user.id,
-      businessName: data.businessName,
-      businessTypes: data.businessTypes ?? [],
-
-      equipmentCount: data.equipmentCount ?? 0,
-      hasDryAged: data.hasDryAged ?? false,
-      supervisorInitials: data.supervisorInitials ?? null,
-      equipmentFlags: data.equipmentFlags ?? {},
-
-      closedDaysText: data.closedDaysText ?? "",
-      holidayClosedDates: (data.holidayClosedDates ?? []).map(
-        (d) => new Date(d)
-      ),
-
-      augustClosedFrom: augustFrom ? new Date(augustFrom) : null,
-      augustClosedTo: augustTo ? new Date(augustTo) : null,
-      easterClosedFrom: easterFrom ? new Date(easterFrom) : null,
-      easterClosedTo: easterTo ? new Date(easterTo) : null,
+      businessName,
+      businessTypes,
+      equipmentCount,
+      hasDryAged,
+      supervisorInitials,
+      equipmentFlags,
+      closedDaysText,
+      holidayClosedDates,
+      augustClosedFrom: augustFromStr ? new Date(augustFromStr) : null,
+      augustClosedTo: augustToStr ? new Date(augustToStr) : null,
+      easterClosedFrom: easterFromStr ? new Date(easterFromStr) : null,
+      easterClosedTo: easterToStr ? new Date(easterToStr) : null,
     },
     update: {
-      businessName: data.businessName,
-      businessTypes: data.businessTypes ?? [],
-
-      equipmentCount: data.equipmentCount ?? 0,
-      hasDryAged: data.hasDryAged ?? false,
-      supervisorInitials: data.supervisorInitials ?? null,
-      equipmentFlags: data.equipmentFlags ?? {},
-
-      closedDaysText: data.closedDaysText ?? "",
-      holidayClosedDates: (data.holidayClosedDates ?? []).map(
-        (d) => new Date(d)
-      ),
-
-      augustClosedFrom: augustFrom ? new Date(augustFrom) : null,
-      augustClosedTo: augustTo ? new Date(augustTo) : null,
-      easterClosedFrom: easterFrom ? new Date(easterFrom) : null,
-      easterClosedTo: easterTo ? new Date(easterTo) : null,
+      businessName,
+      businessTypes,
+      equipmentCount,
+      hasDryAged,
+      supervisorInitials,
+      equipmentFlags,
+      closedDaysText,
+      holidayClosedDates,
+      augustClosedFrom: augustFromStr ? new Date(augustFromStr) : null,
+      augustClosedTo: augustToStr ? new Date(augustToStr) : null,
+      easterClosedFrom: easterFromStr ? new Date(easterFromStr) : null,
+      easterClosedTo: easterToStr ? new Date(easterToStr) : null,
     },
   });
 

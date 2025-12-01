@@ -10,36 +10,6 @@ const SignupSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-// This must match your ProfilePayload in register/page.tsx
-const ProfileSchema = z.object({
-  businessName: z.string().min(1),
-  businessTypes: z.array(z.string()).default([]),
-
-  equipmentCount: z.number().int().nullable().optional(),
-  hasDryAged: z.boolean().nullable().optional(),
-  supervisorInitials: z.string().max(50).nullable().optional(),
-  equipmentFlags: z.record(z.boolean()).nullable().optional(),
-
-  closedDaysText: z.string().nullable().optional(),
-  holidayClosedDates: z.array(z.string()).optional(), // "YYYY-MM-DD"[]
-
-  augustRange: z
-    .object({
-      from: z.string().nullable().optional(),
-      to: z.string().nullable().optional(),
-    })
-    .nullable()
-    .optional(),
-
-  easterRange: z
-    .object({
-      from: z.string().nullable().optional(),
-      to: z.string().nullable().optional(),
-    })
-    .nullable()
-    .optional(),
-});
-
 export async function POST(req: Request) {
   try {
     if (process.env.ALLOW_SIGNUPS !== "true") {
@@ -48,7 +18,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    // 1) Validate account fields
+    // 1) Validate account fields only
     const parsedAccount = SignupSchema.safeParse(body);
     if (!parsedAccount.success) {
       return NextResponse.json(
@@ -58,20 +28,7 @@ export async function POST(req: Request) {
     }
     const { name, email, password } = parsedAccount.data;
 
-    // 2) Validate profile (if provided)
-    let profileData: z.infer<typeof ProfileSchema> | null = null;
-    if (body.profile) {
-      const parsedProfile = ProfileSchema.safeParse(body.profile);
-      if (!parsedProfile.success) {
-        return NextResponse.json(
-          { error: "invalid_payload", detail: parsedProfile.error.flatten() },
-          { status: 400 }
-        );
-      }
-      profileData = parsedProfile.data;
-    }
-
-    // 3) Check existing user
+    // 2) Check if user exists
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       return NextResponse.json(
@@ -80,7 +37,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4) Create user
+    // 3) Create user
     const hash = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: {
@@ -94,37 +51,66 @@ export async function POST(req: Request) {
       select: { id: true, email: true, name: true },
     });
 
-    // 5) Create profile (if data provided)
-    if (profileData) {
-      const p = profileData;
+    // 4) Create profile if provided
+    const profileRaw = body.profile;
+    if (profileRaw && typeof profileRaw === "object") {
+      const p = profileRaw as any;
 
-      const augustFrom = p.augustRange?.from || "";
-      const augustTo = p.augustRange?.to || "";
-      const easterFrom = p.easterRange?.from || "";
-      const easterTo = p.easterRange?.to || "";
+      const businessName = (p.businessName ?? "").toString().trim();
+      const businessTypes = Array.isArray(p.businessTypes)
+        ? p.businessTypes.map((x: any) => String(x)).filter(Boolean)
+        : [];
 
-      await prisma.userProfile.create({
-        data: {
-          userId: user.id,
-          businessName: p.businessName,
-          businessTypes: p.businessTypes ?? [],
+      // If either is missing, just skip creating profile (client already forces them)
+      if (businessName && businessTypes.length > 0) {
+        const equipmentCount =
+          typeof p.equipmentCount === "number"
+            ? p.equipmentCount
+            : Number(p.equipmentCount ?? 0) || 0;
 
-          equipmentCount: p.equipmentCount ?? 0,
-          hasDryAged: p.hasDryAged ?? false,
-          supervisorInitials: p.supervisorInitials ?? null,
-          equipmentFlags: p.equipmentFlags ?? {},
+        const hasDryAged = !!p.hasDryAged;
+        const supervisorInitials =
+          typeof p.supervisorInitials === "string"
+            ? p.supervisorInitials
+            : "";
 
-          closedDaysText: p.closedDaysText ?? "",
-          holidayClosedDates: (p.holidayClosedDates ?? []).map(
-            (d) => new Date(d)
-          ),
+        const equipmentFlags =
+          p.equipmentFlags && typeof p.equipmentFlags === "object"
+            ? p.equipmentFlags
+            : {};
 
-          augustClosedFrom: augustFrom ? new Date(augustFrom) : null,
-          augustClosedTo: augustTo ? new Date(augustTo) : null,
-          easterClosedFrom: easterFrom ? new Date(easterFrom) : null,
-          easterClosedTo: easterTo ? new Date(easterTo) : null,
-        },
-      });
+        const closedDaysText =
+          typeof p.closedDaysText === "string" ? p.closedDaysText : "";
+
+        const holidayClosedDates: Date[] = Array.isArray(p.holidayClosedDates)
+          ? p.holidayClosedDates
+              .filter((d: any) => !!d)
+              .map((d: any) => new Date(String(d)))
+          : [];
+
+        const augustFromStr = p.augustRange?.from || "";
+        const augustToStr = p.augustRange?.to || "";
+        const easterFromStr = p.easterRange?.from || "";
+        const easterToStr = p.easterRange?.to || "";
+
+        await prisma.userProfile.create({
+          data: {
+            userId: user.id,
+            businessName,
+            businessTypes,
+            equipmentCount,
+            hasDryAged,
+            supervisorInitials,
+            equipmentFlags,
+            closedDaysText,
+            holidayClosedDates,
+            augustClosedFrom: augustFromStr ? new Date(augustFromStr) : null,
+            augustClosedTo: augustToStr ? new Date(augustToStr) : null,
+            easterClosedFrom: easterFromStr ? new Date(easterFromStr) : null,
+            easterClosedTo: easterToStr ? new Date(easterToStr) : null,
+          },
+        });
+      }
     }
 
     return NextResponse.json({ ok: true, user });
