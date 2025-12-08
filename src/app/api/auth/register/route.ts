@@ -4,11 +4,43 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 
-const SignupSchema = z.object({
-  name: z.string().min(2, "Name is too short"),
-  email: z.string().email("Invalid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+const ProfileSchema = z.object({
+  businessName: z.string().min(1, "Επωνυμία επιχείρησης είναι υποχρεωτική."),
+  businessTypes: z.array(z.string()).min(1, "Επιλέξτε τουλάχιστον ένα είδος επιχείρησης."),
+  hasDryAged: z.boolean().optional(),
+  supervisorInitials: z.string().optional(),
+  equipmentFlags: z.record(z.boolean()).optional(),
+
+  closedDaysText: z.string().optional(),
+  holidayClosedDates: z.array(z.string()).optional(), // "YYYY-MM-DD"[]
+
+  augustRange: z
+    .object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+    })
+    .optional(),
+  easterRange: z
+    .object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+    })
+    .optional(),
 });
+
+const SignupSchema = z.object({
+  name: z.string().min(2, "Το όνομα είναι πολύ σύντομο."),
+  email: z.string().email("Μη έγκυρο email."),
+  password: z.string().min(6, "Ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες."),
+  profile: ProfileSchema.optional(),
+});
+
+function parseDateOrNull(s?: string | null): Date | null {
+  if (!s) return null;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
 
 export async function POST(req: Request) {
   try {
@@ -17,27 +49,27 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    const parsed = SignupSchema.safeParse(body);
 
-    // 1) Validate account fields only
-    const parsedAccount = SignupSchema.safeParse(body);
-    if (!parsedAccount.success) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: parsedAccount.error.flatten() },
+        {
+          error: "invalid_payload",
+          details: parsed.error.flatten(),
+        },
         { status: 400 }
       );
     }
-    const { name, email, password } = parsedAccount.data;
 
-    // 2) Check if user exists
+    const { name, email, password, profile } = parsed.data;
+
+    // Check if user exists
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return NextResponse.json(
-        { error: "Email already in use" },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "Email already in use" }, { status: 409 });
     }
 
-    // 3) Create user
+    // Hash password and create user
     const hash = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: {
@@ -51,66 +83,39 @@ export async function POST(req: Request) {
       select: { id: true, email: true, name: true },
     });
 
-    // 4) Create profile if provided
-    const profileRaw = body.profile;
-    if (profileRaw && typeof profileRaw === "object") {
-      const p = profileRaw as any;
+    // If profile data is provided, create UserProfile
+    if (profile) {
+      const holidayDates: Date[] = (profile.holidayClosedDates ?? [])
+        .map((d) => parseDateOrNull(d))
+        .filter((d): d is Date => d !== null);
 
-      const businessName = (p.businessName ?? "").toString().trim();
-      const businessTypes = Array.isArray(p.businessTypes)
-        ? p.businessTypes.map((x: any) => String(x)).filter(Boolean)
-        : [];
+      await prisma.userProfile.create({
+        data: {
+          userId: user.id,
+          businessName: profile.businessName,
+          // Prisma enum[] expects *enum values*; here we trust the frontend
+          // is already sending the enum keys like "RESTAURANT_GRILL"
+          businessTypes: profile.businessTypes as any,
 
-      // If either is missing, just skip creating profile (client already forces them)
-      if (businessName && businessTypes.length > 0) {
-        const equipmentCount =
-          typeof p.equipmentCount === "number"
-            ? p.equipmentCount
-            : Number(p.equipmentCount ?? 0) || 0;
+          hasDryAged: profile.hasDryAged ?? false,
+          supervisorInitials: profile.supervisorInitials || null,
+          equipmentFlags: profile.equipmentFlags ?? {},
 
-        const hasDryAged = !!p.hasDryAged;
-        const supervisorInitials =
-          typeof p.supervisorInitials === "string"
-            ? p.supervisorInitials
-            : "";
+          closedDaysText: profile.closedDaysText || null,
+          holidayClosedDates: holidayDates,
 
-        const equipmentFlags =
-          p.equipmentFlags && typeof p.equipmentFlags === "object"
-            ? p.equipmentFlags
-            : {};
+          augustClosedFrom: parseDateOrNull(profile.augustRange?.from ?? null),
+          augustClosedTo: parseDateOrNull(profile.augustRange?.to ?? null),
+          easterClosedFrom: parseDateOrNull(profile.easterRange?.from ?? null),
+          easterClosedTo: parseDateOrNull(profile.easterRange?.to ?? null),
 
-        const closedDaysText =
-          typeof p.closedDaysText === "string" ? p.closedDaysText : "";
-
-        const holidayClosedDates: Date[] = Array.isArray(p.holidayClosedDates)
-          ? p.holidayClosedDates
-              .filter((d: any) => !!d)
-              .map((d: any) => new Date(String(d)))
-          : [];
-
-        const augustFromStr = p.augustRange?.from || "";
-        const augustToStr = p.augustRange?.to || "";
-        const easterFromStr = p.easterRange?.from || "";
-        const easterToStr = p.easterRange?.to || "";
-
-        await prisma.userProfile.create({
-          data: {
-            userId: user.id,
-            businessName,
-            businessTypes,
-            equipmentCount,
-            hasDryAged,
-            supervisorInitials,
-            equipmentFlags,
-            closedDaysText,
-            holidayClosedDates,
-            augustClosedFrom: augustFromStr ? new Date(augustFromStr) : null,
-            augustClosedTo: augustToStr ? new Date(augustToStr) : null,
-            easterClosedFrom: easterFromStr ? new Date(easterFromStr) : null,
-            easterClosedTo: easterToStr ? new Date(easterToStr) : null,
-          },
-        });
-      }
+          // ⚠️ IMPORTANT:
+          // We DO NOT send `equipmentCount` here anymore because your Prisma
+          // schema does not have that field. The new optional numeric
+          // fields (fridgeCount, freezerCount, etc.) will just stay null
+          // until we wire them from the new registration form.
+        },
+      });
     }
 
     return NextResponse.json({ ok: true, user });

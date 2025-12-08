@@ -1,163 +1,94 @@
-// src/app/api/admin/users/[id]/profile/route.ts
+// src/app/api/admin/users/[id]/route.ts
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { prisma } from "@/lib/prisma";
 
-function serializeProfile(p: any) {
-  const toISO = (d?: Date | null) =>
-    d ? d.toISOString().slice(0, 10) : "";
+type Params = {
+  params: { id: string };
+};
 
-  return {
-    businessName: p.businessName,
-    businessTypes: p.businessTypes ?? [],
-    equipmentCount: p.equipmentCount ?? 0,
-    hasDryAged: !!p.hasDryAged,
-    supervisorInitials: p.supervisorInitials ?? "",
-    equipmentFlags: (p.equipmentFlags as Record<string, boolean> | null) ?? {},
-
-    closedDaysText: p.closedDaysText ?? "",
-    holidayClosedDates: (p.holidayClosedDates ?? []).map((d: Date) =>
-      d.toISOString().slice(0, 10)
-    ),
-
-    augustRange: {
-      from: toISO(p.augustClosedFrom),
-      to: toISO(p.augustClosedTo),
-    },
-    easterRange: {
-      from: toISO(p.easterClosedFrom),
-      to: toISO(p.easterClosedTo),
-    },
-  };
-}
-
-// ---------- GET: admin views user profile ----------
-export async function GET(
-  _req: Request,
-  { params }: { params: { id: string } }
-) {
+async function requireAdmin() {
   const session = await getServerSession(authOptions);
   if (!session || session.user?.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return null;
   }
-
-  const user = await prisma.user.findUnique({
-    where: { id: params.id },
-    include: { profile: true },
-  });
-
-  if (!user) {
-    return NextResponse.json({ ok: false, exists: false }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    ok: true,
-    exists: !!user.profile,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      status: user.status,
-      role: user.role,
-    },
-    profile: user.profile ? serializeProfile(user.profile) : null,
-  });
+  return session;
 }
 
-// ---------- PUT: admin updates user profile ----------
-export async function PUT(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user?.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+/**
+ * PATCH /api/admin/users/[id]
+ * Used by the admin users table to change:
+ * - role
+ * - status
+ * - subscriptionActive
+ */
+export async function PATCH(req: Request, { params }: Params) {
+  const session = await requireAdmin();
+  if (!session) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  const id = params.id;
   const body = await req.json();
-  const p = body as any;
 
-  const businessName = (p.businessName ?? "").toString().trim();
-  const businessTypes = Array.isArray(p.businessTypes)
-    ? p.businessTypes.map((x: any) => String(x)).filter(Boolean)
-    : [];
-
-  if (!businessName) {
-    return NextResponse.json(
-      { error: "business_name_required" },
-      { status: 400 }
-    );
+  const data: any = {};
+  if (typeof body.role === "string") {
+    data.role = body.role;
+  }
+  if (typeof body.status === "string") {
+    data.status = body.status;
+  }
+  if (typeof body.subscriptionActive === "boolean") {
+    data.subscriptionActive = body.subscriptionActive;
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: params.id },
-    select: { id: true },
-  });
-  if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json({ error: "no_fields" }, { status: 400 });
   }
 
-  const equipmentCount =
-    typeof p.equipmentCount === "number"
-      ? p.equipmentCount
-      : Number(p.equipmentCount ?? 0) || 0;
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data,
+    });
+    return NextResponse.json({ ok: true, user });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "update_failed" }, { status: 500 });
+  }
+}
 
-  const hasDryAged = !!p.hasDryAged;
-  const supervisorInitials =
-    typeof p.supervisorInitials === "string" ? p.supervisorInitials : "";
+/**
+ * DELETE /api/admin/users/[id]
+ * Delete user AND related profile/records to avoid FK constraint errors.
+ */
+export async function DELETE(req: Request, { params }: Params) {
+  const session = await requireAdmin();
+  if (!session) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
 
-  const equipmentFlags =
-    p.equipmentFlags && typeof p.equipmentFlags === "object"
-      ? p.equipmentFlags
-      : {};
+  const id = params.id;
 
-  const closedDaysText =
-    typeof p.closedDaysText === "string" ? p.closedDaysText : "";
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1) Delete profile (fixes UserProfile_userId_fkey)
+      await tx.userProfile.deleteMany({ where: { userId: id } });
 
-  const holidayClosedDates: Date[] = Array.isArray(p.holidayClosedDates)
-    ? p.holidayClosedDates
-        .filter((d: any) => !!d)
-        .map((d: any) => new Date(String(d)))
-    : [];
+      // 2) Optionally clean related data (safe even if nothing exists)
+      await tx.fileAssignment.deleteMany({ where: { userId: id } });
+      await tx.fileAssignment.deleteMany({ where: { assignedById: id } });
+      await tx.file.deleteMany({ where: { uploadedById: id } });
+      await tx.auditLog.deleteMany({ where: { actorId: id } });
 
-  const augustFromStr = p.augustRange?.from || "";
-  const augustToStr = p.augustRange?.to || "";
-  const easterFromStr = p.easterRange?.from || "";
-  const easterToStr = p.easterRange?.to || "";
+      // 3) Finally delete the user
+      await tx.user.delete({ where: { id } });
+    });
 
-  const profile = await prisma.userProfile.upsert({
-    where: { userId: user.id },
-    create: {
-      userId: user.id,
-      businessName,
-      businessTypes,
-      equipmentCount,
-      hasDryAged,
-      supervisorInitials,
-      equipmentFlags,
-      closedDaysText,
-      holidayClosedDates,
-      augustClosedFrom: augustFromStr ? new Date(augustFromStr) : null,
-      augustClosedTo: augustToStr ? new Date(augustToStr) : null,
-      easterClosedFrom: easterFromStr ? new Date(easterFromStr) : null,
-      easterClosedTo: easterToStr ? new Date(easterToStr) : null,
-    },
-    update: {
-      businessName,
-      businessTypes,
-      equipmentCount,
-      hasDryAged,
-      supervisorInitials,
-      equipmentFlags,
-      closedDaysText,
-      holidayClosedDates,
-      augustClosedFrom: augustFromStr ? new Date(augustFromStr) : null,
-      augustClosedTo: augustToStr ? new Date(augustToStr) : null,
-      easterClosedFrom: easterFromStr ? new Date(easterFromStr) : null,
-      easterClosedTo: easterToStr ? new Date(easterToStr) : null,
-    },
-  });
-
-  return NextResponse.json({ ok: true, profile: serializeProfile(profile) });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+  }
 }
