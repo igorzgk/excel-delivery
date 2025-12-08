@@ -7,9 +7,9 @@ import { z } from "zod";
 const ProfileSchema = z.object({
   businessName: z.string().min(1, "Επωνυμία επιχείρησης είναι υποχρεωτική."),
   businessTypes: z.array(z.string()).min(1, "Επιλέξτε τουλάχιστον ένα είδος επιχείρησης."),
-  hasDryAged: z.boolean().optional(), // Μπορούμε να το κρατήσουμε στο Zod, απλώς δεν το περνάμε στο Prisma
+  hasDryAged: z.boolean().optional(), // Μπορεί να παραμείνει για το frontend
   supervisorInitials: z.string().optional(),
-  equipmentFlags: z.record(z.boolean()).optional(),
+  equipmentFlags: z.record(z.boolean()).optional(), // επίσης μπορεί να παραμείνει στο payload, απλώς δεν το γράφουμε στο Prisma
 
   closedDaysText: z.string().optional(),
   holidayClosedDates: z.array(z.string()).optional(), // "YYYY-MM-DD"[]
@@ -63,13 +63,13 @@ export async function POST(req: Request) {
 
     const { name, email, password, profile } = parsed.data;
 
-    // Check if user exists
+    // Έλεγχος αν υπάρχει ήδη χρήστης με αυτό το email
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       return NextResponse.json({ error: "Email already in use" }, { status: 409 });
     }
 
-    // Hash password and create user
+    // Δημιουργία χρήστη
     const hash = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: {
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
       select: { id: true, email: true, name: true },
     });
 
-    // If profile data is provided, create UserProfile
+    // Αν έχει έρθει profile, δημιουργούμε UserProfile
     if (profile) {
       const holidayDates: Date[] = (profile.holidayClosedDates ?? [])
         .map((d) => parseDateOrNull(d))
@@ -93,15 +93,13 @@ export async function POST(req: Request) {
         data: {
           userId: user.id,
           businessName: profile.businessName,
-          // Prisma enum[] expects *enum values*; εδώ εμπιστευόμαστε ότι
-          // το frontend στέλνει ήδη τα enum keys (π.χ. "RESTAURANT_GRILL")
+          // businessTypes: enum[] (π.χ. "RESTAURANT_GRILL")
           businessTypes: profile.businessTypes as any,
 
-          // ⛔ ΠΡΟΣΟΧΗ: ΔΕΝ στέλνουμε πλέον hasDryAged γιατί ΔΕΝ υπάρχει στο schema
-          // Μπορούμε αργότερα να το χαρτογραφήσουμε σε dryAgedChamberCount αν θέλουμε
+          // ΔΕΝ στέλνουμε πλέον hasDryAged, equipmentFlags κτλ,
+          // γιατί δεν υπάρχουν στα πεδία του UserProfile στο Prisma.
 
           supervisorInitials: profile.supervisorInitials || null,
-          equipmentFlags: profile.equipmentFlags ?? {},
 
           closedDaysText: profile.closedDaysText || null,
           holidayClosedDates: holidayDates,
@@ -111,9 +109,10 @@ export async function POST(req: Request) {
           easterClosedFrom: parseDateOrNull(profile.easterRange?.from ?? null),
           easterClosedTo: parseDateOrNull(profile.easterRange?.to ?? null),
 
-          // Τα νέα numeric πεδία (fridgeCount, freezerCount κλπ)
-          // δεν τα συμπληρώνουμε ακόμα εδώ, θα μείνουν null μέχρι να
-          // φτιάξουμε νέο UI σύμφωνα με την τελική φόρμα από IT.
+          // Τα νέα numeric & enum πεδία (fridgeCount, freezerCount, hotCabinetCount,
+          // dryAgedChamberCount, iceCreamFreezerCount, closedWeekdays, closedHolidays)
+          // τα αφήνουμε προς το παρόν null / κενά μέχρι να φτιάξουμε UI που να τα γεμίζει
+          // σύμφωνα με την τελική φόρμα του πελάτη.
         },
       });
     }
