@@ -34,6 +34,54 @@ enum AccountStatus {
   SUSPENDED
 }
 
+enum BusinessType {
+  RESTAURANT_GRILL                    // 1 Εστιατόριο - Ψητοπωλείο
+  BAR_WINE                             // 2a Bar – Wine Bar
+  REFRESHMENT_CAFE                    // 2b Αναψυκτήριο – καφετέρια
+  SCHOOL_KIOSK                         // 2c Σχολικό κυλικείο
+  PASTRY_SHOP_WITH_COFFEE             // 3a Πρατήριο ζαχ/κής με παροχή καφέ
+  PASTRY_SHOP_NO_COFFEE               // 3b Πρατήριο ζαχ/κής χωρίς παροχή καφέ
+  BREAD_SHOP_WITH_COFFEE              // 4 Πρατήριο άρτου με παροχή καφέ
+  BUTCHER                             // 5a Κρεοπωλείο
+  BUTCHER_HOT_CORNER                  // 5b Κρεοπωλείο με ζεστή γωνιά
+  FISHMONGER                          // 6a Ιχθυοπωλείο
+  FISHMONGER_HOT_CORNER               // 6b Ιχθυοπωλείο με ζεστή γωνιά
+  DELI_CHEESE_CURED_MEAT              // 7 Διάθεση προϊόντων αλλαντοποιίας/Τυροκομίας
+  BAKERY_WITH_COFFEE                  // 8a Αρτοποιείο με παροχή καφέ
+  BAKERY_NO_COFFEE                    // 8b Αρτοποιείο χωρίς παροχή καφέ
+  BAKERY_PASTRY_WITH_COFFEE           // 8γ Αρτοποιείο – Ζαχαροπλαστείο με παροχή καφέ
+  PASTRY_WITH_COFFEE                  // 8δ Ζαχαροπλαστείο με παροχή καφέ
+  PASTRY_NO_COFFEE                    // 8ε Ζαχαροπλαστείο χωρίς παροχή καφέ
+  GROCERY_FRUIT                       // 9 Παντοπωλείο / οπωροπωλείο
+  WINE_NUTS_SHOP                      // 10 Κάβα / κατάστημα ξηρών καρπών
+  FROZEN_PRODUCTS_SHOP                // 11 Πρατήριο κατεψυγμένων προϊόντων
+  PACKAGED_FRESH_FROZEN_DRY           // 12 Συσκευασμένα προϊόντα νωπά/κατεψυγμένα/ξηρού φορτίου
+  ICE_CREAM_SHOP                      // 13 Παγωτοπωλείο
+  PUFF_PASTRY_PRODUCTION              // 14 Παρασκευή – πώληση σφολιατοειδών προϊόντων
+}
+
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum PublicHoliday {
+  NEW_YEAR            // 01/01
+  CLEAN_MONDAY        // Καθαρά Δευτέρα
+  MARCH_25            // 25/03
+  EASTER_SUNDAY
+  EASTER_MONDAY
+  AUG_15              // Κοίμηση Θεοτόκου
+  OCT_28              // 28/10
+  CHRISTMAS           // 25/12
+  BOXING_DAY          // 26/12
+}
+
 model User {
   id                 String        @id @default(cuid())
   name               String
@@ -55,34 +103,40 @@ model User {
 }
 
 model UserProfile {
-  id                 String   @id @default(cuid())
-  userId             String   @unique
+  id        String @id @default(cuid())
+  userId    String @unique
+  user      User   @relation(fields: [userId], references: [id])
 
-  businessName       String
-  businessTypes      String[]          // πολλαπλοί τύποι επιχείρησης
-  equipmentCount     Int?              // c1
-  hasDryAged         Boolean?          // c2
-  supervisorInitials String?           // αρχικά υπευθύνου
-  equipmentFlags     Json?             // λοιπός εξοπλισμός (checklist)
+  // Επωνυμία
+  businessName  String
 
-  // ΝΕΑ ΠΕΔΙΑ
-  closedDaysText     String?           // Ποιες μέρες είναι κλειστά (κείμενο)
+  // Business types (enum, πολλά)
+  businessTypes BusinessType[]
 
-  // Πολλαπλές αργίες – ΠΡΕΠΕΙ να είναι λίστα DateTime
-  holidayClosedDates DateTime[] @default([])
+  // Πλήθος εξοπλισμού συντήρησης
+  fridgeCount          Int @default(0) // Αριθμός ψυγείων
+  freezerCount         Int @default(0) // Αριθμός καταψύξεων
+  hotCabinetCount      Int @default(0) // Αριθμός θερμοθαλάμων / Bain Marie
+  dryAgedChamberCount  Int @default(0) // Αριθμός θαλάμων Dry Aged
+  iceCreamFreezerCount Int @default(0) // Αριθμός καταψύκτη/έκθεσης παγωτών
 
-  // Διαστήματα Αυγούστου / Πάσχα
-  augustClosedFrom   DateTime?
-  augustClosedTo     DateTime?
-  easterClosedFrom   DateTime?
-  easterClosedTo     DateTime?
+  // Αρχικά υπευθύνου
+  supervisorInitials String?
 
-  user      User     @relation(fields: [userId], references: [id])
+  // Μέρες εβδομάδας που είναι κλειστά
+  closedWeekdays Weekday[] // MONDAY...SUNDAY
+
+  // Σταθερές αργίες που είναι κλειστά
+  closedHolidays PublicHoliday[]
+
+  // Διάστημα Αυγούστου που είναι κλειστά (ημερομηνίες με year)
+  augustClosedFrom DateTime?
+  augustClosedTo   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  @@index([userId])
 }
+
 
 
 model File {
