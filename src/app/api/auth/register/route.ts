@@ -7,7 +7,7 @@ import { z } from "zod";
 const ProfileSchema = z.object({
   businessName: z.string().min(1, "Επωνυμία επιχείρησης είναι υποχρεωτική."),
   businessTypes: z.array(z.string()).min(1, "Επιλέξτε τουλάχιστον ένα είδος επιχείρησης."),
-  hasDryAged: z.boolean().optional(),
+  hasDryAged: z.boolean().optional(), // Μπορούμε να το κρατήσουμε στο Zod, απλώς δεν το περνάμε στο Prisma
   supervisorInitials: z.string().optional(),
   equipmentFlags: z.record(z.boolean()).optional(),
 
@@ -93,11 +93,13 @@ export async function POST(req: Request) {
         data: {
           userId: user.id,
           businessName: profile.businessName,
-          // Prisma enum[] expects *enum values*; here we trust the frontend
-          // is already sending the enum keys like "RESTAURANT_GRILL"
+          // Prisma enum[] expects *enum values*; εδώ εμπιστευόμαστε ότι
+          // το frontend στέλνει ήδη τα enum keys (π.χ. "RESTAURANT_GRILL")
           businessTypes: profile.businessTypes as any,
 
-          hasDryAged: profile.hasDryAged ?? false,
+          // ⛔ ΠΡΟΣΟΧΗ: ΔΕΝ στέλνουμε πλέον hasDryAged γιατί ΔΕΝ υπάρχει στο schema
+          // Μπορούμε αργότερα να το χαρτογραφήσουμε σε dryAgedChamberCount αν θέλουμε
+
           supervisorInitials: profile.supervisorInitials || null,
           equipmentFlags: profile.equipmentFlags ?? {},
 
@@ -109,11 +111,9 @@ export async function POST(req: Request) {
           easterClosedFrom: parseDateOrNull(profile.easterRange?.from ?? null),
           easterClosedTo: parseDateOrNull(profile.easterRange?.to ?? null),
 
-          // ⚠️ IMPORTANT:
-          // We DO NOT send `equipmentCount` here anymore because your Prisma
-          // schema does not have that field. The new optional numeric
-          // fields (fridgeCount, freezerCount, etc.) will just stay null
-          // until we wire them from the new registration form.
+          // Τα νέα numeric πεδία (fridgeCount, freezerCount κλπ)
+          // δεν τα συμπληρώνουμε ακόμα εδώ, θα μείνουν null μέχρι να
+          // φτιάξουμε νέο UI σύμφωνα με την τελική φόρμα από IT.
         },
       });
     }
