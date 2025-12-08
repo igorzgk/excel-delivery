@@ -1,183 +1,158 @@
 // src/app/api/profile/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { prisma } from "@/lib/prisma";
+import { z } from "zod";
 
-export const runtime = "nodejs";
+const ProfileSchema = z.object({
+  businessName: z.string().min(1),
+  businessTypes: z.array(z.string()).min(1),
 
-// Helper for YYYY-MM-DD
-function toDateString(d: Date | null | undefined) {
-  return d ? d.toISOString().slice(0, 10) : null;
+  fridgeCount: z.number().int().nonnegative().optional().default(0),
+  freezerCount: z.number().int().nonnegative().optional().default(0),
+  hotCabinetCount: z.number().int().nonnegative().optional().default(0),
+  dryAgedChamberCount: z.number().int().nonnegative().optional().default(0),
+  iceCreamFreezerCount: z.number().int().nonnegative().optional().default(0),
+
+  supervisorInitials: z.string().max(20).optional().nullable(),
+
+  closedWeekdays: z.array(z.string()).optional().default([]),
+  closedHolidays: z.array(z.string()).optional().default([]),
+
+  augustRange: z
+    .object({
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    })
+    .optional()
+    .nullable(),
+});
+
+function toISODate(d: Date | null | undefined) {
+  if (!d) return null;
+  return d.toISOString().slice(0, 10);
 }
 
-// Turn "2025-12-11" into Date | null
-function toDateOrNull(s?: string | null) {
-  return s ? new Date(`${s}T00:00:00Z`) : null;
-}
-
-/**
- * GET /api/profile
- * - returns current user basic info + full profile (including dates)
- */
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user?.email) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
-    select: { id: true, email: true, name: true, status: true, role: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      status: true,
+      role: true,
+      profile: true,
+    },
   });
 
   if (!user) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const p = await prisma.userProfile.findUnique({
-    where: { userId: user.id },
-  });
-
-  if (!p) {
-    return NextResponse.json(
-      {
-        ok: true,
-        user,
-        profile: null,
-      },
-      { status: 200 }
-    );
-  }
-
-  const profile = {
-    businessName: p.businessName,
-    businessTypes: p.businessTypes,
-    equipmentCount: p.equipmentCount,
-    hasDryAged: p.hasDryAged,
-    supervisorInitials: p.supervisorInitials,
-    equipmentFlags: (p.equipmentFlags || {}) as Record<string, boolean>,
-
-    closedDaysText: p.closedDaysText,
-    holidayClosedDates: (p.holidayClosedDates || []).map((d) =>
-      toDateString(d)
-    ),
-    augustRange:
-      p.augustClosedFrom && p.augustClosedTo
-        ? {
-            from: toDateString(p.augustClosedFrom),
-            to: toDateString(p.augustClosedTo),
-          }
-        : null,
-    easterRange:
-      p.easterClosedFrom && p.easterClosedTo
-        ? {
-            from: toDateString(p.easterClosedFrom),
-            to: toDateString(p.easterClosedTo),
-          }
-        : null,
-  };
+  const p = user.profile;
 
   return NextResponse.json(
     {
       ok: true,
-      user,
-      profile,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        status: user.status,
+        role: user.role,
+      },
+      profile: p
+        ? {
+            businessName: p.businessName,
+            businessTypes: p.businessTypes,
+            fridgeCount: p.fridgeCount,
+            freezerCount: p.freezerCount,
+            hotCabinetCount: p.hotCabinetCount,
+            dryAgedChamberCount: p.dryAgedChamberCount,
+            iceCreamFreezerCount: p.iceCreamFreezerCount,
+            supervisorInitials: p.supervisorInitials,
+            closedWeekdays: p.closedWeekdays,
+            closedHolidays: p.closedHolidays,
+            augustRange:
+              p.augustClosedFrom && p.augustClosedTo
+                ? {
+                    from: toISODate(p.augustClosedFrom),
+                    to: toISODate(p.augustClosedTo),
+                  }
+                : null,
+          }
+        : null,
     },
     { status: 200 }
   );
 }
 
-/**
- * PUT /api/profile
- * - body: all profile properties (the same shape your integration GET returns)
- * - saves/updates profile for the current user
- */
 export async function PUT(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user?.email) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  const body = await req.json();
+  const parsed = ProfileSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+  }
+
+  const data = parsed.data;
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
     select: { id: true },
   });
-
   if (!user) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
-  }
-
-  const {
-    businessName,
-    businessTypes,
-    equipmentCount,
-    hasDryAged,
-    supervisorInitials,
-    equipmentFlags,
-
-    closedDaysText,
-    holidayClosedDates,
-    augustRange,
-    easterRange,
-  } = body as any;
-
-  const holidayDates: Date[] = (holidayClosedDates || [])
-    .map((s: string) => toDateOrNull(s))
-    .filter(Boolean) as Date[];
+  const augustFrom =
+    data.augustRange?.from ? new Date(data.augustRange.from + "T00:00:00Z") : null;
+  const augustTo =
+    data.augustRange?.to ? new Date(data.augustRange.to + "T00:00:00Z") : null;
 
   const profile = await prisma.userProfile.upsert({
     where: { userId: user.id },
     create: {
       userId: user.id,
-      businessName: businessName || "",
-      businessTypes: businessTypes || [],
-      equipmentCount: equipmentCount ?? 0,
-      hasDryAged: !!hasDryAged,
-      supervisorInitials: supervisorInitials || "",
-      equipmentFlags: (equipmentFlags || {}) as any,
-
-      closedDaysText: closedDaysText || "",
-      holidayClosedDates: holidayDates,
-      augustClosedFrom: augustRange ? toDateOrNull(augustRange.from) : null,
-      augustClosedTo: augustRange ? toDateOrNull(augustRange.to) : null,
-      easterClosedFrom: easterRange ? toDateOrNull(easterRange.from) : null,
-      easterClosedTo: easterRange ? toDateOrNull(easterRange.to) : null,
+      businessName: data.businessName,
+      businessTypes: data.businessTypes as any,
+      fridgeCount: data.fridgeCount ?? 0,
+      freezerCount: data.freezerCount ?? 0,
+      hotCabinetCount: data.hotCabinetCount ?? 0,
+      dryAgedChamberCount: data.dryAgedChamberCount ?? 0,
+      iceCreamFreezerCount: data.iceCreamFreezerCount ?? 0,
+      supervisorInitials: data.supervisorInitials ?? null,
+      closedWeekdays: (data.closedWeekdays ?? []) as any,
+      closedHolidays: (data.closedHolidays ?? []) as any,
+      augustClosedFrom: augustFrom,
+      augustClosedTo: augustTo,
     },
     update: {
-      businessName: businessName ?? undefined,
-      businessTypes: businessTypes ?? undefined,
-      equipmentCount: equipmentCount ?? undefined,
-      hasDryAged: hasDryAged ?? undefined,
-      supervisorInitials: supervisorInitials ?? undefined,
-      equipmentFlags: equipmentFlags ?? undefined,
-
-      closedDaysText: closedDaysText ?? undefined,
-      holidayClosedDates: holidayClosedDates
-        ? holidayDates
-        : undefined,
-      augustClosedFrom: augustRange
-        ? toDateOrNull(augustRange.from)
-        : undefined,
-      augustClosedTo: augustRange
-        ? toDateOrNull(augustRange.to)
-        : undefined,
-      easterClosedFrom: easterRange
-        ? toDateOrNull(easterRange.from)
-        : undefined,
-      easterClosedTo: easterRange
-        ? toDateOrNull(easterRange.to)
-        : undefined,
+      businessName: data.businessName,
+      businessTypes: data.businessTypes as any,
+      fridgeCount: data.fridgeCount ?? 0,
+      freezerCount: data.freezerCount ?? 0,
+      hotCabinetCount: data.hotCabinetCount ?? 0,
+      dryAgedChamberCount: data.dryAgedChamberCount ?? 0,
+      iceCreamFreezerCount: data.iceCreamFreezerCount ?? 0,
+      supervisorInitials: data.supervisorInitials ?? null,
+      closedWeekdays: (data.closedWeekdays ?? []) as any,
+      closedHolidays: (data.closedHolidays ?? []) as any,
+      augustClosedFrom: augustFrom,
+      augustClosedTo: augustTo,
     },
   });
 
-  return NextResponse.json(
-    { ok: true, userId: profile.userId },
-    { status: 200 }
-  );
+  return NextResponse.json({ ok: true, profile }, { status: 200 });
 }

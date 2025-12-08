@@ -1,94 +1,159 @@
-// src/app/api/admin/users/[id]/route.ts
+// src/app/api/admin/users/[id]/profile/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { prisma } from "@/lib/prisma";
+import { z } from "zod";
 
-type Params = {
-  params: { id: string };
-};
+const ProfileSchema = z.object({
+  businessName: z.string().min(1),
+  businessTypes: z.array(z.string()).min(1),
 
-async function requireAdmin() {
+  fridgeCount: z.number().int().nonnegative().optional().default(0),
+  freezerCount: z.number().int().nonnegative().optional().default(0),
+  hotCabinetCount: z.number().int().nonnegative().optional().default(0),
+  dryAgedChamberCount: z.number().int().nonnegative().optional().default(0),
+  iceCreamFreezerCount: z.number().int().nonnegative().optional().default(0),
+
+  supervisorInitials: z.string().max(20).optional().nullable(),
+
+  closedWeekdays: z.array(z.string()).optional().default([]),
+  closedHolidays: z.array(z.string()).optional().default([]),
+
+  augustRange: z
+    .object({
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    })
+    .optional()
+    .nullable(),
+});
+
+function toISODate(d: Date | null | undefined) {
+  if (!d) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+export async function GET(
+  req: Request,
+  ctx: { params: { id: string } }
+) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.role !== "ADMIN") {
-    return null;
+  if (!session?.user || session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  return session;
+
+  const userId = ctx.params.id;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      status: true,
+      role: true,
+      profile: true,
+    },
+  });
+
+  if (!user) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  const p = user.profile;
+
+  return NextResponse.json(
+    {
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        status: user.status,
+        role: user.role,
+      },
+      profile: p
+        ? {
+            businessName: p.businessName,
+            businessTypes: p.businessTypes,
+            fridgeCount: p.fridgeCount,
+            freezerCount: p.freezerCount,
+            hotCabinetCount: p.hotCabinetCount,
+            dryAgedChamberCount: p.dryAgedChamberCount,
+            iceCreamFreezerCount: p.iceCreamFreezerCount,
+            supervisorInitials: p.supervisorInitials,
+            closedWeekdays: p.closedWeekdays,
+            closedHolidays: p.closedHolidays,
+            augustRange:
+              p.augustClosedFrom && p.augustClosedTo
+                ? {
+                    from: toISODate(p.augustClosedFrom),
+                    to: toISODate(p.augustClosedTo),
+                  }
+                : null,
+          }
+        : null,
+    },
+    { status: 200 }
+  );
 }
 
-/**
- * PATCH /api/admin/users/[id]
- * Used by the admin users table to change:
- * - role
- * - status
- * - subscriptionActive
- */
-export async function PATCH(req: Request, { params }: Params) {
-  const session = await requireAdmin();
-  if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+export async function PUT(
+  req: Request,
+  ctx: { params: { id: string } }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user || session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const id = params.id;
+  const userId = ctx.params.id;
   const body = await req.json();
-
-  const data: any = {};
-  if (typeof body.role === "string") {
-    data.role = body.role;
+  const parsed = ProfileSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
-  if (typeof body.status === "string") {
-    data.status = body.status;
-  }
-  if (typeof body.subscriptionActive === "boolean") {
-    data.subscriptionActive = body.subscriptionActive;
-  }
+  const data = parsed.data;
 
-  if (Object.keys(data).length === 0) {
-    return NextResponse.json({ error: "no_fields" }, { status: 400 });
-  }
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!user) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  try {
-    const user = await prisma.user.update({
-      where: { id },
-      data,
-    });
-    return NextResponse.json({ ok: true, user });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "update_failed" }, { status: 500 });
-  }
-}
+  const augustFrom =
+    data.augustRange?.from ? new Date(data.augustRange.from + "T00:00:00Z") : null;
+  const augustTo =
+    data.augustRange?.to ? new Date(data.augustRange.to + "T00:00:00Z") : null;
 
-/**
- * DELETE /api/admin/users/[id]
- * Delete user AND related profile/records to avoid FK constraint errors.
- */
-export async function DELETE(req: Request, { params }: Params) {
-  const session = await requireAdmin();
-  if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const profile = await prisma.userProfile.upsert({
+    where: { userId: user.id },
+    create: {
+      userId: user.id,
+      businessName: data.businessName,
+      businessTypes: data.businessTypes as any,
+      fridgeCount: data.fridgeCount ?? 0,
+      freezerCount: data.freezerCount ?? 0,
+      hotCabinetCount: data.hotCabinetCount ?? 0,
+      dryAgedChamberCount: data.dryAgedChamberCount ?? 0,
+      iceCreamFreezerCount: data.iceCreamFreezerCount ?? 0,
+      supervisorInitials: data.supervisorInitials ?? null,
+      closedWeekdays: (data.closedWeekdays ?? []) as any,
+      closedHolidays: (data.closedHolidays ?? []) as any,
+      augustClosedFrom: augustFrom,
+      augustClosedTo: augustTo,
+    },
+    update: {
+      businessName: data.businessName,
+      businessTypes: data.businessTypes as any,
+      fridgeCount: data.fridgeCount ?? 0,
+      freezerCount: data.freezerCount ?? 0,
+      hotCabinetCount: data.hotCabinetCount ?? 0,
+      dryAgedChamberCount: data.dryAgedChamberCount ?? 0,
+      iceCreamFreezerCount: data.iceCreamFreezerCount ?? 0,
+      supervisorInitials: data.supervisorInitials ?? null,
+      closedWeekdays: (data.closedWeekdays ?? []) as any,
+      closedHolidays: (data.closedHolidays ?? []) as any,
+      augustClosedFrom: augustFrom,
+      augustClosedTo: augustTo,
+    },
+  });
 
-  const id = params.id;
-
-  try {
-    await prisma.$transaction(async (tx) => {
-      // 1) Delete profile (fixes UserProfile_userId_fkey)
-      await tx.userProfile.deleteMany({ where: { userId: id } });
-
-      // 2) Optionally clean related data (safe even if nothing exists)
-      await tx.fileAssignment.deleteMany({ where: { userId: id } });
-      await tx.fileAssignment.deleteMany({ where: { assignedById: id } });
-      await tx.file.deleteMany({ where: { uploadedById: id } });
-      await tx.auditLog.deleteMany({ where: { actorId: id } });
-
-      // 3) Finally delete the user
-      await tx.user.delete({ where: { id } });
-    });
-
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "delete_failed" }, { status: 500 });
-  }
+  return NextResponse.json({ ok: true, profile }, { status: 200 });
 }

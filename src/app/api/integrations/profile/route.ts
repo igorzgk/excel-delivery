@@ -3,29 +3,22 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey } from "@/lib/apiKeyAuth";
 
-export const runtime = "nodejs";
-
-// Helper for YYYY-MM-DD
-function toDateString(d: Date | null | undefined) {
-  return d ? d.toISOString().slice(0, 10) : null;
+// Helper: convert Date -> "YYYY-MM-DD"
+function toISODate(d: Date | null | undefined) {
+  if (!d) return null;
+  return d.toISOString().slice(0, 10);
 }
 
 export async function GET(req: Request) {
-  // 1) API key auth
   const auth = requireApiKey(req);
   if (!auth.ok) return auth.res;
 
   const url = new URL(req.url);
   const email = url.searchParams.get("email");
-
   if (!email) {
-    return NextResponse.json(
-      { ok: false, error: "missing_email" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "email_required" }, { status: 400 });
   }
 
-  // 2) Load user
   const user = await prisma.user.findUnique({
     where: { email },
     select: {
@@ -34,6 +27,7 @@ export async function GET(req: Request) {
       name: true,
       status: true,
       role: true,
+      profile: true,
     },
   });
 
@@ -41,59 +35,44 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, exists: false }, { status: 200 });
   }
 
-  // 3) Load profile (if exists)
-  const p = await prisma.userProfile.findUnique({
-    where: { userId: user.id },
-  });
-
-  if (!p) {
-    // User exists, but no profile yet
-    return NextResponse.json(
-      {
-        ok: true,
-        exists: true,
-        user,
-        profile: null,
-      },
-      { status: 200 }
-    );
-  }
-
-  // 4) Map DB → JSON for client (convert Dates to strings)
-  const profile = {
-    businessName: p.businessName,
-    businessTypes: p.businessTypes,
-    equipmentCount: p.equipmentCount,
-    hasDryAged: p.hasDryAged,
-    supervisorInitials: p.supervisorInitials,
-    equipmentFlags: p.equipmentFlags as Record<string, boolean> | null,
-
-    closedDaysText: p.closedDaysText,
-    holidayClosedDates: (p.holidayClosedDates || []).map((d) =>
-      d.toISOString().slice(0, 10)
-    ),
-    augustRange:
-      p.augustClosedFrom && p.augustClosedTo
-        ? {
-            from: toDateString(p.augustClosedFrom),
-            to: toDateString(p.augustClosedTo),
-          }
-        : null,
-    easterRange:
-      p.easterClosedFrom && p.easterClosedTo
-        ? {
-            from: toDateString(p.easterClosedFrom),
-            to: toDateString(p.easterClosedTo),
-          }
-        : null,
-  };
+  const p = user.profile;
 
   return NextResponse.json(
     {
       ok: true,
       exists: true,
-      user,
-      profile,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        status: user.status,
+        role: user.role,
+      },
+      profile: p
+        ? {
+            businessName: p.businessName,
+            businessTypes: p.businessTypes, // enum string[]
+
+            fridgeCount: p.fridgeCount,
+            freezerCount: p.freezerCount,
+            hotCabinetCount: p.hotCabinetCount,
+            dryAgedChamberCount: p.dryAgedChamberCount,
+            iceCreamFreezerCount: p.iceCreamFreezerCount,
+
+            supervisorInitials: p.supervisorInitials,
+
+            closedWeekdays: p.closedWeekdays,   // Weekday[]
+            closedHolidays: p.closedHolidays,   // PublicHoliday[]
+
+            augustRange:
+              p.augustClosedFrom && p.augustClosedTo
+                ? {
+                    from: toISODate(p.augustClosedFrom),
+                    to: toISODate(p.augustClosedTo),
+                  }
+                : null,
+          }
+        : null,
     },
     { status: 200 }
   );
