@@ -1,4 +1,3 @@
-// src/app/(user)/profile/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -121,6 +120,12 @@ export default function UserProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
 
+  // password change state
+  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwErr, setPwErr] = useState<string | null>(null);
+  const [pwMsg, setPwMsg] = useState<string | null>(null);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -133,7 +138,6 @@ export default function UserProfilePage() {
         const p = json.profile as any | null;
 
         if (!p) {
-          // default κενό προφίλ
           setProfile({
             businessName: "",
             businessTypes: [],
@@ -190,14 +194,50 @@ export default function UserProfilePage() {
         body: JSON.stringify(profile),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(j?.error || "Αποτυχία αποθήκευσης");
-      }
+      if (!res.ok) throw new Error(j?.error || "Αποτυχία αποθήκευσης");
       setOkMessage("Το προφίλ αποθηκεύτηκε με επιτυχία.");
     } catch (err: any) {
       setError(err.message || "Αποτυχία αποθήκευσης");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function changePassword() {
+    setPwErr(null);
+    setPwMsg(null);
+
+    if (!pw.current.trim()) {
+      setPwErr("Συμπληρώστε τον τρέχοντα κωδικό.");
+      return;
+    }
+    if (pw.next.length < 6) {
+      setPwErr("Ο νέος κωδικός πρέπει να είναι τουλάχιστον 6 χαρακτήρες.");
+      return;
+    }
+    if (pw.next !== pw.confirm) {
+      setPwErr("Η επιβεβαίωση κωδικού δεν ταιριάζει.");
+      return;
+    }
+
+    setPwSaving(true);
+    try {
+      const res = await fetch("/api/profile/password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: pw.current, newPassword: pw.next }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (j?.error === "wrong_password") throw new Error("Ο τρέχων κωδικός είναι λάθος.");
+        throw new Error(j?.error || "Αποτυχία αλλαγής κωδικού");
+      }
+      setPwMsg("Ο κωδικός ενημερώθηκε.");
+      setPw({ current: "", next: "", confirm: "" });
+    } catch (e: any) {
+      setPwErr(e.message || "Αποτυχία αλλαγής κωδικού");
+    } finally {
+      setPwSaving(false);
     }
   }
 
@@ -214,50 +254,38 @@ export default function UserProfilePage() {
       <header>
         <h1 className="text-2xl font-semibold">Προφίλ επιχείρησης</h1>
         <p className="text-sm text-gray-500">
-          Δείτε και ενημερώστε τα στοιχεία της επιχείρησής σας όπως θα
-          χρησιμοποιηθούν στο σύστημα και στις αυτόματες αναφορές.
+          Δείτε και ενημερώστε τα στοιχεία της επιχείρησής σας.
         </p>
       </header>
 
       <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-5">
-        {/* 1) Επωνυμία */}
+        {/* Βασικά */}
         <div>
           <h2 className="font-semibold mb-2">Βασικά στοιχεία</h2>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block">
               <span className="text-sm">Επωνυμία επιχείρησης</span>
-              <input
-                className="w-full border rounded p-2 text-sm"
-                value={profile.businessName}
-                onChange={(e) => update("businessName", e.target.value)}
-              />
+              <input className="w-full border rounded p-2 text-sm" value={profile.businessName}
+                onChange={(e) => update("businessName", e.target.value)} />
             </label>
 
             <label className="block">
               <span className="text-sm">Αρχικά υπευθύνου καταγραφής</span>
-              <input
-                className="w-full border rounded p-2 text-sm"
-                value={profile.supervisorInitials}
-                onChange={(e) => update("supervisorInitials", e.target.value)}
-              />
+              <input className="w-full border rounded p-2 text-sm" value={profile.supervisorInitials}
+                onChange={(e) => update("supervisorInitials", e.target.value)} />
             </label>
           </div>
         </div>
 
-        {/* 2) Business types */}
+        {/* Types */}
         <div>
           <h2 className="font-semibold mb-2">Είδος επιχείρησης</h2>
-          <p className="text-xs text-gray-500 mb-2">
-            Μπορείτε να επιλέξετε περισσότερες από μία επιλογές.
-          </p>
+          <p className="text-xs text-gray-500 mb-2">Μπορείτε να επιλέξετε περισσότερες από μία επιλογές.</p>
           <div className="grid md:grid-cols-2 gap-2">
             {(Object.keys(BUSINESS_TYPES_LABELS) as BusinessType[]).map((key) => {
               const checked = profile.businessTypes.includes(key);
               return (
-                <label
-                  key={key}
-                  className="flex items-center gap-2 border rounded p-2 text-sm"
-                >
+                <label key={key} className="flex items-center gap-2 border rounded p-2 text-sm">
                   <input
                     type="checkbox"
                     checked={checked}
@@ -274,56 +302,26 @@ export default function UserProfilePage() {
           </div>
         </div>
 
-        {/* 3) Εξοπλισμός συντήρησης */}
+        {/* Equipment */}
         <div>
-          <h2 className="font-semibold mb-2">
-            Εξοπλισμός αποθήκευσης/διατήρησης τροφίμων
-          </h2>
-          <p className="text-xs text-gray-500 mb-2">
-            Συμπληρώστε 0 αν δεν διαθέτετε κάποιον από τους παρακάτω εξοπλισμούς.
-          </p>
+          <h2 className="font-semibold mb-2">Εξοπλισμός αποθήκευσης/διατήρησης τροφίμων</h2>
+          <p className="text-xs text-gray-500 mb-2">Συμπληρώστε 0 αν δεν διαθέτετε κάποιον εξοπλισμό.</p>
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <NumberField
-              label="Αριθμός ψυγείων"
-              value={profile.fridgeCount}
-              onChange={(v) => update("fridgeCount", v)}
-            />
-            <NumberField
-              label="Αριθμός καταψύξεων"
-              value={profile.freezerCount}
-              onChange={(v) => update("freezerCount", v)}
-            />
-            <NumberField
-              label="Αριθμός θερμοθαλάμων / Bain Marie"
-              value={profile.hotCabinetCount}
-              onChange={(v) => update("hotCabinetCount", v)}
-            />
-            <NumberField
-              label="Αριθμός θαλάμων Dry Aged"
-              value={profile.dryAgedChamberCount}
-              onChange={(v) => update("dryAgedChamberCount", v)}
-            />
-            <NumberField
-              label="Αριθμός καταψύκτη/έκθεσης παγωτών"
-              value={profile.iceCreamFreezerCount}
-              onChange={(v) => update("iceCreamFreezerCount", v)}
-            />
+            <NumberField label="Αριθμός ψυγείων" value={profile.fridgeCount} onChange={(v) => update("fridgeCount", v)} />
+            <NumberField label="Αριθμός καταψύξεων" value={profile.freezerCount} onChange={(v) => update("freezerCount", v)} />
+            <NumberField label="Αριθμός θερμοθαλάμων / Bain Marie" value={profile.hotCabinetCount} onChange={(v) => update("hotCabinetCount", v)} />
+            <NumberField label="Αριθμός θαλάμων Dry Aged" value={profile.dryAgedChamberCount} onChange={(v) => update("dryAgedChamberCount", v)} />
+            <NumberField label="Αριθμός καταψύκτη/έκθεσης παγωτών" value={profile.iceCreamFreezerCount} onChange={(v) => update("iceCreamFreezerCount", v)} />
           </div>
         </div>
 
-        {/* 5) Μέρες/Αργίες/Αύγουστος */}
+        {/* Operating days */}
         <div>
           <h2 className="font-semibold mb-2">Ημέρες & περίοδοι λειτουργίας</h2>
 
           <div className="grid md:grid-cols-2 gap-4">
-            {/* Weekdays */}
             <div>
-              <div className="text-sm mb-1">
-                Ποιες μέρες είναι κλειστά η επιχείρηση;
-              </div>
-              <p className="text-xs text-gray-500 mb-2">
-                Αν δεν υπάρχει καμία κλειστή μέρα, αφήστε τα κενά.
-              </p>
+              <div className="text-sm mb-1">Ποιες μέρες είναι κλειστά;</div>
               <div className="flex flex-wrap gap-2">
                 {(Object.keys(WEEKDAY_LABELS) as Weekday[]).map((day) => {
                   const checked = profile.closedWeekdays.includes(day);
@@ -334,16 +332,11 @@ export default function UserProfilePage() {
                       onClick={() => {
                         const set = new Set(profile.closedWeekdays);
                         checked ? set.delete(day) : set.add(day);
-                        update(
-                          "closedWeekdays",
-                          Array.from(set) as Weekday[]
-                        );
+                        update("closedWeekdays", Array.from(set) as Weekday[]);
                       }}
                       className={[
                         "px-3 py-1 rounded-full border text-xs",
-                        checked
-                          ? "bg-[color:var(--brand,#25C3F4)] text-black border-transparent"
-                          : "border-gray-300",
+                        checked ? "bg-[color:var(--brand,#25C3F4)] text-black border-transparent" : "border-gray-300",
                       ].join(" ")}
                     >
                       {WEEKDAY_LABELS[day]}
@@ -353,29 +346,20 @@ export default function UserProfilePage() {
               </div>
             </div>
 
-            {/* Holidays */}
             <div>
-              <div className="text-sm mb-1">
-                Ποιες αργίες παραμένει κλειστή η επιχείρηση;
-              </div>
+              <div className="text-sm mb-1">Ποιες αργίες είναι κλειστά;</div>
               <div className="grid gap-2">
                 {(Object.keys(HOLIDAY_LABELS) as PublicHoliday[]).map((h) => {
                   const checked = profile.closedHolidays.includes(h);
                   return (
-                    <label
-                      key={h}
-                      className="flex items-center gap-2 border rounded p-2 text-xs"
-                    >
+                    <label key={h} className="flex items-center gap-2 border rounded p-2 text-xs">
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={(e) => {
                           const set = new Set(profile.closedHolidays);
                           e.target.checked ? set.add(h) : set.delete(h);
-                          update(
-                            "closedHolidays",
-                            Array.from(set) as PublicHoliday[]
-                          );
+                          update("closedHolidays", Array.from(set) as PublicHoliday[]);
                         }}
                       />
                       <span>{HOLIDAY_LABELS[h]}</span>
@@ -386,39 +370,76 @@ export default function UserProfilePage() {
             </div>
           </div>
 
-          {/* August range */}
           <div className="mt-4">
-            <div className="text-sm mb-1">
-              Ποιο διάστημα του Αυγούστου είναι κλειστά;
-            </div>
-            <p className="text-xs text-gray-500 mb-2">
-              Παράδειγμα: 2025-08-10 έως 2025-08-23. Αφήστε κενό αν δεν
-              παραμένει κλειστή συγκεκριμένη περίοδο.
-            </p>
+            <div className="text-sm mb-1">Διάστημα Αυγούστου (κλειστά)</div>
             <div className="grid grid-cols-2 gap-2 max-w-md">
               <input
                 type="date"
                 className="border rounded p-2 text-sm"
                 value={profile.augustRange.from}
-                onChange={(e) =>
-                  update("augustRange", {
-                    ...profile.augustRange,
-                    from: e.target.value,
-                  })
-                }
+                onChange={(e) => update("augustRange", { ...profile.augustRange, from: e.target.value })}
               />
               <input
                 type="date"
                 className="border rounded p-2 text-sm"
                 value={profile.augustRange.to}
-                onChange={(e) =>
-                  update("augustRange", {
-                    ...profile.augustRange,
-                    to: e.target.value,
-                  })
-                }
+                onChange={(e) => update("augustRange", { ...profile.augustRange, to: e.target.value })}
               />
             </div>
+          </div>
+        </div>
+
+        {/* ✅ Change password for user */}
+        <div className="pt-2 border-t border-[color:var(--border)]">
+          <h2 className="font-semibold mb-2">Αλλαγή κωδικού</h2>
+
+          <div className="grid md:grid-cols-3 gap-3">
+            <label className="block">
+              <span className="text-sm">Τρέχων κωδικός</span>
+              <input
+                type="password"
+                className="w-full border rounded p-2 text-sm"
+                value={pw.current}
+                onChange={(e) => setPw({ ...pw, current: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm">Νέος κωδικός</span>
+              <input
+                type="password"
+                className="w-full border rounded p-2 text-sm"
+                value={pw.next}
+                onChange={(e) => setPw({ ...pw, next: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm">Επιβεβαίωση</span>
+              <input
+                type="password"
+                className="w-full border rounded p-2 text-sm"
+                value={pw.confirm}
+                onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
+              />
+            </label>
+          </div>
+
+          {pwErr && <p className="text-sm text-red-600 mt-2">{pwErr}</p>}
+          {pwMsg && <p className="text-sm text-green-700 mt-2">{pwMsg}</p>}
+
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={changePassword}
+              disabled={pwSaving}
+              className="rounded-xl px-4 py-2 text-sm font-semibold border"
+              style={{
+                borderColor: "var(--border)",
+                backgroundColor: "rgba(37,195,244,.12)",
+                color: "#061630",
+              }}
+            >
+              {pwSaving ? "Ενημέρωση…" : "Αλλαγή κωδικού"}
+            </button>
           </div>
         </div>
 
