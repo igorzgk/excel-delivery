@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey } from "@/lib/apiKeyAuth";
-import { supabasePutBuffer } from "@/lib/storage-supabase";
+import { supabasePutBuffer, supabaseRemove } from "@/lib/storage-supabase";
 import { logAudit } from "@/lib/audit";
 import { extractEmailsFromText, resolveAssigneeIdsByEmails } from "@/lib/assignmentRules";
 
@@ -29,18 +29,15 @@ export async function GET(req: Request) {
       endpoint: "POST /api/integrations/upload-multipart",
       expectsHeaders: {
         "x-api-key": "YOUR_PLAIN_KEY",
-        // Content-Type το ορίζει αυτόματα ο client για multipart (boundary)
       },
       expectsBody: {
-        // multipart/form-data fields:
         title: "string (required)",
         file: "File (required, .xlsx from local disk)",
         uploadedByEmail: "string (optional, attribution if it matches a user)",
       },
       notes: [
-        "Ανάθεση: ανιχνεύουμε emails μέσα στο title (και σε άλλα flows στο url).",
-        "ΜΗΝ βάζετε email στο URL path (privacy/logging).",
-        "Πάντα JSON responses (όχι HTML/redirect).",
+        "Replace behavior: αν υπάρχει αρχείο με ίδιο filename, γίνεται overwrite (μένει μόνο το τελευταίο).",
+        "Ανάθεση: ανιχνεύουμε emails μέσα στο title/original filename.",
       ],
       time: new Date().toISOString(),
     },
@@ -65,17 +62,12 @@ export async function POST(req: Request) {
   try {
     form = await req.formData();
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "invalid_multipart" },
-      { status: 400, headers: { "Cache-Control": "no-store" } }
-    );
+    return NextResponse.json({ ok: false, error: "invalid_multipart" }, { status: 400 });
   }
 
   const title = String(form.get("title") || "").trim();
   const file = form.get("file") as File | null;
-  const uploadedByEmail = (String(form.get("uploadedByEmail") || "").trim() || undefined) as
-    | string
-    | undefined;
+  const uploadedByEmail = (String(form.get("uploadedByEmail") || "").trim() || undefined) as string | undefined;
 
   if (!title || !file) {
     return NextResponse.json(
@@ -89,15 +81,22 @@ export async function POST(req: Request) {
   const ab = await file.arrayBuffer();
   const buf = Buffer.from(ab);
 
-  // 2) Store in Supabase Storage
-  const now = new Date();
-  // Prefer original filename if present, otherwise derive from title
+  // 2) Build SAFE filename (stable)
   const originalNameRaw = (file as any).name || `${title}.xlsx`;
   const safeName = String(originalNameRaw).replace(/[^\w.\-@]+/g, "_");
-  const keyPath = `uploads/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${Date.now()}_${safeName}`;
+
+  // ✅ ΣΤΑΘΕΡΟ path = ίδιο filename => overwrite
+  const keyPath = `uploads/${safeName}`;
+
+  // 3) Storage replace: delete old (if exists) then upload (upsert)
+  try {
+    await supabaseRemove([keyPath]);
+  } catch {
+    // ignore remove errors to avoid blocking (optional)
+  }
   const put = await supabasePutBuffer(keyPath, buf, contentType);
 
-  // 3) Attribution who uploaded & who assigns
+  // 4) Attribution who uploaded & who assigns
   let uploadedById: string | undefined;
   if (uploadedByEmail) {
     const u = await prisma.user.findUnique({ where: { email: uploadedByEmail }, select: { id: true } });
@@ -105,13 +104,17 @@ export async function POST(req: Request) {
   }
   const assignerId = await getAssignerId(uploadedById);
 
-  // 4) Create DB record (this is what the app reads)
-  const publicUrl = `/api/files/download/${keyPath}`; // signed on demand
+  // 5) DB record (delete previous record for same storage path so we keep only one)
+  const publicUrl = `/api/files/download/${keyPath}`;
+
+  // 👇 delete old db record(s) for same storage file so app doesn't "keep all"
+  await prisma.file.deleteMany({ where: { url: publicUrl } });
+
   const record = await prisma.file.create({
     data: {
-      title,                             // explicit title from form
-      originalName: safeName,            // original filename (sanitized)
-      url: publicUrl,                    // app uses this
+      title,
+      originalName: safeName,
+      url: publicUrl,
       mime: contentType,
       size: buf.byteLength,
       uploadedById,
@@ -119,11 +122,10 @@ export async function POST(req: Request) {
     select: { id: true, title: true, originalName: true, url: true, createdAt: true },
   });
 
-    // 5) Auto-assign by emails found in title/original filename + uploadedByEmail
-  const candidates = Array.from(new Set([
-    ...extractEmailsFromText(`${title} ${safeName}`),
-    ...(uploadedByEmail ? [uploadedByEmail] : []), // <- include uploader
-  ]));
+  // 6) Auto-assign by emails found in title/original filename + uploadedByEmail
+  const candidates = Array.from(
+    new Set([...extractEmailsFromText(`${title} ${safeName}`), ...(uploadedByEmail ? [uploadedByEmail] : [])])
+  );
 
   const assigneeIds = candidates.length ? await resolveAssigneeIdsByEmails(candidates) : [];
   if (assigneeIds.length && assignerId) {
@@ -137,8 +139,7 @@ export async function POST(req: Request) {
     });
   }
 
-
-  // 6) Audit log
+  // 7) Audit log
   await logAudit({
     action: "FILE_UPLOADED",
     target: "File",
@@ -150,6 +151,7 @@ export async function POST(req: Request) {
       size: buf.byteLength,
       assigned: assigneeIds.length,
       emails: candidates,
+      replaced: true,
     },
   });
 
@@ -160,6 +162,7 @@ export async function POST(req: Request) {
       assignedCount: assigneeIds.length,
       key: keyPath,
       signedUrl: put.signedUrl,
+      replaced: true,
     },
     { status: 201, headers: { "Cache-Control": "no-store" } }
   );
