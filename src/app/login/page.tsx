@@ -75,10 +75,11 @@ export default function LoginPage() {
               type="password"
               autoComplete="current-password"
             />
-          </label>
-          <Link href="/forgot-password" className="text-sm underline">
+            <Link href="/forgot-password" className="text-sm underline">
             Ξέχασα τον κωδικό μου
           </Link>
+          </label>
+          
           {error && <p className="text-red-600 text-sm">{error}</p>}
 
           <button
