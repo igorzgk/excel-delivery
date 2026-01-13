@@ -87,6 +87,10 @@ export default function LoginPage() {
           <p className="text-sm mt-2 text-center">
             Νέος χρήστης; <a className="underline" href="/register">Δημιουργία λογαριασμού</a>
           </p>
+          <Link href="/forgot-password" className="text-sm underline">
+            Ξέχασα τον κωδικό μου
+          </Link>
+
         </form>
       </div>
     </main>
