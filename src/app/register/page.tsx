@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 // enums as string unions (να ταιριάζουν με Prisma enums)
 type BusinessType =
   | "RESTAURANT_GRILL"
+  | "RESTAURANT_GRILL_HYGIENE_WITH_COFFEE"
   | "BAR_WINE"
   | "REFRESHMENT_CAFE"
   | "SCHOOL_KIOSK"
@@ -41,6 +42,7 @@ type Weekday =
 
 type PublicHoliday =
   | "NEW_YEAR"
+  | "THEOPHANY_JAN_6"
   | "CLEAN_MONDAY"
   | "MARCH_25"
   | "EASTER_SUNDAY"
@@ -70,17 +72,18 @@ type ProfilePayload = {
 
 const BUSINESS_TYPE_OPTIONS: { value: BusinessType; label: string }[] = [
   { value: "RESTAURANT_GRILL", label: "Εστιατόριο - Ψητοπωλείο" },
+  { value: "RESTAURANT_GRILL_HYGIENE_WITH_COFFEE", label: "ΥΓΙΕΙΝΗ ΕΣΤΙΑΤΟΡΙΑ - ΨΗΤΟΠΩΛΕΙΑ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ" },
   { value: "BAR_WINE", label: "Bar – Wine Bar" },
   { value: "REFRESHMENT_CAFE", label: "Αναψυκτήριο – καφετέρια" },
   { value: "SCHOOL_KIOSK", label: "Σχολικό κυλικείο" },
-  { value: "PASTRY_SHOP_WITH_COFFEE", label: "Πρατήριο ζαχ/κής με παροχή καφέ" },
+  { value: "PASTRY_SHOP_WITH_COFFEE", label: "Πρατήριο ζαχ/κής - γάλακτος με παροχή καφέ" },
   { value: "PASTRY_SHOP_NO_COFFEE", label: "Πρατήριο ζαχ/κής χωρίς παροχή καφέ" },
   { value: "BREAD_SHOP_WITH_COFFEE", label: "Πρατήριο άρτου με παροχή καφέ" },
   { value: "BUTCHER", label: "Κρεοπωλείο" },
   { value: "BUTCHER_HOT_CORNER", label: "Κρεοπωλείο με ζεστή γωνιά" },
   { value: "FISHMONGER", label: "Ιχθυοπωλείο" },
   { value: "FISHMONGER_HOT_CORNER", label: "Ιχθυοπωλείο με ζεστή γωνιά" },
-  { value: "DELI_CHEESE_CURED_MEAT", label: "Διάθεση προϊόντων αλλαντοποιίας/Τυροκομίας" },
+  { value: "DELI_CHEESE_CURED_MEAT", label: "Διάθεση προϊόντων αλλαντοποιίας / τυροκομίας" },
   { value: "BAKERY_WITH_COFFEE", label: "Αρτοποιείο με παροχή καφέ" },
   { value: "BAKERY_NO_COFFEE", label: "Αρτοποιείο χωρίς παροχή καφέ" },
   { value: "BAKERY_PASTRY_WITH_COFFEE", label: "Αρτοποιείο – Ζαχαροπλαστείο με παροχή καφέ" },
@@ -106,6 +109,7 @@ const WEEKDAY_OPTIONS: { value: Weekday; label: string }[] = [
 
 const HOLIDAY_OPTIONS: { value: PublicHoliday; label: string }[] = [
   { value: "NEW_YEAR", label: "01/01 (Πρωτοχρονιά)" },
+  { value: "THEOPHANY_JAN_6", label: "06/01 (Θεοφάνεια)" },
   { value: "CLEAN_MONDAY", label: "Καθαρά Δευτέρα" },
   { value: "MARCH_25", label: "25/03 (Εθνική εορτή)" },
   { value: "EASTER_SUNDAY", label: "Κυριακή του Πάσχα" },
@@ -142,11 +146,16 @@ export default function RegisterPage() {
     closedHolidays: [],
     augustRange: { from: "", to: "" },
   });
-
+  
   const updateProfile = <K extends keyof ProfilePayload>(
     key: K,
     value: ProfilePayload[K]
   ) => setProfile((prev) => ({ ...prev, [key]: value }));
+
+  const canGoStep2 =
+            name.trim().length >= 2 &&
+            /\S+@\S+\.\S+/.test(email) &&
+            password.length >= 6;
 
   async function submitAll() {
     setLoading(true);
@@ -207,7 +216,7 @@ export default function RegisterPage() {
         <section className="rounded-2xl border bg-white p-4 space-y-3">
           <label className="block">
             <span className="text-sm">Ονοματεπώνυμο</span>
-            <input
+            <input required
               className="w-full border rounded p-2"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -216,7 +225,7 @@ export default function RegisterPage() {
 
           <label className="block">
             <span className="text-sm">Email</span>
-            <input
+            <input required
               type="email"
               className="w-full border rounded p-2"
               value={email}
@@ -226,7 +235,7 @@ export default function RegisterPage() {
 
           <label className="block">
             <span className="text-sm">Κωδικός</span>
-            <input
+            <input required
               type="password"
               className="w-full border rounded p-2"
               value={password}
@@ -236,9 +245,17 @@ export default function RegisterPage() {
 
           <div className="flex justify-end">
             <button
-              className="rounded-xl px-4 py-2 text-sm font-semibold"
+              className="rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50"
               style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}
-              onClick={() => setStep(2)}
+              disabled={!canGoStep2}
+              onClick={() => {
+                if (!canGoStep2) {
+                  setError("Συμπληρώστε σωστά Όνομα, Email και Κωδικό (>=6 χαρακτήρες) για να συνεχίσετε.");
+                  return;
+                }
+                setError(null);
+                setStep(2);
+              }}
             >
               Συνέχεια
             </button>

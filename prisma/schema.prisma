@@ -36,6 +36,7 @@ enum AccountStatus {
 
 enum BusinessType {
   RESTAURANT_GRILL // 1 Εστιατόριο - Ψητοπωλείο
+  RESTAURANT_GRILL_HYGIENE_WITH_COFFEE // <-- ΝΕΟ
   BAR_WINE // 2a Bar – Wine Bar
   REFRESHMENT_CAFE // 2b Αναψυκτήριο – καφετέρια
   SCHOOL_KIOSK // 2c Σχολικό κυλικείο
@@ -72,6 +73,7 @@ enum Weekday {
 
 enum PublicHoliday {
   NEW_YEAR // 01/01
+  THEOPHANY_JAN_6
   CLEAN_MONDAY // Καθαρά Δευτέρα
   MARCH_25 // 25/03
   EASTER_SUNDAY

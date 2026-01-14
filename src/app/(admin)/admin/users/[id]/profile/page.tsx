@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 
 type BusinessType =
   | "RESTAURANT_GRILL"
+  | "RESTAURANT_GRILL_HYGIENE_WITH_COFFEE"
   | "BAR_WINE"
   | "REFRESHMENT_CAFE"
   | "SCHOOL_KIOSK"
@@ -39,6 +40,7 @@ type Weekday =
 
 type PublicHoliday =
   | "NEW_YEAR"
+  | "THEOPHANY_JAN_6"
   | "CLEAN_MONDAY"
   | "MARCH_25"
   | "EASTER_SUNDAY"
@@ -76,17 +78,18 @@ type AdminUserMeta = {
 
 const BUSINESS_TYPES_LABELS: Record<BusinessType, string> = {
   RESTAURANT_GRILL: "Εστιατόριο - Ψητοπωλείο",
+  RESTAURANT_GRILL_HYGIENE_WITH_COFFEE: "ΥΓΙΕΙΝΗ ΕΣΤΙΑΤΟΡΙΑ - ΨΗΤΟΠΩΛΕΙΑ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ",
   BAR_WINE: "Bar – Wine Bar",
   REFRESHMENT_CAFE: "Αναψυκτήριο – καφετέρια",
   SCHOOL_KIOSK: "Σχολικό κυλικείο",
-  PASTRY_SHOP_WITH_COFFEE: "Πρατήριο ζαχ/κής με παροχή καφέ",
+  PASTRY_SHOP_WITH_COFFEE: "Πρατήριο ζαχ/κής - γάλακτος με παροχή καφέ",
   PASTRY_SHOP_NO_COFFEE: "Πρατήριο ζαχ/κής χωρίς παροχή καφέ",
   BREAD_SHOP_WITH_COFFEE: "Πρατήριο άρτου με παροχή καφέ",
   BUTCHER: "Κρεοπωλείο",
   BUTCHER_HOT_CORNER: "Κρεοπωλείο με ζεστή γωνιά",
   FISHMONGER: "Ιχθυοπωλείο",
   FISHMONGER_HOT_CORNER: "Ιχθυοπωλείο με ζεστή γωνιά",
-  DELI_CHEESE_CURED_MEAT: "Διάθεση προϊόντων αλλαντοποιίας/Τυροκομίας",
+  DELI_CHEESE_CURED_MEAT: "Διάθεση προϊόντων αλλαντοποιίας / τυροκομίας",
   BAKERY_WITH_COFFEE: "Αρτοποιείο με παροχή καφέ",
   BAKERY_NO_COFFEE: "Αρτοποιείο χωρίς παροχή καφέ",
   BAKERY_PASTRY_WITH_COFFEE: "Αρτοποιείο – Ζαχαροπλαστείο με παροχή καφέ",
@@ -112,6 +115,7 @@ const WEEKDAY_LABELS: Record<Weekday, string> = {
 
 const HOLIDAY_LABELS: Record<PublicHoliday, string> = {
   NEW_YEAR: "01/01 (Πρωτοχρονιά)",
+  THEOPHANY_JAN_6: "06/01 (Θεοφάνεια)",
   CLEAN_MONDAY: "Καθαρά Δευτέρα",
   MARCH_25: "25/03 (Εθνική εορτή)",
   EASTER_SUNDAY: "Κυριακή του Πάσχα",
