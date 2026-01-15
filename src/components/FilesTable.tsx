@@ -8,8 +8,9 @@ type FileItem = {
   title: string;
   originalName?: string | null;
   createdAt: string | Date;
-  size?: number | null;       // bytes
+  size?: number | null; // bytes
   url?: string | null;
+  mime?: string | null;
 };
 
 type Labels = {
@@ -22,6 +23,9 @@ type Labels = {
   action: string;
   download: string;
   empty: string;
+
+  nonPdfColumnTitle: string;
+  pdfColumnTitle: string;
 };
 
 export default function FilesTable({
@@ -34,15 +38,31 @@ export default function FilesTable({
   const [query, setQuery] = useState("");
   const [files] = useState<FileItem[]>(initialFiles ?? []);
 
-  const filtered = useMemo(() => {
+  const { nonPdf, pdf } = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return files;
-    return files.filter((f) => {
+
+    const matches = (f: FileItem) => {
+      if (!q) return true;
       const title = (f.title || "").toLowerCase();
       const original = (f.originalName || "").toLowerCase();
       return title.includes(q) || original.includes(q);
-    });
+    };
+
+    const isPdf = (f: FileItem) => {
+      const name = (f.originalName || f.title || "").toLowerCase();
+      const mime = (f.mime || "").toLowerCase();
+      return mime === "application/pdf" || name.endsWith(".pdf");
+    };
+
+    const filtered = files.filter(matches);
+
+    return {
+      nonPdf: filtered.filter((f) => !isPdf(f)),
+      pdf: filtered.filter((f) => isPdf(f)),
+    };
   }, [files, query]);
+
+  const totalCount = nonPdf.length + pdf.length;
 
   return (
     <div className="grid gap-4">
@@ -55,124 +75,158 @@ export default function FilesTable({
           className="w-full max-w-[420px] rounded-xl border px-3 py-2 text-sm"
         />
         <div className="shrink-0 text-sm text-gray-500">
-          {filtered.length} {labels.countSuffix}
+          {totalCount} {labels.countSuffix}
         </div>
       </div>
 
-      {/* ======= MOBILE (cards: 2 rows) ======= */}
-      <section className="grid gap-3 sm:hidden">
-        {filtered.length === 0 ? (
-          <div className="text-sm text-gray-500">{labels.empty}</div>
-        ) : (
-          filtered.map((f) => {
-            const dt = new Date(f.createdAt);
-            return (
-              <div
-                key={f.id}
-                className="rounded-2xl border bg-white p-3 shadow-sm"
-              >
-                {/* Row 1: Title + download */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-medium break-words">{f.title}</div>
-                    <div className="text-xs text-gray-600">
-                      {labels.uploaded}: {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
-                    </div>
-                  </div>
-                  {f.url ? (
-                    <a
-                      href={f.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="shrink-0 rounded-lg px-3 py-1 text-sm font-semibold text-black"
-                      style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                    >
-                      {labels.download}
-                    </a>
-                  ) : null}
-                </div>
+      {/* ======= MOBILE: 1 column (Non-PDF first, then PDF) ======= */}
+      <section className="grid gap-4 sm:hidden">
+        <ColumnCard title={labels.nonPdfColumnTitle}>
+          <MobileCards items={nonPdf} labels={labels} />
+        </ColumnCard>
 
-                {/* Row 2: Original + size */}
-                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                  <div className="space-y-1">
-                    <div className="text-gray-600">{labels.original}</div>
-                    <div className="break-words">
-                      {f.originalName || "—"}
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-gray-600">{labels.size}</div>
-                    <div>{formatSize(f.size)}</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
+        <ColumnCard title={labels.pdfColumnTitle}>
+          <MobileCards items={pdf} labels={labels} />
+        </ColumnCard>
       </section>
 
-      {/* ======= TABLET / DESKTOP ======= */}
-      <section className="hidden sm:block rounded-2xl border bg-white p-4">
-        {filtered.length === 0 ? (
-          <div className="text-sm text-gray-500">{labels.empty}</div>
-        ) : (
-          <div className="overflow-hidden">
-            <table className="w-full table-fixed text-sm">
-              {/* keep consistent widths so buttons don’t overlap */}
-              <colgroup>
-                <col className="w-[36%]" /> {/* Title */}
-                <col className="w-[26%]" /> {/* Original */}
-                <col className="w-[18%]" /> {/* Uploaded */}
-                <col className="w-[10%]" /> {/* Size */}
-                <col className="w-[10%]" /> {/* Action */}
-              </colgroup>
-              <thead className="bg-gray-50 text-gray-700">
-                <tr className="text-left">
-                  <Th>{labels.title}</Th>
-                  <Th>{labels.original}</Th>
-                  <Th>{labels.uploaded}</Th>
-                  <Th>{labels.size}</Th>
-                  <Th className="text-right">{labels.action}</Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((f) => {
-                  const dt = new Date(f.createdAt);
-                  return (
-                    <tr key={f.id} className="align-top">
-                      <Td className="break-words">{f.title}</Td>
-                      <Td className="break-words">{f.originalName || "—"}</Td>
-                      <Td className="whitespace-nowrap">
-                        {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
-                      </Td>
-                      <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
-                      <Td className="text-right whitespace-nowrap">
-                        {f.url ? (
-                          <a
-                            href={f.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
-                            style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                          >
-                            {labels.download}
-                          </a>
-                        ) : (
-                          <span className="text-gray-500">—</span>
-                        )}
-                      </Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {/* ======= DESKTOP: 2 columns ======= */}
+      <section className="hidden sm:grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ColumnCard title={`${labels.nonPdfColumnTitle} (${nonPdf.length})`}>
+          <DesktopTable items={nonPdf} labels={labels} />
+        </ColumnCard>
+
+        <ColumnCard title={`${labels.pdfColumnTitle} (${pdf.length})`}>
+          <DesktopTable items={pdf} labels={labels} />
+        </ColumnCard>
       </section>
     </div>
   );
 }
 
+/* ---------------- components ---------------- */
+
+function ColumnCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border bg-white p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-semibold">{title}</h2>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function MobileCards({ items, labels }: { items: FileItem[]; labels: Labels }) {
+  if (items.length === 0) {
+    return <div className="text-sm text-gray-500">{labels.empty}</div>;
+  }
+
+  return (
+    <div className="grid gap-3">
+      {items.map((f) => {
+        const dt = new Date(f.createdAt);
+        return (
+          <div key={f.id} className="rounded-2xl border bg-white p-3 shadow-sm">
+            {/* Row 1: Title + download */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-medium break-words">{f.title}</div>
+                <div className="text-xs text-gray-600">
+                  {labels.uploaded}: {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
+                </div>
+              </div>
+              {f.url ? (
+                <a
+                  href={f.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 rounded-lg px-3 py-1 text-sm font-semibold text-black"
+                  style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                >
+                  {labels.download}
+                </a>
+              ) : null}
+            </div>
+
+            {/* Row 2: Original + size */}
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <div className="space-y-1">
+                <div className="text-gray-600">{labels.original}</div>
+                <div className="break-words">{f.originalName || "—"}</div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-gray-600">{labels.size}</div>
+                <div>{formatSize(f.size)}</div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) {
+  if (items.length === 0) {
+    return <div className="text-sm text-gray-500">{labels.empty}</div>;
+  }
+
+  return (
+    <div className="overflow-hidden">
+      <table className="w-full table-fixed text-sm">
+        <colgroup>
+          <col className="w-[36%]" />
+          <col className="w-[26%]" />
+          <col className="w-[18%]" />
+          <col className="w-[10%]" />
+          <col className="w-[10%]" />
+        </colgroup>
+        <thead className="bg-gray-50 text-gray-700">
+          <tr className="text-left">
+            <Th>{labels.title}</Th>
+            <Th>{labels.original}</Th>
+            <Th>{labels.uploaded}</Th>
+            <Th>{labels.size}</Th>
+            <Th className="text-right">{labels.action}</Th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {items.map((f) => {
+            const dt = new Date(f.createdAt);
+            return (
+              <tr key={f.id} className="align-top">
+                <Td className="break-words">{f.title}</Td>
+                <Td className="break-words">{f.originalName || "—"}</Td>
+                <Td className="whitespace-nowrap">
+                  {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
+                </Td>
+                <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
+                <Td className="text-right whitespace-nowrap">
+                  {f.url ? (
+                    <a
+                      href={f.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
+                      style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                    >
+                      {labels.download}
+                    </a>
+                  ) : (
+                    <span className="text-gray-500">—</span>
+                  )}
+                </Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* helpers */
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
 }
