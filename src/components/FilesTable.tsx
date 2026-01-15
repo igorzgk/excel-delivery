@@ -179,6 +179,85 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
   }
 
   return (
+    <div className="grid gap-2">
+      {/* header row (hidden on smaller desktop widths) */}
+      <div className="hidden xl:grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(160px,1fr)_minmax(90px,auto)_minmax(110px,auto)] gap-3 px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50 rounded-xl">
+        <div>{labels.title}</div>
+        <div>{labels.original}</div>
+        <div>{labels.uploaded}</div>
+        <div>{labels.size}</div>
+        <div className="text-right">{labels.action}</div>
+      </div>
+
+      {/* rows */}
+      <div className="grid gap-2">
+        {items.map((f) => {
+          const dt = new Date(f.createdAt);
+
+          return (
+            <div
+              key={f.id}
+              className="rounded-2xl border bg-white px-3 py-3"
+            >
+              {/* row layout:
+                  - On xl: 5 columns like a table
+                  - Below xl: stack info in 2 lines, no horizontal scroll
+              */}
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(160px,1fr)_minmax(90px,auto)_minmax(110px,auto)]">
+                {/* Title */}
+                <div className="min-w-0">
+                  <div className="text-xs text-gray-500 xl:hidden">{labels.title}</div>
+                  <div className="break-words font-medium">{f.title}</div>
+                </div>
+
+                {/* Original */}
+                <div className="min-w-0">
+                  <div className="text-xs text-gray-500 xl:hidden">{labels.original}</div>
+                  <div className="break-words text-sm">{f.originalName || "—"}</div>
+                </div>
+
+                {/* Uploaded */}
+                <div className="xl:justify-self-start">
+                  <div className="text-xs text-gray-500 xl:hidden">{labels.uploaded}</div>
+                  <div className="text-sm whitespace-nowrap">
+                    {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
+                  </div>
+                </div>
+
+                {/* Size */}
+                <div className="xl:justify-self-start">
+                  <div className="text-xs text-gray-500 xl:hidden">{labels.size}</div>
+                  <div className="text-sm whitespace-nowrap">{formatSize(f.size)}</div>
+                </div>
+
+                {/* Action */}
+                <div className="xl:justify-self-end">
+                  <div className="text-xs text-gray-500 xl:hidden">{labels.action}</div>
+                  {f.url ? (
+                    <a
+                      href={f.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-lg px-3 py-1 font-semibold text-black"
+                      style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                    >
+                      {labels.download}
+                    </a>
+                  ) : (
+                    <span className="text-gray-500">—</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+  return (
     <div className="-mx-4 overflow-x-auto px-4">
       {/* min width so columns never crush */}
       <table className="min-w-[760px] w-full text-sm">
