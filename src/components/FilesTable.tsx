@@ -180,10 +180,9 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
 
   return (
     <div className="grid gap-2">
-      {/* header row (hidden on smaller desktop widths) */}
-      <div className="hidden xl:grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(160px,1fr)_minmax(90px,auto)_minmax(110px,auto)] gap-3 px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50 rounded-xl">
+      {/* header row */}
+      <div className="hidden xl:grid grid-cols-[minmax(0,3fr)_minmax(170px,auto)_minmax(80px,auto)_minmax(110px,auto)] gap-3 px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50 rounded-xl">
         <div>{labels.title}</div>
-        <div>{labels.original}</div>
         <div>{labels.uploaded}</div>
         <div>{labels.size}</div>
         <div className="text-right">{labels.action}</div>
@@ -195,25 +194,20 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
           const dt = new Date(f.createdAt);
 
           return (
-            <div
-              key={f.id}
-              className="rounded-2xl border bg-white px-3 py-3"
-            >
-              {/* row layout:
-                  - On xl: 5 columns like a table
-                  - Below xl: stack info in 2 lines, no horizontal scroll
-              */}
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(160px,1fr)_minmax(90px,auto)_minmax(110px,auto)]">
+            <div key={f.id} className="rounded-2xl border bg-white px-3 py-3">
+              {/* On xl: 4 columns like a table */}
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,3fr)_minmax(170px,auto)_minmax(80px,auto)_minmax(110px,auto)]">
                 {/* Title */}
                 <div className="min-w-0">
                   <div className="text-xs text-gray-500 xl:hidden">{labels.title}</div>
                   <div className="break-words font-medium">{f.title}</div>
-                </div>
 
-                {/* Original */}
-                <div className="min-w-0">
-                  <div className="text-xs text-gray-500 xl:hidden">{labels.original}</div>
-                  <div className="break-words text-sm">{f.originalName || "—"}</div>
+                  {/* show original name as secondary line (instead of a column) */}
+                  {!!f.originalName && (
+                    <div className="mt-1 text-xs text-gray-500 break-words">
+                      {f.originalName}
+                    </div>
+                  )}
                 </div>
 
                 {/* Uploaded */}
@@ -224,7 +218,7 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
                   </div>
                 </div>
 
-                {/* Size */}
+                {/* Size (tight) */}
                 <div className="xl:justify-self-start">
                   <div className="text-xs text-gray-500 xl:hidden">{labels.size}</div>
                   <div className="text-sm whitespace-nowrap">{formatSize(f.size)}</div>
@@ -255,6 +249,7 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
     </div>
   );
 }
+
 /* helpers */
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
