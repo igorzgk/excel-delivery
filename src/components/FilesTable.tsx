@@ -203,7 +203,7 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
                   <div className="break-words font-medium">{f.title}</div>
 
                   {/* show original name as secondary line (instead of a column) */}
-                  {!!f.originalName && (
+                  {f.originalName && f.originalName !== f.title && (
                     <div className="mt-1 text-xs text-gray-500 break-words">
                       {f.originalName}
                     </div>
