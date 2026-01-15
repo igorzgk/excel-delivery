@@ -45,13 +45,21 @@ export default function FilesTable({
       if (!q) return true;
       const title = (f.title || "").toLowerCase();
       const original = (f.originalName || "").toLowerCase();
-      return title.includes(q) || original.includes(q);
+      const url = (f.url || "").toLowerCase();
+      return title.includes(q) || original.includes(q) || url.includes(q);
     };
 
     const isPdf = (f: FileItem) => {
-      const name = (f.originalName || f.title || "").toLowerCase();
+      const title = (f.title || "").toLowerCase();
+      const name = (f.originalName || "").toLowerCase();
+      const url = (f.url || "").toLowerCase();
       const mime = (f.mime || "").toLowerCase();
-      return mime === "application/pdf" || name.endsWith(".pdf");
+      return (
+        mime === "application/pdf" ||
+        title.endsWith(".pdf") ||
+        name.endsWith(".pdf") ||
+        url.includes(".pdf")
+      );
     };
 
     const filtered = files.filter(matches);
@@ -67,30 +75,30 @@ export default function FilesTable({
   return (
     <div className="grid gap-4">
       {/* toolbar */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={labels.search}
-          className="w-full max-w-[420px] rounded-xl border px-3 py-2 text-sm"
+          className="w-full max-w-[520px] rounded-xl border px-3 py-2 text-sm"
         />
         <div className="shrink-0 text-sm text-gray-500">
           {totalCount} {labels.countSuffix}
         </div>
       </div>
 
-      {/* ======= MOBILE: 1 column (Non-PDF first, then PDF) ======= */}
+      {/* ======= MOBILE: stacked ======= */}
       <section className="grid gap-4 sm:hidden">
-        <ColumnCard title={labels.nonPdfColumnTitle}>
+        <ColumnCard title={`${labels.nonPdfColumnTitle} (${nonPdf.length})`}>
           <MobileCards items={nonPdf} labels={labels} />
         </ColumnCard>
 
-        <ColumnCard title={labels.pdfColumnTitle}>
+        <ColumnCard title={`${labels.pdfColumnTitle} (${pdf.length})`}>
           <MobileCards items={pdf} labels={labels} />
         </ColumnCard>
       </section>
 
-      {/* ======= DESKTOP: 2 columns ======= */}
+      {/* ======= DESKTOP: 2 columns, each has its own scroll for the table ======= */}
       <section className="hidden sm:grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ColumnCard title={`${labels.nonPdfColumnTitle} (${nonPdf.length})`}>
           <DesktopTable items={nonPdf} labels={labels} />
@@ -104,7 +112,7 @@ export default function FilesTable({
   );
 }
 
-/* ---------------- components ---------------- */
+/* ---------------- UI blocks ---------------- */
 
 function ColumnCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -128,7 +136,6 @@ function MobileCards({ items, labels }: { items: FileItem[]; labels: Labels }) {
         const dt = new Date(f.createdAt);
         return (
           <div key={f.id} className="rounded-2xl border bg-white p-3 shadow-sm">
-            {/* Row 1: Title + download */}
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="font-medium break-words">{f.title}</div>
@@ -149,7 +156,6 @@ function MobileCards({ items, labels }: { items: FileItem[]; labels: Labels }) {
               ) : null}
             </div>
 
-            {/* Row 2: Original + size */}
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
               <div className="space-y-1">
                 <div className="text-gray-600">{labels.original}</div>
@@ -173,24 +179,19 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
   }
 
   return (
-    <div className="overflow-hidden">
-      <table className="w-full table-fixed text-sm">
-        <colgroup>
-          <col className="w-[36%]" />
-          <col className="w-[26%]" />
-          <col className="w-[18%]" />
-          <col className="w-[10%]" />
-          <col className="w-[10%]" />
-        </colgroup>
+    <div className="-mx-4 overflow-x-auto px-4">
+      {/* min width so columns never crush */}
+      <table className="min-w-[760px] w-full text-sm">
         <thead className="bg-gray-50 text-gray-700">
           <tr className="text-left">
-            <Th>{labels.title}</Th>
-            <Th>{labels.original}</Th>
-            <Th>{labels.uploaded}</Th>
-            <Th>{labels.size}</Th>
-            <Th className="text-right">{labels.action}</Th>
+            <Th className="min-w-[260px]">{labels.title}</Th>
+            <Th className="min-w-[220px]">{labels.original}</Th>
+            <Th className="min-w-[160px]">{labels.uploaded}</Th>
+            <Th className="min-w-[90px]">{labels.size}</Th>
+            <Th className="min-w-[110px] text-right">{labels.action}</Th>
           </tr>
         </thead>
+
         <tbody className="divide-y divide-gray-100">
           {items.map((f) => {
             const dt = new Date(f.createdAt);
@@ -208,7 +209,7 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
                       href={f.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
+                      className="inline-flex items-center justify-center rounded-lg px-3 py-1 font-semibold text-black"
                       style={{ backgroundColor: "var(--brand, #25C3F4)" }}
                     >
                       {labels.download}
