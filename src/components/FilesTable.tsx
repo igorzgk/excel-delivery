@@ -185,7 +185,6 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
         <thead className="bg-gray-50 text-gray-700">
           <tr className="text-left">
             <Th className="min-w-[260px]">{labels.title}</Th>
-            <Th className="min-w-[220px]">{labels.original}</Th>
             <Th className="min-w-[160px]">{labels.uploaded}</Th>
             <Th className="min-w-[90px]">{labels.size}</Th>
             <Th className="min-w-[110px] text-right">{labels.action}</Th>
