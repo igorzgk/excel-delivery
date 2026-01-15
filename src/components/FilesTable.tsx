@@ -255,56 +255,6 @@ function DesktopTable({ items, labels }: { items: FileItem[]; labels: Labels }) 
     </div>
   );
 }
-
-
-  return (
-    <div className="-mx-4 overflow-x-auto px-4">
-      {/* min width so columns never crush */}
-      <table className="min-w-[760px] w-full text-sm">
-        <thead className="bg-gray-50 text-gray-700">
-          <tr className="text-left">
-            <Th className="min-w-[180px]">{labels.title}</Th>
-            <Th className="min-w-[160px]">{labels.uploaded}</Th>
-            <Th className="min-w-[90px]">{labels.size}</Th>
-            <Th className="min-w-[110px] text-right">{labels.action}</Th>
-          </tr>
-        </thead>
-
-        <tbody className="divide-y divide-gray-100">
-          {items.map((f) => {
-            const dt = new Date(f.createdAt);
-            return (
-              <tr key={f.id} className="align-top">
-                <Td className="break-words">{f.title}</Td>
-                <Td className="break-words">{f.originalName || "—"}</Td>
-                <Td className="whitespace-nowrap">
-                  {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
-                </Td>
-                <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
-                <Td className="text-right whitespace-nowrap">
-                  {f.url ? (
-                    <a
-                      href={f.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center rounded-lg px-3 py-1 font-semibold text-black"
-                      style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                    >
-                      {labels.download}
-                    </a>
-                  ) : (
-                    <span className="text-gray-500">—</span>
-                  )}
-                </Td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 /* helpers */
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
