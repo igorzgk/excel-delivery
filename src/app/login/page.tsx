@@ -5,6 +5,12 @@ import { Suspense, useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+
+const [showPw, setShowPw] = useState(false);
+
 
 
 export const dynamic = "force-dynamic";
@@ -68,13 +74,19 @@ export default function LoginPage() {
           <label className="block">
             <span className="text-sm">Κωδικός πρόσβασης</span>
             <input
-              className="w-full border rounded p-2"
+              type={showPw ? "text" : "password"}
+              className="w-full border rounded p-2 pr-10"
               value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-              type="password"
-              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
             />
+            <button
+              type="button"
+              onClick={() => setShowPw((s) => !s)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-600"
+              aria-label={showPw ? "Απόκρυψη κωδικού" : "Εμφάνιση κωδικού"}
+            >
+              {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
             <Link href="/forgot-password" className="text-sm underline">
             Ξέχασα τον κωδικό μου
           </Link>

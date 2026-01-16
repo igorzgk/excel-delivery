@@ -241,6 +241,9 @@ export default function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <p className="mt-1 text-xs text-gray-500">
+              Ο κωδικός πρέπει να έχει τουλάχιστον 7 χαρακτήρες.
+            </p>
           </label>
 
           <div className="flex justify-end">
