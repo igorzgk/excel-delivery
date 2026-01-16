@@ -1,23 +1,23 @@
-// src/app/api/admin/users/[id]/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { z } from "zod";
 
-type Params = Promise<{ id: string }>;
+export const runtime = "nodejs";
 
-export async function PATCH(req: Request, context: { params: Params }) {
+/* ---------------- PATCH ---------------- */
+export async function PATCH(req: Request, ctx: { params: { id: string } }) {
   const guard = await requireRole("ADMIN");
   if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
 
-  const { id } = await context.params; // 👈 await params
+  const { id } = ctx.params;
 
   const UpdateSchema = z.object({
-  name: z.string().min(2).optional(),
-  role: z.enum(["USER", "ADMIN"]).optional(),
-  subscriptionActive: z.boolean().optional(),
-  status: z.enum(["PENDING", "ACTIVE", "SUSPENDED"]).optional(), // 👈 NEW
-});
+    name: z.string().min(2).optional(),
+    role: z.enum(["USER", "ADMIN"]).optional(),
+    subscriptionActive: z.boolean().optional(),
+    status: z.enum(["PENDING", "ACTIVE", "SUSPENDED"]).optional(),
+  });
 
   const body = await req.json();
   const data = UpdateSchema.parse(body);
@@ -25,52 +25,62 @@ export async function PATCH(req: Request, context: { params: Params }) {
   const user = await prisma.user.update({
     where: { id },
     data,
-    select: { id: true, name: true, email: true, role: true, subscriptionActive: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      subscriptionActive: true,
+      status: true,
+      createdAt: true,
+    },
   });
 
-  return NextResponse.json({ user });
+  return NextResponse.json({ ok: true, user }, { headers: { "Cache-Control": "no-store" } });
 }
 
-
-export async function DELETE(req: Request, ctx: { params: { id: string } }) {
-  const userId = ctx.params.id;
+/* ---------------- DELETE ---------------- */
+export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
   const guard = await requireRole("ADMIN");
   if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
 
-  const { id } = await context.params; // 👈 await params
-  await prisma.user.delete({ where: { id } });
+  const userId = ctx.params.id;
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: "missing_id" }, { status: 400 });
+  }
 
   try {
-    // TODO: ensure admin auth here (your existing logic)
-
     await prisma.$transaction(async (tx) => {
-      // 1) Delete profile (1-1)
-      await tx.userProfile.deleteMany({ where: { userId } });
-
-      // 2) Delete password reset tokens (if you have them)
-      await tx.passwordResetToken.deleteMany({ where: { userId } });
-
-      // 3) Delete file assignments (if exists)
+      // 1) Remove assignments referencing this user (assignee OR assigner)
       await tx.fileAssignment.deleteMany({
         where: { OR: [{ userId }, { assignedById: userId }] },
       });
 
-      // 4) If files reference uploadedById -> make them null (so you don't lose files)
+      // 2) Keep files but detach uploader to avoid FK constraint
       await tx.file.updateMany({
         where: { uploadedById: userId },
         data: { uploadedById: null },
       });
 
-      // 5) Finally delete user
+      // 3) Delete profile
+      await tx.userProfile.deleteMany({ where: { userId } });
+
+      // 4) Delete reset tokens (if model exists)
+      // If you are 100% sure it exists, you can remove the catch.
+      await tx.passwordResetToken
+        .deleteMany({ where: { userId } })
+        .catch(() => {});
+
+      // 5) Finally delete the user
       await tx.user.delete({ where: { id: userId } });
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (e: any) {
     console.error(e);
     return NextResponse.json(
       { ok: false, error: "delete_failed", detail: e?.message || "Delete failed" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
