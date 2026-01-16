@@ -4,47 +4,64 @@
 import { Suspense, useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
-
-
-const [showPw, setShowPw] = useState(false);
-
-
+import { Eye, EyeOff } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 function QueryEffect({ setError }: { setError: (msg: string) => void }) {
   const sp = useSearchParams();
+
   useEffect(() => {
     const authError = sp.get("error");
     const notice = sp.get("notice");
-    if (authError === "AccountPending") setError("Ο λογαριασμός σας αναμένει έγκριση από διαχειριστή.");
-    else if (authError === "AccountSuspended") setError("Ο λογαριασμός σας έχει ανασταλεί. Επικοινωνήστε με την υποστήριξη.");
-    else if (notice === "pending") setError("Η εγγραφή ολοκληρώθηκε. Περιμένετε έγκριση από διαχειριστή.");
+
+    if (authError === "AccountPending") {
+      setError("Ο λογαριασμός σας αναμένει έγκριση από διαχειριστή.");
+    } else if (authError === "AccountSuspended") {
+      setError("Ο λογαριασμός σας έχει ανασταλεί. Επικοινωνήστε με την υποστήριξη.");
+    } else if (notice === "pending") {
+      setError("Η εγγραφή ολοκληρώθηκε. Περιμένετε έγκριση από διαχειριστή.");
+    }
   }, [sp, setError]);
+
   return null;
 }
 
 export default function LoginPage() {
-  const [email, setEmail]       = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState("");
+  const [showPw, setShowPw] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
   const router = useRouter();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const res = await signIn("credentials", { redirect: false, email, password });
+
+    const res = await signIn("credentials", {
+      redirect: false,
+      email,
+      password,
+    });
+
     setLoading(false);
+
     if (res?.error) {
-      if (res.error === "AccountPending")   return setError("Ο λογαριασμός σας αναμένει έγκριση από διαχειριστή.");
-      if (res.error === "AccountSuspended") return setError("Ο λογαριασμός σας έχει ανασταλεί. Επικοινωνήστε με την υποστήριξη.");
+      if (res.error === "AccountPending") {
+        return setError("Ο λογαριασμός σας αναμένει έγκριση από διαχειριστή.");
+      }
+      if (res.error === "AccountSuspended") {
+        return setError("Ο λογαριασμός σας έχει ανασταλεί. Επικοινωνήστε με την υποστήριξη.");
+      }
       return setError("Λάθος email ή κωδικός");
     }
-    // ✅ Let middleware route by role (Admin -> /admin, User -> /dashboard)
+
+    // αφήνουμε middleware/redirects να στείλουν σωστά (admin/user)
     router.push("/");
   }
 
@@ -63,7 +80,7 @@ export default function LoginPage() {
             <input
               className="w-full border rounded p-2"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
               required
               type="email"
               autoComplete="email"
@@ -72,39 +89,45 @@ export default function LoginPage() {
 
           <label className="block">
             <span className="text-sm">Κωδικός πρόσβασης</span>
-            <input
-              type={showPw ? "text" : "password"}
-              className="w-full border rounded p-2 pr-10"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPw((s) => !s)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-600"
-              aria-label={showPw ? "Απόκρυψη κωδικού" : "Εμφάνιση κωδικού"}
-            >
-              {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
-            <Link href="/forgot-password" className="text-sm underline">
-            Ξέχασα τον κωδικό μου
-          </Link>
+
+            <div className="relative">
+              <input
+                type={showPw ? "text" : "password"}
+                className="w-full border rounded p-2 pr-10"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw((s) => !s)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-600"
+                aria-label={showPw ? "Απόκρυψη κωδικού" : "Εμφάνιση κωδικού"}
+              >
+                {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            <div className="mt-2">
+              <Link href="/forgot-password" className="text-sm underline">
+                Ξέχασα τον κωδικό μου
+              </Link>
+            </div>
           </label>
-          
+
           {error && <p className="text-red-600 text-sm">{error}</p>}
 
-          <button
-            disabled={loading}
-            className="w-full rounded bg-black text-white py-2 disabled:opacity-60"
-          >
+          <button disabled={loading} className="w-full rounded bg-black text-white py-2 disabled:opacity-60">
             {loading ? "Σύνδεση..." : "Σύνδεση"}
           </button>
 
           <p className="text-sm mt-2 text-center">
-            Νέος χρήστης; <a className="underline" href="/register">Δημιουργία λογαριασμού</a>
+            Νέος χρήστης;{" "}
+            <Link className="underline" href="/register">
+              Δημιουργία λογαριασμού
+            </Link>
           </p>
-          
-
         </form>
       </div>
     </main>
