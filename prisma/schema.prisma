@@ -101,6 +101,7 @@ model User {
   assignmentsGiven    FileAssignment[]     @relation("AssignmentsAssignedBy")
   auditLogs           AuditLog[]           @relation("AuditActor")
   passwordResetTokens PasswordResetToken[]
+  pdfFolders          PdfFolder[]
 
   profile UserProfile? // <-- add this back-relation
 }
@@ -108,7 +109,7 @@ model User {
 model UserProfile {
   id     String @id @default(cuid())
   userId String @unique
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Επωνυμία
   businessName String
@@ -140,6 +141,21 @@ model UserProfile {
   updatedAt DateTime @updatedAt
 }
 
+model PdfFolder {
+  id      String @id @default(cuid())
+  name    String
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  files File[] @relation("PdfFolderFiles")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+}
+
 model PasswordResetToken {
   id     String @id @default(cuid())
   userId String
@@ -156,16 +172,18 @@ model PasswordResetToken {
 }
 
 model File {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   title        String
   originalName String?
   url          String? // for external or pre-signed location (we’ll wire actual uploads next day)
   mime         String?
   size         Int?
-  uploadedBy   User?    @relation("UserUploads", fields: [uploadedById], references: [id])
+  uploadedBy   User?      @relation("UserUploads", fields: [uploadedById], references: [id])
   uploadedById String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  pdfFolderId  String?
+  pdfFolder    PdfFolder? @relation("PdfFolderFiles", fields: [pdfFolderId], references: [id], onDelete: SetNull)
 
   // Assignments
   assignments FileAssignment[]

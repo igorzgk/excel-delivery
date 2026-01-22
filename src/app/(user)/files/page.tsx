@@ -1,7 +1,6 @@
-// src/app/(user)/files/page.tsx
 import React from "react";
 import { cookies } from "next/headers";
-import FilesTable from "@/components/FilesTable";
+import FilesBoard from "@/components/FilesBoard";
 
 export const dynamic = "force-dynamic";
 
@@ -26,28 +25,13 @@ export default async function UserFilesPage() {
   const files = await fetchMyFiles();
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
+    <div className="mx-auto max-w-6xl space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold">Τα Αρχεία μου</h1>
         <p className="text-sm text-gray-500">Αρχεία που ανεβάσατε ή σας ανατέθηκαν.</p>
       </header>
 
-      <FilesTable
-        initialFiles={files}
-        labels={{
-          search: "Αναζήτηση αρχείων…",
-          countSuffix: "αρχείο(α)",
-          title: "Τίτλος",
-          original: "Αρχικό",
-          uploaded: "Ανέβηκε",
-          size: "Μέγεθος",
-          action: "Ενέργεια",
-          download: "Λήψη",
-          empty: "Δεν βρέθηκαν αρχεία.",
-          nonPdfColumnTitle: "Αρχεία",
-          pdfColumnTitle: "PDF Αρχεία",
-        }}
-      />
+      <FilesBoard initialFiles={files} />
     </div>
   );
 }
