@@ -142,11 +142,12 @@ model UserProfile {
 }
 
 model PdfFolder {
-  id      String @id @default(cuid())
+  id      String  @id @default(cuid())
   name    String
-  ownerId String
-  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
+  // ✅ SAME relation name on both sides
   files File[] @relation("PdfFolderFiles")
 
   createdAt DateTime @default(now())
@@ -182,6 +183,7 @@ model File {
   uploadedById String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+  // ✅ SAME relation name on both sides
   pdfFolderId  String?
   pdfFolder    PdfFolder? @relation("PdfFolderFiles", fields: [pdfFolderId], references: [id], onDelete: SetNull)
 

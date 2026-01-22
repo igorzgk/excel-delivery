@@ -1,63 +1,72 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/auth-helpers";
+import { requireAuth } from "@/lib/auth-helpers";
 import { z } from "zod";
 
 export const runtime = "nodejs";
 
-export async function PATCH(req: Request, ctx: { params: { id: string } }) {
-  const guard = await requireRole("USER");
-  if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
+type Ctx = { params: Promise<{ id: string }> };
 
-  const ownerId = guard.user.id;
-  const folderId = ctx.params.id;
+const UpdateSchema = z.object({
+  name: z.string().min(1).max(60),
+});
 
-  const Schema = z.object({
-    name: z.string().trim().min(1).max(60),
+async function canAccessFolder(folderId: string, userId: string, role: string) {
+  const folder = await prisma.pdfFolder.findUnique({
+    where: { id: folderId },
+    select: { id: true, ownerId: true },
   });
-
-  const body = await req.json().catch(() => ({}));
-  const { name } = Schema.parse(body);
-
-  // ensure ownership
-  const existing = await prisma.pdfFolder.findFirst({ where: { id: folderId, ownerId }, select: { id: true } });
-  if (!existing) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-
-  try {
-    const folder = await prisma.pdfFolder.update({
-      where: { id: folderId },
-      data: { name },
-      select: { id: true, name: true },
-    });
-
-    return NextResponse.json({ ok: true, folder });
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "rename_failed", detail: e?.message || "Rename failed" },
-      { status: 400 }
-    );
-  }
+  if (!folder) return { ok: false, status: 404 as const };
+  if (role === "ADMIN") return { ok: true, folder };
+  // user can access own folders OR shared folders
+  if (folder.ownerId === null || folder.ownerId === userId) return { ok: true, folder };
+  return { ok: false, status: 403 as const };
 }
 
-export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
-  const guard = await requireRole("USER");
-  if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
+export async function PUT(req: Request, ctx: Ctx) {
+  const guard = await requireAuth();
+  if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const ownerId = guard.user.id;
-  const folderId = ctx.params.id;
+  const { id } = await ctx.params;
+  const access = await canAccessFolder(id, guard.userId, guard.role);
+  if (!access.ok) return NextResponse.json({ error: "forbidden" }, { status: access.status });
 
-  const existing = await prisma.pdfFolder.findFirst({ where: { id: folderId, ownerId }, select: { id: true } });
-  if (!existing) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // users cannot rename shared folders (ownerId=null), only admin can
+  if (guard.role !== "ADMIN" && access.folder.ownerId === null) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
 
-  await prisma.$transaction(async (tx) => {
-    // detach PDFs from folder (do NOT delete files)
-    await tx.file.updateMany({
-      where: { pdfFolderId: folderId },
-      data: { pdfFolderId: null },
-    });
+  const body = await req.json().catch(() => ({}));
+  const parsed = UpdateSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
 
-    await tx.pdfFolder.delete({ where: { id: folderId } });
+  const folder = await prisma.pdfFolder.update({
+    where: { id },
+    data: { name: parsed.data.name.trim() },
+    select: { id: true, name: true, ownerId: true, createdAt: true },
   });
 
-  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ok: true, folder });
+}
+
+export async function DELETE(_req: Request, ctx: Ctx) {
+  const guard = await requireAuth();
+  if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { id } = await ctx.params;
+  const access = await canAccessFolder(id, guard.userId, guard.role);
+  if (!access.ok) return NextResponse.json({ error: "forbidden" }, { status: access.status });
+
+  // users cannot delete shared folders, only admin can
+  if (guard.role !== "ADMIN" && access.folder.ownerId === null) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // detach files first
+    await tx.file.updateMany({ where: { pdfFolderId: id }, data: { pdfFolderId: null } });
+    await tx.pdfFolder.delete({ where: { id } });
+  });
+
+  return NextResponse.json({ ok: true });
 }
