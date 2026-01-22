@@ -77,13 +77,17 @@ export async function POST(req: Request) {
   }
 
   // 1) Read file bytes
-  const contentType = file.type || "application/octet-stream";
+  const originalNameRaw = (file as any).name || `${title}.xlsx`;
+  const safeName = String(originalNameRaw).replace(/[^\w.\-@]+/g, "_"); // <-- already needed later
+
+  const contentTypeRaw = (file.type || "").toLowerCase();
+  const safeNameLower = safeName.toLowerCase();
+  const contentType =
+    contentTypeRaw ||
+    (safeNameLower.endsWith(".pdf") ? "application/pdf" : "application/octet-stream");
+
   const ab = await file.arrayBuffer();
   const buf = Buffer.from(ab);
-
-  // 2) Build SAFE filename (stable)
-  const originalNameRaw = (file as any).name || `${title}.xlsx`;
-  const safeName = String(originalNameRaw).replace(/[^\w.\-@]+/g, "_");
 
   // ✅ ΣΤΑΘΕΡΟ path = ίδιο filename => overwrite
   const keyPath = `uploads/${safeName}`;
