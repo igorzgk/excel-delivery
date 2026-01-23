@@ -1,9 +1,10 @@
 // src/app/register/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
+
 
 
 // enums as string unions (να ταιριάζουν με Prisma enums)
