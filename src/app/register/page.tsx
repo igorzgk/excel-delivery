@@ -3,6 +3,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
+
 
 // enums as string unions (να ταιριάζουν με Prisma enums)
 type BusinessType =
@@ -152,6 +154,8 @@ export default function RegisterPage() {
     value: ProfilePayload[K]
   ) => setProfile((prev) => ({ ...prev, [key]: value }));
 
+  const [showPw, setShowPw] = useState(false);
+
   const canGoStep2 =
             name.trim().length >= 2 &&
             /\S+@\S+\.\S+/.test(email) &&
@@ -234,17 +238,31 @@ export default function RegisterPage() {
           </label>
 
           <label className="block">
-            <span className="text-sm">Κωδικός</span>
-            <input required
-              type="password"
-              className="w-full border rounded p-2"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Ο κωδικός πρέπει να έχει τουλάχιστον 7 χαρακτήρες.
-            </p>
+            <span className="text-sm">Κωδικός πρόσβασης</span>
+
+            <div className="relative">
+              <input
+                type={showPw ? "text" : "password"}
+                className="w-full border rounded p-2 pr-10"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={7}
+              />
+
+              <button
+                type="button"
+                onClick={() => setShowPw((s) => !s)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-600"
+                aria-label={showPw ? "Απόκρυψη κωδικού" : "Εμφάνιση κωδικού"}
+              >
+                {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            <p className="mt-1 text-xs text-gray-500">Ο κωδικός πρέπει να έχει τουλάχιστον 7 χαρακτήρες.</p>
           </label>
+
 
           <div className="flex justify-end">
             <button

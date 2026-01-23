@@ -25,7 +25,7 @@ export default async function UserFilesPage() {
   const files = await fetchMyFiles();
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold">Τα Αρχεία μου</h1>
         <p className="text-sm text-gray-500">Αρχεία που ανεβάσατε ή σας ανατέθηκαν.</p>
