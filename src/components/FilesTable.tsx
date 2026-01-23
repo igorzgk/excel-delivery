@@ -1,7 +1,7 @@
 // src/components/FilesTable.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Folder, FileText, Plus, Pencil, Trash2 } from "lucide-react";
 
 type FileItem = {
@@ -11,7 +11,7 @@ type FileItem = {
   createdAt: string | Date;
   size?: number | null; // bytes
   url?: string | null;
-  mime?: string | null; // IMPORTANT (optional)
+  mime?: string | null; // IMPORTANT
   pdfFolderId?: string | null; // optional (if you added it)
 };
 
@@ -36,7 +36,7 @@ type Labels = {
 function isPdfFile(f: FileItem) {
   const mime = (f.mime || "").toLowerCase();
   const name = `${f.originalName || ""} ${f.title || ""}`.toLowerCase();
-  return mime.includes("pdf") || name.trim().endsWith(".pdf") || name.includes(".pdf ");
+  return mime.includes("application/pdf") || mime.includes("pdf") || name.includes(".pdf");
 }
 
 export default function FilesTable({
@@ -49,15 +49,15 @@ export default function FilesTable({
   const [query, setQuery] = useState("");
   const [files] = useState<FileItem[]>(initialFiles ?? []);
 
-  // folders state
+  // folders
   const [folders, setFolders] = useState<PdfFolder[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
 
-  const [selectedFolderId, setSelectedFolderId] = useState<string>("ALL"); // ALL | NONE | folderId
+  // ALL | NONE | folderId
+  const [selectedFolderId, setSelectedFolderId] = useState<string>("ALL");
   const [creating, setCreating] = useState(false);
 
-  // load folders
   useEffect(() => {
     (async () => {
       setFoldersLoading(true);
@@ -167,100 +167,152 @@ export default function FilesTable({
         </div>
       </div>
 
-      {/* ======= 2 columns (desktop) ======= */}
+      {/* ======= 2 columns on lg, stacked on mobile/tablet ======= */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* LEFT: non-pdf */}
+        {/* LEFT: NON-PDF FILES */}
         <section className="rounded-2xl border bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="font-semibold">Αρχεία ({nonPdfFiles.length})</div>
           </div>
 
-          {nonPdfFiles.length === 0 ? (
-            <div className="text-sm text-gray-500">{labels.empty}</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed text-sm">
-                <colgroup>
-                  <col className="w-[56%]" />
-                  <col className="w-[22%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[12%]" />
-                </colgroup>
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr className="text-left">
-                    <th className="px-3 py-3 font-semibold">{labels.title}</th>
-                    <th className="px-3 py-3 font-semibold">{labels.uploaded}</th>
-                    <th className="px-3 py-3 font-semibold">{labels.size}</th>
-                    <th className="px-3 py-3 font-semibold text-right">{labels.action}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {nonPdfFiles.map((f) => {
-                    const dt = new Date(f.createdAt);
-                    return (
-                      <tr key={f.id} className="align-top">
-                        <td className="px-3 py-3 break-words">{f.title || "—"}</td>
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap">{formatSize(f.size)}</td>
-                        <td className="px-3 py-3 text-right whitespace-nowrap">
-                          {f.url ? (
-                            <a
-                              href={f.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
-                              style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                            >
-                              {labels.download}
-                            </a>
-                          ) : (
-                            <span className="text-gray-500">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* Mobile cards */}
+          <div className="grid gap-2 sm:hidden">
+            {nonPdfFiles.length === 0 ? (
+              <div className="text-sm text-gray-500">{labels.empty}</div>
+            ) : (
+              nonPdfFiles.map((f) => {
+                const dt = new Date(f.createdAt);
+                return (
+                  <div key={f.id} className="rounded-xl border p-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium break-words">{f.title || "—"}</div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
+                      </div>
+                    </div>
+                    {f.url ? (
+                      <a
+                        href={f.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-black"
+                        style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                      >
+                        {labels.download}
+                      </a>
+                    ) : (
+                      <span className="text-gray-500">—</span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block">
+            {nonPdfFiles.length === 0 ? (
+              <div className="text-sm text-gray-500">{labels.empty}</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-[62%]" />
+                    <col className="w-[24%]" />
+                    <col className="w-[7%]" />
+                    <col className="w-[7%]" />
+                  </colgroup>
+                  <thead className="bg-gray-50 text-gray-700">
+                    <tr className="text-left">
+                      <th className="px-3 py-3 font-semibold">{labels.title}</th>
+                      <th className="px-3 py-3 font-semibold">{labels.uploaded}</th>
+                      <th className="px-3 py-3 font-semibold">{labels.size}</th>
+                      <th className="px-3 py-3 font-semibold text-right">{labels.action}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {nonPdfFiles.map((f) => {
+                      const dt = new Date(f.createdAt);
+                      return (
+                        <tr key={f.id} className="align-top">
+                          <td className="px-3 py-3 break-words">{f.title || "—"}</td>
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
+                          </td>
+                          <td className="px-3 py-3 whitespace-nowrap">{formatSize(f.size)}</td>
+                          <td className="px-3 py-3 text-right whitespace-nowrap">
+                            {f.url ? (
+                              <a
+                                href={f.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
+                                style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                              >
+                                {labels.download}
+                              </a>
+                            ) : (
+                              <span className="text-gray-500">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </section>
 
-        {/* RIGHT: PDFs + folders */}
+        {/* RIGHT: PDF FILES + FOLDERS */}
         <section className="rounded-2xl border bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="font-semibold">PDF Αρχεία ({allPdfFiles.length})</div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={createFolder}
-                disabled={creating}
-                className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
-              >
-                <Plus size={16} /> Φάκελος
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={createFolder}
+              disabled={creating}
+              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+              title="Δημιουργία φακέλου"
+            >
+              <Plus size={16} /> Φάκελος
+            </button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-[220px_1fr]">
-            {/* folders list */}
-            <aside className="rounded-xl border bg-gray-50 p-2">
+          {/* Mobile: folder dropdown */}
+          <div className="sm:hidden mb-3">
+            <select
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              value={selectedFolderId}
+              onChange={(e) => setSelectedFolderId(e.target.value)}
+            >
+              <option value="ALL">Όλα</option>
+              <option value="NONE">Χωρίς φάκελο</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+            {folderError ? <div className="mt-2 text-xs text-red-600">{folderError}</div> : null}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-[240px_1fr]">
+            {/* folders list (desktop) */}
+            <aside className="hidden sm:block rounded-xl border bg-gray-50 p-2">
               {folderError ? (
                 <div className="text-xs text-red-600 px-2 py-1">{folderError}</div>
               ) : null}
 
               <FolderRow
                 active={selectedFolderId === "ALL"}
-                icon={<Folder size={16} />}
                 label="Όλα"
                 onClick={() => setSelectedFolderId("ALL")}
               />
               <FolderRow
                 active={selectedFolderId === "NONE"}
-                icon={<Folder size={16} />}
                 label="Χωρίς φάκελο"
                 onClick={() => setSelectedFolderId("NONE")}
               />
@@ -327,14 +379,19 @@ export default function FilesTable({
                   {pdfFiles.map((f) => {
                     const dt = new Date(f.createdAt);
                     return (
-                      <div key={f.id} className="rounded-xl border p-3 flex items-start justify-between gap-3">
+                      <div
+                        key={f.id}
+                        className="rounded-xl border p-3 flex items-start justify-between gap-3"
+                      >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <FileText size={16} className="shrink-0" />
-                            <div className="font-medium break-words">{f.title || f.originalName || "PDF"}</div>
+                            {/* ✅ ΜΟΝΟ title (όχι originalName) για να μην "φαίνεται διπλό" */}
+                            <div className="font-medium break-words">{f.title || "PDF"}</div>
                           </div>
                           <div className="text-xs text-gray-600 mt-1">
-                            {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
+                            {dt.toLocaleDateString()} {dt.toLocaleTimeString()} ·{" "}
+                            {formatSize(f.size)}
                           </div>
                         </div>
 
@@ -348,7 +405,9 @@ export default function FilesTable({
                           >
                             Λήψη
                           </a>
-                        ) : null}
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
                       </div>
                     );
                   })}
@@ -358,23 +417,16 @@ export default function FilesTable({
           </div>
         </section>
       </div>
-
-      {/* ======= MOBILE fallback (single list) ======= */}
-      <div className="lg:hidden text-xs text-gray-500">
-        *Σε mobile κρατάμε ενιαία εμπειρία (desktop έχει 2 στήλες + folders).
-      </div>
     </div>
   );
 }
 
 function FolderRow({
   active,
-  icon,
   label,
   onClick,
 }: {
   active: boolean;
-  icon: React.ReactNode;
   label: string;
   onClick: () => void;
 }) {
@@ -386,7 +438,7 @@ function FolderRow({
       ].join(" ")}
       onClick={onClick}
     >
-      <span className="shrink-0">{icon}</span>
+      <Folder size={16} className="shrink-0" />
       <span className="text-sm">{label}</span>
     </div>
   );
