@@ -168,9 +168,9 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
             <div className="mt-3 overflow-hidden">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[62%]" />
-                  <col className="w-[26%]" />
-                  <col className="w-[6%]" />
+                  <col className="w-[60%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[14%]" />
                   <col className="w-[6%]" />
                 </colgroup>
                 <thead className="bg-gray-50 text-gray-700">
