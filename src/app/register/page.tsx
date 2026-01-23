@@ -504,7 +504,6 @@ export default function RegisterPage() {
           <h2 className="text-lg font-semibold mb-2">Ευχαριστούμε!</h2>
           <p className="text-sm">
             Ο λογαριασμός δημιουργήθηκε και αναμένει έγκριση από διαχειριστή.
-            Θα ενημερωθείτε με email μόλις ενεργοποιηθεί.
           </p>
           <div className="mt-4">
             <button
