@@ -126,14 +126,20 @@ export async function POST(req: Request) {
     });
 
     // ✅ assignment if selected
-    if (assignTo) {
-      await prisma.fileAssignment.create({
-        data: {
-          file: { connect: { id: created.id } },
-          user: { connect: { id: assignTo } },
-        },
-      });
-    }
+      if (assignTo) {
+        // who is doing the assignment (admin)
+        const me = await currentUser();
+        if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+
+        await prisma.fileAssignment.create({
+          data: {
+            file: { connect: { id: created.id } },
+            user: { connect: { id: assignTo } },
+            assignedBy: { connect: { id: (me as any).id } }, // ✅ REQUIRED by your schema
+          },
+        });
+      }
+
 
 
     return NextResponse.json({ ok: true, id: created.id }, { status: 201 });

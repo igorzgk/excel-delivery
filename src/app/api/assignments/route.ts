@@ -1,47 +1,38 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { currentUser, requireRole } from "@/lib/auth-helpers";
+import { requireRole, currentUser } from "@/lib/auth-helpers";
 import { z } from "zod";
 
-export async function GET() {
-  const me = await currentUser();
-  if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-
-  const items = await prisma.fileAssignment.findMany({
-    where: { userId: (me as any).id },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true, note: true, createdAt: true,
-      file: { select: { id: true, title: true, url: true, originalName: true } },
-      assignedBy: { select: { id: true, name: true, email: true } },
-    },
-  });
-
-  return NextResponse.json({ assignments: items });
-}
-
-const CreateSchema = z.object({
+const Schema = z.object({
   fileId: z.string().min(1),
   userId: z.string().min(1),
-  note: z.string().optional(),
 });
 
 export async function POST(req: Request) {
   const guard = await requireRole("ADMIN");
   if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
 
-  const body = await req.json();
-  const data = CreateSchema.parse(body);
+  const me = await currentUser();
+  if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+
+  const body = await req.json().catch(() => ({}));
+  const { fileId, userId } = Schema.parse(body);
+
+  // optional: prevent duplicates (same file -> same user)
+  const exists = await prisma.fileAssignment.findFirst({
+    where: { fileId, userId },
+    select: { id: true },
+  });
+  if (exists) return NextResponse.json({ ok: true, id: exists.id });
 
   const created = await prisma.fileAssignment.create({
     data: {
-      fileId: data.fileId,
-      userId: data.userId,
-      note: data.note,
-      assignedById: (guard.user as any).id,
+      file: { connect: { id: fileId } },
+      user: { connect: { id: userId } },
+      assignedBy: { connect: { id: (me as any).id } }, // ✅ REQUIRED
     },
-    select: { id: true, createdAt: true },
+    select: { id: true },
   });
 
-  return NextResponse.json({ assignment: created }, { status: 201 });
+  return NextResponse.json({ ok: true, id: created.id }, { status: 201 });
 }
