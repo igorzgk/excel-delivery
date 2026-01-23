@@ -69,7 +69,7 @@ type ProfilePayload = {
 
 const BUSINESS_TYPES_LABELS: Record<BusinessType, string> = {
   RESTAURANT_GRILL: "Εστιατόριο - Ψητοπωλείο",
-  RESTAURANT_GRILL_HYGIENE_WITH_COFFEE: "ΥΓΙΕΙΝΗ ΕΣΤΙΑΤΟΡΙΑ - ΨΗΤΟΠΩΛΕΙΑ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ",
+  RESTAURANT_GRILL_HYGIENE_WITH_COFFEE: "Εστιατόριο - Ψητοπωλείο με παροχή καφέ",
   BAR_WINE: "Bar – Wine Bar",
   REFRESHMENT_CAFE: "Αναψυκτήριο – καφετέρια",
   SCHOOL_KIOSK: "Σχολικό κυλικείο",

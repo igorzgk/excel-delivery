@@ -72,7 +72,7 @@ type ProfilePayload = {
 
 const BUSINESS_TYPE_OPTIONS: { value: BusinessType; label: string }[] = [
   { value: "RESTAURANT_GRILL", label: "Εστιατόριο - Ψητοπωλείο" },
-  { value: "RESTAURANT_GRILL_HYGIENE_WITH_COFFEE", label: "ΥΓΙΕΙΝΗ ΕΣΤΙΑΤΟΡΙΑ - ΨΗΤΟΠΩΛΕΙΑ ΜΕ ΠΑΡΟΧΗ ΚΑΦΕ" },
+  { value: "RESTAURANT_GRILL_HYGIENE_WITH_COFFEE", label: "Εστιατόριο - Ψητοπωλείο με παροχή καφέ" },
   { value: "BAR_WINE", label: "Bar – Wine Bar" },
   { value: "REFRESHMENT_CAFE", label: "Αναψυκτήριο – καφετέρια" },
   { value: "SCHOOL_KIOSK", label: "Σχολικό κυλικείο" },
