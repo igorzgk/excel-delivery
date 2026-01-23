@@ -444,38 +444,16 @@ export default function RegisterPage() {
           </div>
 
           {/* 7) Αυγουστος διάστημα */}
-          <div>
-            <div className="text-sm mb-1">
-              Ποιο διάστημα του Αυγούστου είναι κλειστά;
-            </div>
-            <p className="text-xs text-gray-500 mb-2">
-              Παράδειγμα: 2025-08-10 έως 2025-08-23
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="date"
-                className="border rounded p-2 text-sm"
-                value={profile.augustRange.from}
-                onChange={(e) =>
-                  updateProfile("augustRange", {
-                    ...profile.augustRange,
-                    from: e.target.value,
-                  })
-                }
-              />
-              <input
-                type="date"
-                className="border rounded p-2 text-sm"
-                value={profile.augustRange.to}
-                onChange={(e) =>
-                  updateProfile("augustRange", {
-                    ...profile.augustRange,
-                    to: e.target.value,
-                  })
-                }
+            <div>
+              <div className="text-sm mb-1">Ποιο διάστημα του Αυγούστου είναι κλειστά;</div>
+              <p className="text-xs text-gray-500 mb-2">Παράδειγμα: 2025-08-10 έως 2025-08-23</p>
+
+              <DateRangeField
+                label=""
+                value={profile.augustRange}
+                onChange={(v) => updateProfile("augustRange", v)}
               />
             </div>
-          </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -528,16 +506,134 @@ function NumberField({
   value: number;
   onChange: (v: number) => void;
 }) {
+  const [raw, setRaw] = useState<string>(String(value ?? 0));
+
+  // keep local in sync if parent changes
+  useEffect(() => {
+    setRaw(String(value ?? 0));
+  }, [value]);
+
   return (
     <label className="block">
       <span className="text-sm">{label}</span>
+
       <input
         type="number"
+        inputMode="numeric"
         min={0}
+        step={1}
         className="w-full border rounded p-2 text-sm"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        value={raw}
+        onChange={(e) => {
+          const v = e.target.value; // can be "" while editing
+          setRaw(v);
+
+          if (v === "") return; // allow user to clear without forcing 0
+
+          const n = parseInt(v, 10);
+          onChange(Number.isFinite(n) && n >= 0 ? n : 0);
+        }}
+        onBlur={() => {
+          // when leaving the field: if empty -> set 0
+          if (raw.trim() === "") {
+            setRaw("0");
+            onChange(0);
+          } else {
+            const n = parseInt(raw, 10);
+            const fixed = Number.isFinite(n) && n >= 0 ? n : 0;
+            setRaw(String(fixed));
+            onChange(fixed);
+          }
+        }}
       />
     </label>
+  );
+}
+
+
+function DateRangeField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: { from: string; to: string };
+  onChange: (v: { from: string; to: string }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const display =
+    value.from && value.to ? `${value.from} έως ${value.to}` : "";
+
+  return (
+    <div className="block">
+      <span className="text-sm">{label}</span>
+
+      <button
+        type="button"
+        className="w-full border rounded p-2 text-sm text-left bg-white"
+        onClick={() => setOpen(true)}
+      >
+        {display || "Επιλέξτε διάστημα (από – έως)"}
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setOpen(false)}
+          />
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-4 shadow-lg">
+            <div className="font-semibold mb-3">Επιλογή διαστήματος</div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs text-gray-500">Από</span>
+                <input
+                  type="date"
+                  className="w-full border rounded p-2 text-sm"
+                  value={value.from}
+                  onChange={(e) =>
+                    onChange({ ...value, from: e.target.value })
+                  }
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs text-gray-500">Έως</span>
+                <input
+                  type="date"
+                  className="w-full border rounded p-2 text-sm"
+                  value={value.to}
+                  min={value.from || undefined}
+                  onChange={(e) =>
+                    onChange({ ...value, to: e.target.value })
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl px-4 py-2 text-sm border"
+                onClick={() => setOpen(false)}
+              >
+                Άκυρο
+              </button>
+              <button
+                type="button"
+                className="rounded-xl px-4 py-2 text-sm font-semibold"
+                style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}
+                onClick={() => setOpen(false)}
+                disabled={!value.from || !value.to}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

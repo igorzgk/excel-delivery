@@ -9,7 +9,6 @@ type User = {
   name: string | null;
   email: string;
   role: "USER" | "ADMIN";
-  subscriptionActive: boolean;
   status: "PENDING" | "ACTIVE" | "SUSPENDED";
   createdAt: string;
 };
@@ -26,7 +25,6 @@ export default function AdminUsersPage() {
     email: "",
     password: "",
     role: "USER" as "USER" | "ADMIN",
-    subscriptionActive: false,
   });
 
   const canCreate = useMemo(() => {
@@ -61,21 +59,6 @@ export default function AdminUsersPage() {
     load();
   }, []);
 
-  async function toggleSubscription(u: User) {
-    const optimistic = users.map((x) =>
-      x.id === u.id
-        ? { ...x, subscriptionActive: !u.subscriptionActive }
-        : x
-    );
-    setUsers(optimistic);
-    const res = await fetch(`/api/admin/users/${u.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscriptionActive: !u.subscriptionActive }),
-    });
-    if (!res.ok) load();
-  }
-
   async function changeRole(u: User, role: "USER" | "ADMIN") {
     const optimistic = users.map((x) => (x.id === u.id ? { ...x, role } : x));
     setUsers(optimistic);
@@ -88,17 +71,10 @@ export default function AdminUsersPage() {
   }
 
   async function remove(u: User) {
-    if (
-      !confirm(
-        `Διαγραφή χρήστη ${u.email}; Η ενέργεια δεν μπορεί να αναιρεθεί.`
-      )
-    )
-      return;
+    if (!confirm(`Διαγραφή χρήστη ${u.email}; Η ενέργεια δεν μπορεί να αναιρεθεί.`)) return;
     const optimistic = users.filter((x) => x.id !== u.id);
     setUsers(optimistic);
-    const res = await fetch(`/api/admin/users/${u.id}`, {
-      method: "DELETE",
-    });
+    const res = await fetch(`/api/admin/users/${u.id}`, { method: "DELETE" });
     if (!res.ok) load();
   }
 
@@ -114,20 +90,12 @@ export default function AdminUsersPage() {
       alert(json?.error || "Αποτυχία δημιουργίας χρήστη");
       return;
     }
-    setForm({
-      name: "",
-      email: "",
-      password: "",
-      role: "USER",
-      subscriptionActive: false,
-    });
+    setForm({ name: "", email: "", password: "", role: "USER" });
     load();
   }
 
   async function setStatus(u: User, status: User["status"]) {
-    const optimistic = users.map((x) =>
-      x.id === u.id ? { ...x, status } : x
-    );
+    const optimistic = users.map((x) => (x.id === u.id ? { ...x, status } : x));
     setUsers(optimistic);
     const res = await fetch(`/api/admin/users/${u.id}`, {
       method: "PATCH",
@@ -139,7 +107,7 @@ export default function AdminUsersPage() {
 
   return (
     <div className="grid gap-6 text-[inherit]">
-      {/* Φίλτρα */}
+      {/* Filters */}
       <div className="flex flex-wrap gap-2">
         {(["ALL", "PENDING", "ACTIVE", "SUSPENDED"] as const).map((f) => (
           <button
@@ -152,13 +120,7 @@ export default function AdminUsersPage() {
                 : "border-[color:var(--border)]",
             ].join(" ")}
           >
-            {f === "ALL"
-              ? "Όλοι"
-              : f === "PENDING"
-              ? "ΕΚΚΡΕΜΕΙ"
-              : f === "ACTIVE"
-              ? "ΕΝΕΡΓΟΣ"
-              : "ΑΝΑΣΤΟΛΗ"}
+            {f === "ALL" ? "Όλοι" : f === "PENDING" ? "ΕΚΚΡΕΜΕΙ" : f === "ACTIVE" ? "ΕΝΕΡΓΟΣ" : "ΑΝΑΣΤΟΛΗ"}
           </button>
         ))}
         <div className="ml-auto">
@@ -171,7 +133,7 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* Δημιουργία χρήστη */}
+      {/* Create user */}
       <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
         <h2 className="font-semibold mb-3 text-[inherit]">Δημιουργία Χρήστη</h2>
         <form onSubmit={createUser} className="grid gap-3 md:grid-cols-5">
@@ -202,27 +164,13 @@ export default function AdminUsersPage() {
             <select
               className="rounded-md border border-[color:var(--border)] bg-white/90 px-3 py-2 text-[inherit]"
               value={form.role}
-              onChange={(e) =>
-                setForm({ ...form, role: e.target.value as "USER" | "ADMIN" })
-              }
+              onChange={(e) => setForm({ ...form, role: e.target.value as "USER" | "ADMIN" })}
             >
               <option value="USER">USER</option>
               <option value="ADMIN">ADMIN</option>
             </select>
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.subscriptionActive}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    subscriptionActive: e.target.checked,
-                  })
-                }
-              />
-              Συνδρομή
-            </label>
           </div>
+
           <div className="md:col-span-5">
             <button
               type="submit"
@@ -235,34 +183,26 @@ export default function AdminUsersPage() {
         </form>
       </section>
 
-      {/* --- MOBILE LIST (2 σειρές) --- */}
+      {/* MOBILE */}
       <section className="sm:hidden grid gap-3">
         {err ? (
           <div className="text-sm text-red-600">{err}</div>
         ) : loading ? (
           <div className="text-sm text-[color:var(--muted)]">Φόρτωση…</div>
         ) : users.length === 0 ? (
-          <div className="text-sm text-[color:var(--muted)]">
-            Δεν βρέθηκαν χρήστες.
-          </div>
+          <div className="text-sm text-[color:var(--muted)]">Δεν βρέθηκαν χρήστες.</div>
         ) : (
           users.map((u) => (
             <div
               key={u.id}
               className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-3"
             >
-              {/* Row 1: Όνομα / Email */}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-medium break-words">
-                    {u.name || "—"}
-                  </div>
-                  <div className="text-xs text-gray-600 break-words">
-                    {u.email}
-                  </div>
+                  <div className="font-medium break-words">{u.name || "—"}</div>
+                  <div className="text-xs text-gray-600 break-words">{u.email}</div>
                 </div>
 
-                {/* Κατάσταση pill */}
                 <span
                   className={[
                     "nowrap inline-flex items-center rounded-full px-2 py-0.5 border text-xs",
@@ -273,40 +213,24 @@ export default function AdminUsersPage() {
                       : "border-red-300 text-red-700 bg-red-50",
                   ].join(" ")}
                 >
-                  {u.status === "ACTIVE"
-                    ? "ΕΝΕΡΓΟΣ"
-                    : u.status === "PENDING"
-                    ? "ΕΚΚΡΕΜΕΙ"
-                    : "ΑΝΑΣΤΟΛΗ"}
+                  {u.status === "ACTIVE" ? "ΕΝΕΡΓΟΣ" : u.status === "PENDING" ? "ΕΚΚΡΕΜΕΙ" : "ΑΝΑΣΤΟΛΗ"}
                 </span>
               </div>
 
-              {/* Row 2 */}
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <select
                   value={u.role}
-                  onChange={(e) =>
-                    changeRole(u, e.target.value as "USER" | "ADMIN")
-                  }
+                  onChange={(e) => changeRole(u, e.target.value as "USER" | "ADMIN")}
                   className="w-full rounded-md border border-[color:var(--border)] bg-white/90 px-2 py-1 text-[inherit]"
                 >
                   <option value="USER">USER</option>
                   <option value="ADMIN">ADMIN</option>
                 </select>
 
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={u.subscriptionActive}
-                    onChange={() => toggleSubscription(u)}
-                    disabled={u.status !== "ACTIVE"}
-                  />
-                  <span className="text-sm">
-                    {u.subscriptionActive ? "Ενεργό" : "Ανενεργό"}
-                  </span>
-                </label>
+                <div className="text-xs text-gray-600 flex items-center justify-end">
+                  {new Date(u.createdAt).toLocaleDateString()}
+                </div>
 
-                {/* Mobile actions */}
                 <div className="col-span-2 flex flex-wrap gap-2">
                   {u.status !== "ACTIVE" && (
                     <button
@@ -332,7 +256,6 @@ export default function AdminUsersPage() {
                     Διαγραφή
                   </button>
 
-                  {/* PROFILE LINK — MOBILE */}
                   <Link
                     href={`/admin/users/${u.id}/profile`}
                     className="rounded-md border border-[color:var(--border)] px-3 py-1 text-xs underline text-[color:var(--brand,#25C3F4)]"
@@ -346,27 +269,24 @@ export default function AdminUsersPage() {
         )}
       </section>
 
-      {/* --- DESKTOP/TABLET TABLE --- */}
+      {/* DESKTOP */}
       <section className="hidden sm:block rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
         {err ? (
           <div className="text-sm text-red-600">{err}</div>
         ) : loading ? (
           <div className="text-sm text-[color:var(--muted)]">Φόρτωση…</div>
         ) : users.length === 0 ? (
-          <div className="text-sm text-[color:var(--muted)]">
-            Δεν βρέθηκαν χρήστες.
-          </div>
+          <div className="text-sm text-[color:var(--muted)]">Δεν βρέθηκαν χρήστες.</div>
         ) : (
           <div className="overflow-hidden">
             <table className="w-full table-fixed text-sm text-[inherit]">
               <thead className="bg-gray-50 text-gray-700">
                 <tr className="text-left">
-                  <Th className="w-[20%]">Όνομα</Th>
-                  <Th className="w-[25%]">Email</Th>
-                  <Th className="w-[15%]">Ρόλος</Th>
-                  <Th className="w-[15%]">Κατάσταση</Th>
-                  <Th className="w-[15%]">Συνδρομή</Th>
-                  <Th className="w-[10%]">Δημιουργήθηκε</Th>
+                  <Th className="w-[22%]">Όνομα</Th>
+                  <Th className="w-[28%]">Email</Th>
+                  <Th className="w-[14%]">Ρόλος</Th>
+                  <Th className="w-[14%]">Κατάσταση</Th>
+                  <Th className="w-[12%]">Δημιουργήθηκε</Th>
                   <Th className="w-[20%]">Ενέργειες</Th>
                 </tr>
               </thead>
@@ -374,20 +294,13 @@ export default function AdminUsersPage() {
               <tbody className="divide-y divide-gray-100">
                 {users.map((u) => (
                   <tr key={u.id} className="align-top">
-                    <Td className="whitespace-normal break-words">
-                      {u.name ?? "—"}
-                    </Td>
-                    <Td className="whitespace-normal break-words">
-                      {u.email}
-                    </Td>
+                    <Td className="whitespace-normal break-words">{u.name ?? "—"}</Td>
+                    <Td className="whitespace-normal break-words">{u.email}</Td>
 
-                    {/* Ρόλος */}
                     <Td>
                       <select
                         value={u.role}
-                        onChange={(e) =>
-                          changeRole(u, e.target.value as "USER" | "ADMIN")
-                        }
+                        onChange={(e) => changeRole(u, e.target.value as "USER" | "ADMIN")}
                         className="rounded-md border border-[color:var(--border)] bg-white/90 px-2 py-1 text-[inherit]"
                       >
                         <option value="USER">USER</option>
@@ -395,7 +308,6 @@ export default function AdminUsersPage() {
                       </select>
                     </Td>
 
-                    {/* Κατάσταση */}
                     <Td>
                       <span
                         className={[
@@ -407,36 +319,14 @@ export default function AdminUsersPage() {
                             : "border-red-300 text-red-700 bg-red-50",
                         ].join(" ")}
                       >
-                        {u.status === "ACTIVE"
-                          ? "ΕΝΕΡΓΟΣ"
-                          : u.status === "PENDING"
-                          ? "ΕΚΚΡΕΜΕΙ"
-                          : "ΑΝΑΣΤΟΛΗ"}
+                        {u.status === "ACTIVE" ? "ΕΝΕΡΓΟΣ" : u.status === "PENDING" ? "ΕΚΚΡΕΜΕΙ" : "ΑΝΑΣΤΟΛΗ"}
                       </span>
                     </Td>
 
-                    {/* Συνδρομή */}
-                    <Td>
-                      <label className="inline-flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={u.subscriptionActive}
-                          onChange={() => toggleSubscription(u)}
-                          disabled={u.status !== "ACTIVE"}
-                        />
-                        {u.subscriptionActive ? "Ενεργό" : "Ανενεργό"}
-                      </label>
-                    </Td>
+                    <Td className="whitespace-nowrap">{new Date(u.createdAt).toLocaleDateString()}</Td>
 
-                    {/* Created */}
-                    <Td className="whitespace-nowrap">
-                      {new Date(u.createdAt).toLocaleDateString()}
-                    </Td>
-
-                    {/* Actions */}
                     <Td>
                       <div className="flex flex-wrap gap-2">
-
                         {u.status !== "ACTIVE" && (
                           <button
                             onClick={() => setStatus(u, "ACTIVE")}
@@ -462,7 +352,6 @@ export default function AdminUsersPage() {
                           Διαγραφή
                         </button>
 
-                        {/* PROFILE LINK — LAST BUTTON (DESKTOP) */}
                         <Link
                           href={`/admin/users/${u.id}/profile`}
                           className="rounded-md border border-[color:var(--border)] px-3 py-1 underline text-[color:var(--brand,#25C3F4)]"
@@ -482,23 +371,10 @@ export default function AdminUsersPage() {
   );
 }
 
-/* helpers */
-function Th({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
 }
 
-function Td({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <td className={`px-3 py-3 ${className}`}>{children}</td>;
 }

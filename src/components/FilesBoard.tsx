@@ -170,7 +170,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                 <colgroup>
                   <col className="w-[55%]" />
                   <col className="w-[20%]" />
-                  <col className="w-[19%]" />
+                  <col className="w-[10%]" />
                   <col className="w-[6%]" />
                 </colgroup>
                 <thead className="bg-gray-50 text-gray-700">
