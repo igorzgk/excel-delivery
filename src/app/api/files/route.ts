@@ -2,6 +2,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { currentUser, requireRole } from "@/lib/auth-helpers";
+import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
+
+export const runtime = "nodejs";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const BUCKET = "Files"; // <-- your existing bucket (private)
+
+function supabaseAdmin() {
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
+    auth: { persistSession: false },
+  });
+}
+
+function safeFilename(name: string) {
+  return (name || "file").replace(/[^\w.\-() ]+/g, "_");
+}
 
 export async function GET(req: Request) {
   const me = await currentUser();
@@ -14,7 +32,6 @@ export async function GET(req: Request) {
   const where = isAdmin
     ? undefined
     : {
-        // for users: show uploads they made OR assignments to them
         OR: [
           { uploadedById: (me as any).id },
           { assignments: { some: { userId: (me as any).id } } },
@@ -46,56 +63,81 @@ export async function GET(req: Request) {
   return NextResponse.json({ files });
 }
 
-// Admin-only manual create (rarely used; your UIs mostly use POST /api/uploads)
+// Admin manual upload from /admin/files
 export async function POST(req: Request) {
-  // If you already guard admin here, keep it. If not, add your guard.
-  // const guard = await requireRole("ADMIN"); ...
+  const guard = await requireRole("ADMIN");
+  if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
 
-  const form = await req.formData();
+  try {
+    const form = await req.formData();
 
-  const title = String(form.get("title") || "").trim();
-  const file = form.get("file") as File | null;
-  const assignTo = String(form.get("assignTo") || "").trim(); // <-- IMPORTANT
+    const title = String(form.get("title") || "").trim();
+    const file = form.get("file") as File | null;
+    const assignTo = String(form.get("assignTo") || "").trim(); // <-- from your Admin UI
 
-  if (!title || !file) {
-    return NextResponse.json({ error: "missing_fields" }, { status: 400 });
-  }
+    if (!title || !file) {
+      return NextResponse.json({ error: "missing_fields" }, { status: 400 });
+    }
 
-  // 🔥 PDF detection fix
-  const safeName = (file.name || "file").replace(/[^\w.\-() ]+/g, "_");
-  const contentTypeRaw = (file as any).type || "";
-  const safeNameLower = safeName.toLowerCase();
-  const contentType =
-    contentTypeRaw ||
-    (safeNameLower.endsWith(".pdf") ? "application/pdf" : "application/octet-stream");
+    // ✅ PDF detection fix (even if browser sends empty type)
+    const originalName = safeFilename(file.name || "file");
+    const lower = originalName.toLowerCase();
+    const contentTypeRaw = (file as any).type || "";
+    const mime =
+      contentTypeRaw ||
+      (lower.endsWith(".pdf") ? "application/pdf" : "application/octet-stream");
 
-  // convert to Buffer
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+    // Convert to Buffer
+    const buffer = Buffer.from(await file.arrayBuffer());
 
-  // TODO: your storage upload logic here (S3/Supabase/local) should return a URL/key
-  // I assume you already have it as `url`:
-  const url = await uploadSomewhereAndReturnUrl(buffer, safeName, contentType); // <-- keep your existing code
+    // Create a storage key (no folders -> easy route param)
+    const ext = lower.includes(".") ? lower.split(".").pop() : "";
+    const key = `${crypto.randomUUID()}${ext ? `.${ext}` : ""}`;
 
-  // ✅ create file record with mime + originalName
-  const created = await prisma.file.create({
-    data: {
-      title,
-      originalName: safeName,
-      url,
-      mime: contentType, // <-- IMPORTANT for PDF column
-      size: buffer.length,
-    },
-    select: { id: true },
-  });
-
-  // ✅ assignment if selected
-  if (assignTo) {
-    await prisma.fileAssignment.create({
-      data: { fileId: created.id, userId: assignTo },
+    // Upload to Supabase (private bucket)
+    const supabase = supabaseAdmin();
+    const up = await supabase.storage.from(BUCKET).upload(key, buffer, {
+      contentType: mime,
+      upsert: false,
     });
+
+    if (up.error) {
+      console.error(up.error);
+      return NextResponse.json(
+        { error: "upload_failed", detail: up.error.message },
+        { status: 500 }
+      );
+    }
+
+    // ✅ Store url as your internal download route (works with private bucket)
+    const url = `/api/files/download/${encodeURIComponent(key)}`;
+
+    // ✅ create file record with mime + originalName + uploadedBy
+    const created = await prisma.file.create({
+      data: {
+        title,
+        originalName,
+        url,
+        mime,
+        size: buffer.length,
+        uploadedById: (guard as any)?.userId || null, // if your requireRole returns userId
+      },
+      select: { id: true },
+    });
+
+    // ✅ assignment if selected
+    if (assignTo) {
+      await prisma.fileAssignment.create({
+        data: { fileId: created.id, userId: assignTo },
+      });
+    }
+
+    return NextResponse.json({ ok: true, id: created.id }, { status: 201 });
+  } catch (e: any) {
+    console.error(e);
+    return NextResponse.json(
+      { error: "server_error", detail: e?.message || "Unknown error" },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ ok: true, id: created.id }, { status: 201 });
 }
-
