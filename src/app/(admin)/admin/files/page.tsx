@@ -260,10 +260,10 @@ export default function AdminFilesPage() {
               <table className="w-full table-fixed text-sm text-[inherit]">
                 <colgroup>
                   <col className="w-[35%]" />  {/* Τίτλος */}
-                  <col className="w-[20%]" />  {/* Ημερομηνία δημιουργίας */}
-                  <col className="w-[20%]" />  {/* Ανατεθειμένο σε */}
-                  <col className="w-[15%]" />  {/* Ανάθεση */}
-                  <col className="w-[20%]" />  {/* Ενέργειες */}
+                  <col className="w-[15%]" />  {/* Ημερομηνία δημιουργίας */}
+                  <col className="w-[15%]" />  {/* Ανατεθειμένο σε */}
+                  <col className="w-[5%]" />  {/* Ανάθεση */}
+                  <col className="w-[10%]" />  {/* Ενέργειες */}
                 </colgroup>
 
                 <thead className="bg-gray-50 text-gray-700">
