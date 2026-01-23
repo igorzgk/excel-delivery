@@ -128,9 +128,13 @@ export async function POST(req: Request) {
     // ✅ assignment if selected
     if (assignTo) {
       await prisma.fileAssignment.create({
-        data: { fileId: created.id, userId: assignTo },
+        data: {
+          file: { connect: { id: created.id } },
+          user: { connect: { id: assignTo } },
+        },
       });
     }
+
 
     return NextResponse.json({ ok: true, id: created.id }, { status: 201 });
   } catch (e: any) {
