@@ -259,12 +259,13 @@ export default function AdminFilesPage() {
             <div className="overflow-hidden">
               <table className="w-full table-fixed text-sm text-[inherit]">
                 <colgroup>
-                  <col className="w-[35%]" />  {/* Τίτλος */}
-                  <col className="w-[15%]" />  {/* Ημερομηνία δημιουργίας */}
-                  <col className="w-[15%]" />  {/* Ανατεθειμένο σε */}
-                  <col className="w-[5%]" />  {/* Ανάθεση */}
-                  <col className="w-[10%]" />  {/* Ενέργειες */}
+                  <col className="w-[40%]" /> {/* Τίτλος */}
+                  <col className="w-[18%]" /> {/* Ημερομηνία */}
+                  <col className="w-[20%]" /> {/* Ανατεθειμένο σε */}
+                  <col className="w-[14%]" /> {/* Ανάθεση */}
+                  <col className="w-[8%]" />  {/* Ενέργειες */}
                 </colgroup>
+
 
                 <thead className="bg-gray-50 text-gray-700">
                   <tr className="text-left">
@@ -310,7 +311,7 @@ export default function AdminFilesPage() {
                             </button>
                           </form>
                         </Td>
-                        <Td className="text-right w-[12%] whitespace-nowrap">
+                        <Td className="text-right whitespace-nowrap">
                           {f.url ? (
                             <a
                               href={f.url}

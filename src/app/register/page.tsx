@@ -507,49 +507,73 @@ function NumberField({
   value: number;
   onChange: (v: number) => void;
 }) {
+  // allow empty while typing (so mobile can clear)
   const [raw, setRaw] = useState<string>(String(value ?? 0));
 
-  // keep local in sync if parent changes
   useEffect(() => {
+    // keep in sync if parent changes
     setRaw(String(value ?? 0));
   }, [value]);
+
+  const commit = (nextRaw: string) => {
+    // empty => treat as 0 but keep empty in UI while typing
+    if (nextRaw === "") {
+      setRaw("");
+      onChange(0);
+      return;
+    }
+    // only digits
+    if (!/^\d+$/.test(nextRaw)) return;
+    const n = Math.max(0, parseInt(nextRaw, 10) || 0);
+    setRaw(String(n));
+    onChange(n);
+  };
+
+  const dec = () => onChange(Math.max(0, (value ?? 0) - 1));
+  const inc = () => onChange((value ?? 0) + 1);
 
   return (
     <label className="block">
       <span className="text-sm">{label}</span>
 
-      <input
-        type="number"
-        inputMode="numeric"
-        min={0}
-        step={1}
-        className="w-full border rounded p-2 text-sm"
-        value={raw}
-        onChange={(e) => {
-          const v = e.target.value; // can be "" while editing
-          setRaw(v);
+      <div className="mt-1 flex items-stretch gap-2">
+        <button
+          type="button"
+          onClick={dec}
+          className="shrink-0 w-10 rounded border bg-white hover:bg-black/5 text-lg leading-none"
+          aria-label="Μείωση"
+        >
+          −
+        </button>
 
-          if (v === "") return; // allow user to clear without forcing 0
+        <input
+          inputMode="numeric"
+          pattern="[0-9]*"
+          className="w-full border rounded p-2 text-sm text-center"
+          value={raw}
+          onChange={(e) => commit(e.target.value)}
+          onBlur={() => {
+            // if user leaves it empty, show 0
+            if (raw === "") {
+              setRaw("0");
+              onChange(0);
+            }
+          }}
+        />
 
-          const n = parseInt(v, 10);
-          onChange(Number.isFinite(n) && n >= 0 ? n : 0);
-        }}
-        onBlur={() => {
-          // when leaving the field: if empty -> set 0
-          if (raw.trim() === "") {
-            setRaw("0");
-            onChange(0);
-          } else {
-            const n = parseInt(raw, 10);
-            const fixed = Number.isFinite(n) && n >= 0 ? n : 0;
-            setRaw(String(fixed));
-            onChange(fixed);
-          }
-        }}
-      />
+        <button
+          type="button"
+          onClick={inc}
+          className="shrink-0 w-10 rounded border bg-white hover:bg-black/5 text-lg leading-none"
+          aria-label="Αύξηση"
+        >
+          +
+        </button>
+      </div>
     </label>
   );
 }
+
 
 
 function DateRangeField({
