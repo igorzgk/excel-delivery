@@ -10,6 +10,7 @@ export function getMenu(role: Role): MenuItem[] {
       { label: "Αρχεία", href: "/admin/files" },
       { label: "Υποστήριξη", href: "/admin/support" }, // ← add this
       { label: "Αρχεία Καταγραφής", href: "/admin/audit" },
+      { label: "Φάκελοι", href: "/admin/pdf-folders" },
     ];
   }
 

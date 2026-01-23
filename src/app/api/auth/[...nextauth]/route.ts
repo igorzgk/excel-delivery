@@ -4,7 +4,6 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
 import { prisma } from "@/lib/prisma";
 
-
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
@@ -27,10 +26,9 @@ export const authOptions: NextAuthOptions = {
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return null;
 
-        if (user.status === "PENDING")   throw new Error("AccountPending");
+        if (user.status === "PENDING") throw new Error("AccountPending");
         if (user.status === "SUSPENDED") throw new Error("AccountSuspended");
 
-        // Returned fields end up on `user` in the jwt callback
         return { id: user.id, name: user.name, email: user.email, role: user.role };
       },
     }),
@@ -38,22 +36,19 @@ export const authOptions: NextAuthOptions = {
 
   callbacks: {
     async jwt({ token, user }) {
-      // First login: copy over from `user`
       if (user) {
-        token.id = (user as any).id;
-        token.role = (user as any).role;
+        (token as any).id = (user as any).id;
+        (token as any).role = (user as any).role;
       }
       return token;
     },
 
     async session({ session, token }) {
-      // Expose id/role to the app
-      (session.user as any).id = token.id;
-      (session.user as any).role = token.role;
+      (session.user as any).id = (token as any).id;
+      (session.user as any).role = (token as any).role;
       return session;
     },
 
-    // Normalize old /dashboard/admin links to /admin
     async redirect({ url, baseUrl }) {
       try {
         const u = new URL(url, baseUrl);

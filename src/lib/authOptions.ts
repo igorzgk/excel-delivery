@@ -37,16 +37,18 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = (user as any).id;
-        token.role = (user as any).role;
+        (token as any).id = (user as any).id;
+        (token as any).role = (user as any).role;
       }
       return token;
     },
+
     async session({ session, token }) {
-      (session.user as any).id = token.id;
-      (session.user as any).role = token.role;
+      (session.user as any).id = (token as any).id;
+      (session.user as any).role = (token as any).role;
       return session;
     },
+
     async redirect({ url, baseUrl }) {
       try {
         const u = new URL(url, baseUrl);
@@ -62,5 +64,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
 
-  pages: { signIn: "/login" },
+  pages: {
+    signIn: "/login",
+  },
 };
