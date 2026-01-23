@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Folder, FileText, Plus, Pencil, Trash2 } from "lucide-react";
 
 type FileItem = {
   id: string;
@@ -13,15 +14,36 @@ type FileItem = {
   pdfFolderId?: string | null;
 };
 
-type Folder = { id: string; name: string };
+type FolderItem = {
+  id: string;
+  name: string;
+};
+
+function isPdfFile(f: FileItem) {
+  const mime = (f.mime || "").toLowerCase();
+  const name = (f.originalName || "").toLowerCase();
+  const title = (f.title || "").toLowerCase();
+
+  // ✅ πιο “σίγουρο” detection
+  if (mime.includes("application/pdf") || mime === "pdf" || mime.includes("pdf")) return true;
+  if (name.endsWith(".pdf")) return true;
+  if (title.endsWith(".pdf")) return true;
+  if (name.includes(".pdf")) return true;
+  if (title.includes(".pdf")) return true;
+
+  return false;
+}
 
 export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] }) {
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<FileItem[]>(initialFiles ?? []);
-  const [folders, setFolders] = useState<Folder[]>([]);
+
+  const [folders, setFolders] = useState<FolderItem[]>([]);
   const [folderFilter, setFolderFilter] = useState<string>("ALL"); // ALL | NONE | folderId
   const [loadingFolders, setLoadingFolders] = useState(false);
+  const [creating, setCreating] = useState(false);
 
+  // ===== search filter =====
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return files;
@@ -32,14 +54,10 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
     });
   }, [files, query]);
 
+  // ===== split pdf/other =====
   const { pdfs, others } = useMemo(() => {
-    const isPdf = (f: FileItem) =>
-      (f.mime || "").toLowerCase().includes("pdf") ||
-      (f.originalName || "").toLowerCase().endsWith(".pdf") ||
-      (f.title || "").toLowerCase().endsWith(".pdf");
-
-    const p = filtered.filter(isPdf);
-    const o = filtered.filter((x) => !isPdf(x));
+    const p = filtered.filter(isPdfFile);
+    const o = filtered.filter((x) => !isPdfFile(x));
     return { pdfs: p, others: o };
   }, [filtered]);
 
@@ -49,35 +67,51 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
     return pdfs.filter((p) => p.pdfFolderId === folderFilter);
   }, [pdfs, folderFilter]);
 
+  // ===== folders api =====
   async function loadFolders() {
     setLoadingFolders(true);
     try {
       const res = await fetch("/api/pdf-folders", { cache: "no-store" });
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
       if (res.ok) setFolders(j.folders || []);
     } finally {
       setLoadingFolders(false);
     }
   }
 
+  // load once on mount (so UI shows folders immediately)
+  useEffect(() => {
+    loadFolders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function createFolder() {
     const name = prompt("Όνομα φακέλου (PDF):")?.trim();
     if (!name) return;
-    const res = await fetch("/api/pdf-folders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (!res.ok) {
-      alert("Αποτυχία δημιουργίας φακέλου (ίσως υπάρχει ήδη).");
-      return;
+
+    setCreating(true);
+    try {
+      const res = await fetch("/api/pdf-folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(j?.error === "folder_exists" ? "Ο φάκελος υπάρχει ήδη." : "Αποτυχία δημιουργίας φακέλου.");
+        return;
+      }
+      await loadFolders();
+      setFolderFilter(j.folder?.id || "ALL");
+    } finally {
+      setCreating(false);
     }
-    await loadFolders();
   }
 
   async function renameFolder(id: string, current: string) {
     const name = prompt("Νέο όνομα φακέλου:", current)?.trim();
     if (!name || name === current) return;
+
     const res = await fetch(`/api/pdf-folders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -92,14 +126,16 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
 
   async function deleteFolder(id: string) {
     if (!confirm("Διαγραφή φακέλου; (τα PDF δεν θα διαγραφούν, απλά θα βγουν από τον φάκελο)")) return;
+
     const res = await fetch(`/api/pdf-folders/${id}`, { method: "DELETE" });
     if (!res.ok) {
       alert("Αποτυχία διαγραφής φακέλου.");
       return;
     }
-    setFolderFilter("ALL");
-    // detach happens server-side; just refresh locally by removing folder id from affected files if you want:
+
+    // locally detach
     setFiles((prev) => prev.map((f) => (f.pdfFolderId === id ? { ...f, pdfFolderId: null } : f)));
+    setFolderFilter("ALL");
     await loadFolders();
   }
 
@@ -115,12 +151,6 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
     }
     setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
   }
-
-  // load folders once (lazy) when user focuses pdf panel
-  const ensureFolders = async () => {
-    if (folders.length) return;
-    await loadFolders();
-  };
 
   return (
     <div className="grid gap-4">
@@ -149,10 +179,10 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
             <div className="mt-3 overflow-hidden">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[52%]" />
-                  <col className="w-[24%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[14%]" />
+                  <col className="w-[60%]" />
+                  <col className="w-[25%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[8%]" />
                 </colgroup>
                 <thead className="bg-gray-50 text-gray-700">
                   <tr className="text-left">
@@ -167,7 +197,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                     const dt = new Date(f.createdAt);
                     return (
                       <tr key={f.id} className="align-top">
-                        <Td className="break-words">{f.title}</Td>
+                        <Td className="break-words">{f.title || "—"}</Td>
                         <Td className="whitespace-nowrap">
                           {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
                         </Td>
@@ -197,7 +227,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
         </section>
 
         {/* RIGHT: PDFs with folders */}
-        <section className="rounded-2xl border bg-white p-4" onMouseEnter={ensureFolders} onFocus={ensureFolders}>
+        <section className="rounded-2xl border bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">PDF Αρχεία ({pdfs.length})</h2>
 
@@ -206,7 +236,6 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                 className="rounded-lg border px-2 py-1 text-sm"
                 value={folderFilter}
                 onChange={(e) => setFolderFilter(e.target.value)}
-                onClick={ensureFolders}
               >
                 <option value="ALL">Όλα</option>
                 <option value="NONE">Χωρίς φάκελο</option>
@@ -220,112 +249,161 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
               <button
                 type="button"
                 onClick={createFolder}
-                className="rounded-lg border px-3 py-1 text-sm"
+                disabled={creating}
+                className="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm disabled:opacity-60"
                 title="Δημιουργία φακέλου"
               >
-                + Φάκελος
+                <Plus size={16} /> Φάκελος
               </button>
             </div>
           </div>
 
-          {/* folders list */}
-          <div className="mt-3 flex flex-wrap gap-2">
+          {/* ✅ Folder list as “rows” with icon (NOT chips) */}
+          <div className="mt-3 rounded-xl border bg-gray-50 p-2">
             {loadingFolders ? (
-              <span className="text-xs text-gray-500">Φόρτωση φακέλων…</span>
+              <div className="text-sm text-gray-500 px-2 py-2">Φόρτωση φακέλων…</div>
             ) : folders.length === 0 ? (
-              <span className="text-xs text-gray-500">Δεν υπάρχουν φάκελοι.</span>
+              <div className="text-sm text-gray-500 px-2 py-2">Δεν υπάρχουν φάκελοι.</div>
             ) : (
-              folders.map((f) => (
-                <div key={f.id} className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs">
-                  <button
-                    type="button"
-                    className="underline"
+              <div className="grid gap-1">
+                {/* special rows */}
+                <FolderRow
+                  active={folderFilter === "ALL"}
+                  name="Όλα"
+                  onClick={() => setFolderFilter("ALL")}
+                />
+                <FolderRow
+                  active={folderFilter === "NONE"}
+                  name="Χωρίς φάκελο"
+                  onClick={() => setFolderFilter("NONE")}
+                />
+                <div className="my-1 h-px bg-gray-200" />
+
+                {folders.map((f) => (
+                  <div
+                    key={f.id}
+                    className={[
+                      "group flex items-center justify-between gap-2 rounded-lg px-2 py-2 cursor-pointer",
+                      folderFilter === f.id ? "bg-white border" : "hover:bg-white/70",
+                    ].join(" ")}
                     onClick={() => setFolderFilter(f.id)}
-                    title="Φίλτρο"
+                    title={f.name}
                   >
-                    {f.name}
-                  </button>
-                  <button type="button" onClick={() => renameFolder(f.id, f.name)} title="Μετονομασία">
-                    ✎
-                  </button>
-                  <button type="button" onClick={() => deleteFolder(f.id)} title="Διαγραφή">
-                    ×
-                  </button>
-                </div>
-              ))
+                    <div className="min-w-0 flex items-center gap-2">
+                      <Folder size={16} className="shrink-0" />
+                      <div className="truncate text-sm">{f.name}</div>
+                    </div>
+
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                      <button
+                        type="button"
+                        className="p-1 rounded hover:bg-gray-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          renameFolder(f.id, f.name);
+                        }}
+                        aria-label="Μετονομασία"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="p-1 rounded hover:bg-gray-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteFolder(f.id);
+                        }}
+                        aria-label="Διαγραφή"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
           {pdfsFilteredByFolder.length === 0 ? (
             <p className="mt-4 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
           ) : (
-            <div className="mt-4 overflow-hidden">
-              <table className="w-full table-fixed text-sm">
-                <colgroup>
-                  <col className="w-[46%]" />
-                  <col className="w-[22%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[22%]" />
-                </colgroup>
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr className="text-left">
-                    <Th>Τίτλος</Th>
-                    <Th>Ανέβηκε</Th>
-                    <Th>Μέγεθος</Th>
-                    <Th className="text-right">Φάκελος / Λήψη</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {pdfsFilteredByFolder.map((f) => {
-                    const dt = new Date(f.createdAt);
-                    return (
-                      <tr key={f.id} className="align-top">
-                        <Td className="break-words">{f.title}</Td>
-                        <Td className="whitespace-nowrap">
-                          {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
-                        </Td>
-                        <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
-                        <Td className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <select
-                              className="rounded-lg border px-2 py-1 text-xs"
-                              value={f.pdfFolderId ?? ""}
-                              onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
-                              onClick={ensureFolders}
-                              title="Μετακίνηση σε φάκελο"
-                            >
-                              <option value="">(Χωρίς)</option>
-                              {folders.map((fo) => (
-                                <option key={fo.id} value={fo.id}>
-                                  {fo.name}
-                                </option>
-                              ))}
-                            </select>
+            <div className="mt-4 grid gap-2">
+              {pdfsFilteredByFolder.map((f) => {
+                const dt = new Date(f.createdAt);
+                return (
+                  <div
+                    key={f.id}
+                    className="rounded-xl border p-3 flex items-start justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <FileText size={16} className="shrink-0" />
+                        <div className="font-medium break-words">{f.title || "PDF"}</div>
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
+                      </div>
+                    </div>
 
-                            {f.url ? (
-                              <a
-                                href={f.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
-                                style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                              >
-                                Λήψη
-                              </a>
-                            ) : (
-                              <span className="text-gray-500">—</span>
-                            )}
-                          </div>
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <select
+                        className="rounded-lg border px-2 py-1 text-xs"
+                        value={f.pdfFolderId ?? ""}
+                        onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
+                        title="Μετακίνηση σε φάκελο"
+                      >
+                        <option value="">(Χωρίς)</option>
+                        {folders.map((fo) => (
+                          <option key={fo.id} value={fo.id}>
+                            {fo.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      {f.url ? (
+                        <a
+                          href={f.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black"
+                          style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                        >
+                          Λήψη
+                        </a>
+                      ) : (
+                        <span className="text-gray-500">—</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
       </div>
+    </div>
+  );
+}
+
+function FolderRow({
+  active,
+  name,
+  onClick,
+}: {
+  active: boolean;
+  name: string;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      className={[
+        "flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer",
+        active ? "bg-white border" : "hover:bg-white/70",
+      ].join(" ")}
+      onClick={onClick}
+    >
+      <Folder size={16} className="shrink-0" />
+      <span className="text-sm">{name}</span>
     </div>
   );
 }
