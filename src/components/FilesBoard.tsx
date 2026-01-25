@@ -1,3 +1,4 @@
+// src/components/FilesBoard.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -144,19 +145,19 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
   return (
     <div className="grid gap-4">
       {/* toolbar */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Αναζήτηση αρχείων…"
-          className="w-full max-w-[520px] rounded-xl border px-3 py-2 text-sm"
+          className="w-full sm:max-w-[520px] rounded-xl border px-3 py-2 text-sm"
         />
         <div className="shrink-0 text-sm text-gray-500">{filtered.length} αρχείο(α)</div>
       </div>
 
-      {/* ✅ wider columns */}
+      {/* mobile: 1 column | desktop: 2 columns */}
       <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr]">
-        {/* LEFT */}
+        {/* LEFT: OTHER FILES */}
         <section className="rounded-2xl border bg-white p-4">
           <div className="flex items-baseline justify-between">
             <h2 className="font-semibold">Αρχεία ({others.length})</h2>
@@ -165,64 +166,91 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
           {others.length === 0 ? (
             <p className="mt-3 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
           ) : (
-            <div className="mt-3 overflow-hidden">
-              <table className="w-full table-fixed text-sm">
-                <colgroup>
-                  <col className="w-[55%]" />
-                  <col className="w-[20%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[6%]" />
-                </colgroup>
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr className="text-left">
-                    <Th>Τίτλος</Th>
-                    <Th>Ανέβηκε</Th>
-                    <Th>Μέγεθος</Th>
-                    <Th className="text-right">Ενέργεια</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {others.map((f) => {
-                    const dt = new Date(f.createdAt);
-                    return (
-                      <tr key={f.id} className="align-top">
-                        <Td className="break-words">{f.title || "—"}</Td>
-                        <Td className="whitespace-nowrap">
-                          {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
-                        </Td>
-                        <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
-                        <Td className="text-right whitespace-nowrap">
-                          {f.url ? (
-                            <a
-                              href={f.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
-                              style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                            >
-                              Λήψη
-                            </a>
-                          ) : (
-                            <span className="text-gray-500">—</span>
-                          )}
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {/* ✅ MOBILE CARDS */}
+              <div className="mt-3 grid gap-3 sm:hidden">
+                {others.map((f) => {
+                  const dt = new Date(f.createdAt);
+                  return (
+                    <div key={f.id} className="rounded-xl border p-3">
+                      <div className="font-medium break-words">{f.title || f.originalName || "—"}</div>
+                      <div className="mt-1 text-xs text-gray-600">
+                        {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
+                      </div>
+                      <div className="mt-3">
+                        {f.url ? (
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex w-full items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-black"
+                            style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                          >
+                            Λήψη
+                          </a>
+                        ) : (
+                          <div className="text-sm text-gray-500">—</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* ✅ DESKTOP TABLE */}
+              <div className="mt-3 overflow-x-auto hidden sm:block">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead className="bg-gray-50 text-gray-700">
+                    <tr className="text-left">
+                      <Th>Τίτλος</Th>
+                      <Th>Ανέβηκε</Th>
+                      <Th>Μέγεθος</Th>
+                      <Th className="text-right">Ενέργεια</Th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {others.map((f) => {
+                      const dt = new Date(f.createdAt);
+                      return (
+                        <tr key={f.id} className="align-top">
+                          <Td className="break-words">{f.title || "—"}</Td>
+                          <Td className="whitespace-nowrap">
+                            {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
+                          </Td>
+                          <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
+                          <Td className="text-right whitespace-nowrap">
+                            {f.url ? (
+                              <a
+                                href={f.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
+                                style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                              >
+                                Λήψη
+                              </a>
+                            ) : (
+                              <span className="text-gray-500">—</span>
+                            )}
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </section>
 
-        {/* RIGHT */}
+        {/* RIGHT: PDFS */}
         <section className="rounded-2xl border bg-white p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <h2 className="font-semibold">PDF Αρχεία ({pdfs.length})</h2>
 
             <div className="flex items-center gap-2">
               <select
-                className="rounded-lg border px-2 py-1 text-sm"
+                className="rounded-lg border px-2 py-2 text-sm w-full sm:w-auto"
                 value={folderFilter}
                 onChange={(e) => setFolderFilter(e.target.value)}
               >
@@ -239,14 +267,14 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                 type="button"
                 onClick={createFolder}
                 disabled={creating}
-                className="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-60 shrink-0"
               >
                 <Plus size={16} /> Φάκελος
               </button>
             </div>
           </div>
 
-          {/* ✅ folder rows (scrollable) */}
+          {/* folders list */}
           <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[220px] overflow-auto">
             {loadingFolders ? (
               <div className="text-sm text-gray-500 px-2 py-2">Φόρτωση φακέλων…</div>
@@ -273,7 +301,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                       <div className="truncate text-sm">{f.name}</div>
                     </div>
 
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                       <button
                         type="button"
                         className="p-1 rounded hover:bg-gray-100"
@@ -310,7 +338,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
               {pdfsFilteredByFolder.map((f) => {
                 const dt = new Date(f.createdAt);
                 return (
-                  <div key={f.id} className="rounded-xl border p-3 flex items-start justify-between gap-3">
+                  <div key={f.id} className="rounded-xl border p-3 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <FileText size={16} className="shrink-0" />
@@ -321,9 +349,9 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:shrink-0">
                       <select
-                        className="rounded-lg border px-2 py-1 text-xs"
+                        className="rounded-lg border px-2 py-2 text-sm sm:text-xs w-full sm:w-auto"
                         value={f.pdfFolderId ?? ""}
                         onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
                       >
@@ -340,7 +368,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                           href={f.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black"
+                          className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-black"
                           style={{ backgroundColor: "var(--brand, #25C3F4)" }}
                         >
                           Λήψη
@@ -360,15 +388,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
   );
 }
 
-function FolderRow({
-  active,
-  name,
-  onClick,
-}: {
-  active: boolean;
-  name: string;
-  onClick: () => void;
-}) {
+function FolderRow({ active, name, onClick }: { active: boolean; name: string; onClick: () => void }) {
   return (
     <div
       className={[
