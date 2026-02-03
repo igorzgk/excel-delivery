@@ -77,7 +77,6 @@ type AdminUserMeta = {
   role: string;
 };
 
-/** ===== Files + folders types ===== */
 type FileItem = {
   id: string;
   title: string;
@@ -108,6 +107,7 @@ const BUSINESS_TYPES_LABELS: Record<BusinessType, string> = {
   FISHMONGER_HOT_CORNER: "Ιχθυοπωλείο με ζεστή γωνιά",
   DELI_CHEESE_CURED_MEAT: "Διάθεση προϊόντων αλλαντοποιίας / τυροκομίας",
   BAKERY_WITH_COFFEE: "Αρτοποιείο με παροχή καφέ",
+  BAKERY_NO_COFFEE: "Αρτοποιείο με παροχή καφέ",
   BAKERY_NO_COFFEE: "Αρτοποιείο χωρίς παροχή καφέ",
   BAKERY_PASTRY_WITH_COFFEE: "Αρτοποιείο – Ζαχαροπλαστείο με παροχή καφέ",
   PASTRY_WITH_COFFEE: "Ζαχαροπλαστείο με παροχή καφέ",
@@ -171,25 +171,22 @@ export default function AdminUserProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
 
-  // password reset state
   const [pw, setPw] = useState({ newPassword: "", confirm: "" });
   const [pwSaving, setPwSaving] = useState(false);
   const [pwMsg, setPwMsg] = useState<string | null>(null);
   const [pwErr, setPwErr] = useState<string | null>(null);
 
-  /** ===== Admin files board state ===== */
+  // files area
   const [filesLoading, setFilesLoading] = useState(true);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [query, setQuery] = useState("");
 
-  // upload for this user
   const [upTitle, setUpTitle] = useState("");
   const [upFile, setUpFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  // folders / pdf controls
   const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [folderFilter, setFolderFilter] = useState<string>("ALL"); // ALL | NONE | folderId
+  const [folderFilter, setFolderFilter] = useState<string>("ALL");
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
 
@@ -306,12 +303,10 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  /** ===== Files + folders loaders ===== */
   async function loadUserFiles() {
     if (!userId) return;
     setFilesLoading(true);
     try {
-      // admin "all" list, filter client-side for this user
       const res = await fetch("/api/files?scope=all", { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -327,7 +322,6 @@ export default function AdminUserProfilePage() {
     if (!userId) return;
     setLoadingFolders(true);
     try {
-      // Admin-scoped folders for that user
       const res = await fetch(`/api/pdf-folders?scope=admin&userId=${encodeURIComponent(userId)}`, {
         cache: "no-store",
       });
@@ -356,7 +350,6 @@ export default function AdminUserProfilePage() {
       const fd = new FormData();
       fd.append("title", upTitle.trim());
       fd.append("file", upFile);
-      // ✅ auto-assign to this user
       fd.append("assignTo", userId);
 
       const res = await fetch("/api/files", { method: "POST", body: fd });
@@ -379,7 +372,6 @@ export default function AdminUserProfilePage() {
     const res = await fetch(`/api/files/${fileId}/pdf-folder`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      // allow admin to move within that user's folders
       body: JSON.stringify({ pdfFolderId, userId }),
     });
     if (!res.ok) {
@@ -442,7 +434,6 @@ export default function AdminUserProfilePage() {
       return;
     }
 
-    // update UI immediately
     setFiles((prev) => prev.map((f) => (f.pdfFolderId === folderId ? { ...f, pdfFolderId: null } : f)));
     setFolderFilter("ALL");
     await loadFolders();
@@ -479,7 +470,7 @@ export default function AdminUserProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">Προφίλ πελάτη</h1>
@@ -491,11 +482,10 @@ export default function AdminUserProfilePage() {
         </div>
       </header>
 
-      {/* ✅ Two containers responsive like FilesBoard (stack on mobile, 2 columns on lg) */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* ===================== LEFT: PROFILE FORM ===================== */}
+      {/* wider: on xl give more space to files column */}
+      <div className="grid gap-6 xl:grid-cols-[1fr_1.35fr]">
+        {/* LEFT: PROFILE */}
         <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-5">
-          {/* Βασικά στοιχεία */}
           <div>
             <h2 className="font-semibold mb-2">Βασικά στοιχεία</h2>
             <div className="grid gap-3 md:grid-cols-2">
@@ -519,7 +509,6 @@ export default function AdminUserProfilePage() {
             </div>
           </div>
 
-          {/* Είδος επιχείρησης */}
           <div>
             <h2 className="font-semibold mb-2">Είδος επιχείρησης</h2>
             <div className="grid md:grid-cols-2 gap-2">
@@ -543,7 +532,6 @@ export default function AdminUserProfilePage() {
             </div>
           </div>
 
-          {/* Εξοπλισμός */}
           <div>
             <h2 className="font-semibold mb-2">Εξοπλισμός αποθήκευσης/διατήρησης τροφίμων</h2>
             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -555,7 +543,6 @@ export default function AdminUserProfilePage() {
             </div>
           </div>
 
-          {/* Ημέρες / Αργίες / Αυγουστος */}
           <div>
             <h2 className="font-semibold mb-2">Ημέρες & περίοδοι λειτουργίας</h2>
             <div className="grid md:grid-cols-2 gap-4">
@@ -575,9 +562,7 @@ export default function AdminUserProfilePage() {
                         }}
                         className={[
                           "px-3 py-1 rounded-full border text-xs",
-                          checked
-                            ? "bg-[color:var(--brand,#25C3F4)] text-black border-transparent"
-                            : "border-gray-300",
+                          checked ? "bg-[color:var(--brand,#25C3F4)] text-black border-transparent" : "border-gray-300",
                         ].join(" ")}
                       >
                         {WEEKDAY_LABELS[day]}
@@ -630,7 +615,6 @@ export default function AdminUserProfilePage() {
             </div>
           </div>
 
-          {/* Password reset */}
           <div className="pt-2 border-t border-[color:var(--border)]">
             <h2 className="font-semibold mb-2">Reset κωδικού</h2>
             <div className="grid md:grid-cols-2 gap-3 max-w-xl">
@@ -663,11 +647,7 @@ export default function AdminUserProfilePage() {
                 onClick={resetPassword}
                 disabled={pwSaving}
                 className="rounded-xl px-4 py-2 text-sm font-semibold border"
-                style={{
-                  borderColor: "var(--border)",
-                  backgroundColor: "rgba(37,195,244,.12)",
-                  color: "#061630",
-                }}
+                style={{ borderColor: "var(--border)", backgroundColor: "rgba(37,195,244,.12)", color: "#061630" }}
               >
                 {pwSaving ? "Ενημέρωση…" : "Αλλαγή κωδικού"}
               </button>
@@ -690,7 +670,7 @@ export default function AdminUserProfilePage() {
           </div>
         </section>
 
-        {/* ===================== RIGHT: FILES + PDF FOLDERS ===================== */}
+        {/* RIGHT: FILES */}
         <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -709,10 +689,8 @@ export default function AdminUserProfilePage() {
             </button>
           </div>
 
-          {/* Upload for this user */}
           <div className="rounded-xl border bg-white p-3">
             <div className="font-medium mb-2">Upload αρχείου στον χρήστη</div>
-
             <div className="grid gap-2">
               <input
                 className="w-full rounded-lg border px-3 py-2 text-sm"
@@ -735,13 +713,12 @@ export default function AdminUserProfilePage() {
             </div>
           </div>
 
-          {/* Search + counts */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Αναζήτηση αρχείων…"
-              className="w-full sm:max-w-[420px] rounded-xl border px-3 py-2 text-sm"
+              className="w-full lg:max-w-[520px] rounded-xl border px-3 py-2 text-sm"
             />
             <div className="text-sm text-gray-500">
               {filteredFiles.length} αρχείο(α) · {pdfs.length} PDF
@@ -752,49 +729,24 @@ export default function AdminUserProfilePage() {
             <div className="text-sm text-[color:var(--muted)]">Φόρτωση αρχείων…</div>
           ) : (
             <div className="grid gap-4">
-              {/* NON-PDF */}
-              <div className="rounded-xl border bg-white p-3">
-                <div className="flex items-center justify-between">
+              {/* ✅ wider 2-column inside right panel on xl */}
+              <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                {/* NON PDF */}
+                <div className="rounded-xl border bg-white p-3">
                   <div className="font-semibold">Αρχεία (όχι PDF) ({others.length})</div>
-                </div>
 
-                {others.length === 0 ? (
-                  <p className="mt-2 text-sm text-gray-500">Δεν υπάρχουν αρχεία.</p>
-                ) : (
-                  <>
-                    {/* Mobile cards */}
-                    <div className="mt-3 grid gap-3 md:hidden">
-                      {others.map((f) => {
-                        const dt = new Date(f.createdAt);
-                        return (
-                          <div key={f.id} className="rounded-xl border p-3">
-                            <div className="font-medium break-words">{f.title || "—"}</div>
-                            <div className="mt-1 text-xs text-gray-600">
-                              {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
-                            </div>
-                            <div className="mt-3">
-                              {f.url ? (
-                                <a
-                                  href={f.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex rounded-lg px-4 py-2 text-sm font-semibold text-black"
-                                  style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                                >
-                                  Λήψη
-                                </a>
-                              ) : (
-                                <span className="text-gray-500">—</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Desktop table (scrollable) */}
-                    <div className="mt-3 hidden md:block overflow-x-auto">
-                      <table className="min-w-[760px] w-full text-sm">
+                  {others.length === 0 ? (
+                    <p className="mt-2 text-sm text-gray-500">Δεν υπάρχουν αρχεία.</p>
+                  ) : (
+                    <div className="mt-3 overflow-x-auto">
+                      {/* ✅ table keeps width, scrolls if needed */}
+                      <table className="min-w-[780px] w-full text-sm">
+                        <colgroup>
+                          <col className="w-[52%]" />
+                          <col className="w-[26%]" />
+                          <col className="w-[10%]" />
+                          <col className="w-[12%]" />
+                        </colgroup>
                         <thead className="bg-gray-50 text-gray-700">
                           <tr className="text-left">
                             <Th>Τίτλος</Th>
@@ -807,8 +759,8 @@ export default function AdminUserProfilePage() {
                           {others.map((f) => {
                             const dt = new Date(f.createdAt);
                             return (
-                              <tr key={f.id}>
-                                <Td className="max-w-[420px] break-words">{f.title || "—"}</Td>
+                              <tr key={f.id} className="align-top">
+                                <Td className="break-words">{f.title || "—"}</Td>
                                 <Td className="whitespace-nowrap">
                                   {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
                                 </Td>
@@ -834,18 +786,27 @@ export default function AdminUserProfilePage() {
                         </tbody>
                       </table>
                     </div>
-                  </>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* PDFs + folders */}
-              <div className="rounded-xl border bg-white p-3">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <div className="font-semibold">PDF Αρχεία ({pdfs.length})</div>
+                {/* PDF */}
+                <div className="rounded-xl border bg-white p-3">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold">PDF ({pdfs.length})</div>
+                      <button
+                        type="button"
+                        onClick={createFolder}
+                        disabled={creatingFolder}
+                        className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-60"
+                      >
+                        <Plus size={16} /> Φάκελος
+                      </button>
+                    </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                    {/* ✅ filter full width */}
                     <select
-                      className="w-full sm:w-auto rounded-lg border px-3 py-2 text-sm"
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
                       value={folderFilter}
                       onChange={(e) => setFolderFilter(e.target.value)}
                     >
@@ -857,128 +818,120 @@ export default function AdminUserProfilePage() {
                         </option>
                       ))}
                     </select>
-
-                    <button
-                      type="button"
-                      onClick={createFolder}
-                      disabled={creatingFolder}
-                      className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-60"
-                    >
-                      <Plus size={16} /> Φάκελος
-                    </button>
                   </div>
-                </div>
 
-                {/* folders list */}
-                <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[220px] overflow-auto">
-                  {loadingFolders ? (
-                    <div className="text-sm text-gray-500 px-2 py-2">Φόρτωση φακέλων…</div>
-                  ) : folders.length === 0 ? (
-                    <div className="text-sm text-gray-500 px-2 py-2">Δεν υπάρχουν φάκελοι.</div>
+                  {/* folders */}
+                  <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[220px] overflow-auto">
+                    {loadingFolders ? (
+                      <div className="text-sm text-gray-500 px-2 py-2">Φόρτωση φακέλων…</div>
+                    ) : folders.length === 0 ? (
+                      <div className="text-sm text-gray-500 px-2 py-2">Δεν υπάρχουν φάκελοι.</div>
+                    ) : (
+                      <div className="grid gap-1">
+                        <FolderRow active={folderFilter === "ALL"} name="Όλα" onClick={() => setFolderFilter("ALL")} />
+                        <FolderRow active={folderFilter === "NONE"} name="Χωρίς φάκελο" onClick={() => setFolderFilter("NONE")} />
+                        <div className="my-1 h-px bg-gray-200" />
+                        {folders.map((fo) => (
+                          <div
+                            key={fo.id}
+                            className={[
+                              "group flex items-center justify-between gap-2 rounded-lg px-2 py-2 cursor-pointer",
+                              folderFilter === fo.id ? "bg-white border" : "hover:bg-white/70",
+                            ].join(" ")}
+                            onClick={() => setFolderFilter(fo.id)}
+                            title={fo.name}
+                          >
+                            <div className="min-w-0 flex items-center gap-2">
+                              <Folder size={16} className="shrink-0" />
+                              <div className="truncate text-sm">{fo.name}</div>
+                            </div>
+
+                            <div className="flex items-center gap-1 opacity-100 xl:opacity-0 xl:group-hover:opacity-100">
+                              <button
+                                type="button"
+                                className="p-1 rounded hover:bg-gray-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  renameFolder(fo.id, fo.name);
+                                }}
+                                aria-label="Μετονομασία"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                className="p-1 rounded hover:bg-gray-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteFolder(fo.id);
+                                }}
+                                aria-label="Διαγραφή"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* pdf list */}
+                  {pdfsFilteredByFolder.length === 0 ? (
+                    <p className="mt-4 text-sm text-gray-500">Δεν βρέθηκαν PDF.</p>
                   ) : (
-                    <div className="grid gap-1">
-                      <FolderRow active={folderFilter === "ALL"} name="Όλα" onClick={() => setFolderFilter("ALL")} />
-                      <FolderRow active={folderFilter === "NONE"} name="Χωρίς φάκελο" onClick={() => setFolderFilter("NONE")} />
-                      <div className="my-1 h-px bg-gray-200" />
+                    <div className="mt-4 grid gap-2">
+                      {pdfsFilteredByFolder.map((f) => {
+                        const dt = new Date(f.createdAt);
+                        return (
+                          <div key={f.id} className="rounded-xl border p-3">
+                            {/* ✅ grid prevents squeeze */}
+                            <div className="grid gap-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <FileText size={16} className="shrink-0" />
+                                    <div className="font-medium break-words">
+                                      {f.title || f.originalName || "PDF"}
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-gray-600 mt-1">
+                                    {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
+                                  </div>
+                                </div>
 
-                      {folders.map((fo) => (
-                        <div
-                          key={fo.id}
-                          className={[
-                            "group flex items-center justify-between gap-2 rounded-lg px-2 py-2 cursor-pointer",
-                            folderFilter === fo.id ? "bg-white border" : "hover:bg-white/70",
-                          ].join(" ")}
-                          onClick={() => setFolderFilter(fo.id)}
-                          title={fo.name}
-                        >
-                          <div className="min-w-0 flex items-center gap-2">
-                            <Folder size={16} className="shrink-0" />
-                            <div className="truncate text-sm">{fo.name}</div>
-                          </div>
+                                {f.url ? (
+                                  <a
+                                    href={f.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-black"
+                                    style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                                  >
+                                    Λήψη
+                                  </a>
+                                ) : null}
+                              </div>
 
-                          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-                            <button
-                              type="button"
-                              className="p-1 rounded hover:bg-gray-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                renameFolder(fo.id, fo.name);
-                              }}
-                              aria-label="Μετονομασία"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="p-1 rounded hover:bg-gray-100"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteFolder(fo.id);
-                              }}
-                              aria-label="Διαγραφή"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                              <select
+                                className="w-full rounded-lg border px-3 py-2 text-sm"
+                                value={f.pdfFolderId ?? ""}
+                                onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
+                              >
+                                <option value="">(Χωρίς)</option>
+                                {folders.map((fo) => (
+                                  <option key={fo.id} value={fo.id}>
+                                    {fo.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-
-                {/* pdf list */}
-                {pdfsFilteredByFolder.length === 0 ? (
-                  <p className="mt-4 text-sm text-gray-500">Δεν βρέθηκαν PDF.</p>
-                ) : (
-                  <div className="mt-4 grid gap-2">
-                    {pdfsFilteredByFolder.map((f) => {
-                      const dt = new Date(f.createdAt);
-                      return (
-                        <div key={f.id} className="rounded-xl border p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <FileText size={16} className="shrink-0" />
-                                <div className="font-medium break-words">{f.title || f.originalName || "PDF"}</div>
-                              </div>
-                              <div className="text-xs text-gray-600 mt-1">
-                                {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
-                              </div>
-                            </div>
-
-                            {f.url ? (
-                              <a
-                                href={f.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-black"
-                                style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                              >
-                                Λήψη
-                              </a>
-                            ) : null}
-                          </div>
-
-                          <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
-                            <select
-                              className="w-full sm:w-auto rounded-lg border px-3 py-2 text-sm"
-                              value={f.pdfFolderId ?? ""}
-                              onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
-                            >
-                              <option value="">(Χωρίς)</option>
-                              {folders.map((fo) => (
-                                <option key={fo.id} value={fo.id}>
-                                  {fo.name}
-                                </option>
-                              ))}
-                            </select>
-                            {!f.url ? <span className="text-gray-500">—</span> : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -988,7 +941,6 @@ export default function AdminUserProfilePage() {
   );
 }
 
-/** ===== UI helpers ===== */
 function FolderRow({ active, name, onClick }: { active: boolean; name: string; onClick: () => void }) {
   return (
     <div
