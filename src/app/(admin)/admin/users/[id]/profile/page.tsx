@@ -470,7 +470,7 @@ export default function AdminUserProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
+    <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 sm:p-6">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">Προφίλ πελάτη</h1>
@@ -483,9 +483,9 @@ export default function AdminUserProfilePage() {
       </header>
 
       {/* wider: on xl give more space to files column */}
-      <div className="grid gap-6 xl:grid-cols-[1fr_1.35fr]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(540px,1fr)_minmax(720px,1.35fr)]">
         {/* LEFT: PROFILE */}
-        <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-5">
+        <section className="min-w-0 rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-5">
           <div>
             <h2 className="font-semibold mb-2">Βασικά στοιχεία</h2>
             <div className="grid gap-3 md:grid-cols-2">
@@ -671,7 +671,7 @@ export default function AdminUserProfilePage() {
         </section>
 
         {/* RIGHT: FILES */}
-        <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-4">
+        <section className="min-w-0 rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Αρχεία χρήστη</h2>
