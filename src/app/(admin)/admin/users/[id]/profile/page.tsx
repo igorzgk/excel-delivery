@@ -1,9 +1,11 @@
+// src/app/(admin)/admin/users/[id]/profile/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Folder, FileText, Plus, Pencil, Trash2 } from "lucide-react";
+import { Folder, FileText, Plus, Pencil, Trash2, RefreshCcw } from "lucide-react";
 
+/** ====== TYPES (Profile) ====== */
 type BusinessType =
   | "RESTAURANT_GRILL"
   | "RESTAURANT_GRILL_HYGIENE_WITH_COFFEE"
@@ -77,21 +79,6 @@ type AdminUserMeta = {
   role: string;
 };
 
-type FileItem = {
-  id: string;
-  title: string;
-  originalName?: string | null;
-  createdAt: string | Date;
-  size?: number | null;
-  url?: string | null;
-  mime?: string | null;
-  uploadedBy?: { id: string; email: string; name?: string | null } | null;
-  assignments?: { user: { id: string; email: string; name?: string | null } }[];
-  pdfFolderId?: string | null;
-};
-
-type FolderItem = { id: string; name: string };
-
 const BUSINESS_TYPES_LABELS: Record<BusinessType, string> = {
   RESTAURANT_GRILL: "Εστιατόριο - Ψητοπωλείο",
   RESTAURANT_GRILL_HYGIENE_WITH_COFFEE: "Εστιατόριο - Ψητοπωλείο με παροχή καφέ",
@@ -107,7 +94,6 @@ const BUSINESS_TYPES_LABELS: Record<BusinessType, string> = {
   FISHMONGER_HOT_CORNER: "Ιχθυοπωλείο με ζεστή γωνιά",
   DELI_CHEESE_CURED_MEAT: "Διάθεση προϊόντων αλλαντοποιίας / τυροκομίας",
   BAKERY_WITH_COFFEE: "Αρτοποιείο με παροχή καφέ",
-  BAKERY_NO_COFFEE: "Αρτοποιείο με παροχή καφέ",
   BAKERY_NO_COFFEE: "Αρτοποιείο χωρίς παροχή καφέ",
   BAKERY_PASTRY_WITH_COFFEE: "Αρτοποιείο – Ζαχαροπλαστείο με παροχή καφέ",
   PASTRY_WITH_COFFEE: "Ζαχαροπλαστείο με παροχή καφέ",
@@ -143,53 +129,71 @@ const HOLIDAY_LABELS: Record<PublicHoliday, string> = {
   BOXING_DAY: "26/12 (Επίσημη αργία)",
 };
 
+/** ====== TYPES (Files) ====== */
+type FileItem = {
+  id: string;
+  title: string;
+  originalName?: string | null;
+  createdAt: string | Date;
+  size?: number | null;
+  url?: string | null;
+  mime?: string | null;
+  pdfFolderId?: string | null;
+  assignments?: { user: { id: string; email: string; name?: string | null } }[];
+  uploadedBy?: { id: string; email: string; name?: string | null } | null;
+};
+
+type FolderItem = { id: string; name: string };
+
 function isPdfFile(f: FileItem) {
   const mime = (f.mime || "").toLowerCase();
   const name = (f.originalName || "").toLowerCase();
   const title = (f.title || "").toLowerCase();
   if (mime.includes("pdf")) return true;
-  if (name.includes(".pdf")) return true;
-  if (title.includes(".pdf")) return true;
+  if (name.endsWith(".pdf") || name.includes(".pdf")) return true;
+  if (title.endsWith(".pdf") || title.includes(".pdf")) return true;
   return false;
 }
 
-function fileBelongsToUser(file: FileItem, userId: string) {
-  const uploadedBy = file.uploadedBy?.id;
-  const assigned = (file.assignments || []).some((a) => a.user.id === userId);
-  return uploadedBy === userId || assigned;
-}
+/** If your admin folder endpoints differ, update these 3 lines. */
+const ADMIN_FOLDERS_LIST = (userId: string) => `/api/admin/pdf-folders?userId=${encodeURIComponent(userId)}`;
+const ADMIN_FOLDERS_CREATE = `/api/admin/pdf-folders`;
+const ADMIN_FOLDERS_ITEM = (id: string) => `/api/admin/pdf-folders/${encodeURIComponent(id)}`;
 
 export default function AdminUserProfilePage() {
   const params = useParams<{ id: string }>();
   const userId = params?.id;
 
+  /** ===== Profile state ===== */
   const [user, setUser] = useState<AdminUserMeta | null>(null);
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
   const [loading, setLoading] = useState(true);
-
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
 
+  // password reset state
   const [pw, setPw] = useState({ newPassword: "", confirm: "" });
   const [pwSaving, setPwSaving] = useState(false);
   const [pwMsg, setPwMsg] = useState<string | null>(null);
   const [pwErr, setPwErr] = useState<string | null>(null);
 
-  // files area
-  const [filesLoading, setFilesLoading] = useState(true);
-  const [files, setFiles] = useState<FileItem[]>([]);
-  const [query, setQuery] = useState("");
+  /** ===== Files state ===== */
+  const [filesAll, setFilesAll] = useState<FileItem[]>([]);
+  const [folders, setFolders] = useState<FolderItem[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [loadingFolders, setLoadingFolders] = useState(false);
 
+  const [query, setQuery] = useState("");
+  const [folderFilter, setFolderFilter] = useState<string>("ALL"); // ALL | NONE | folderId
+  const [creatingFolder, setCreatingFolder] = useState(false);
+
+  // upload (admin -> user)
   const [upTitle, setUpTitle] = useState("");
   const [upFile, setUpFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [folderFilter, setFolderFilter] = useState<string>("ALL");
-  const [loadingFolders, setLoadingFolders] = useState(false);
-  const [creatingFolder, setCreatingFolder] = useState(false);
-
+  /** ===== Load profile ===== */
   useEffect(() => {
     if (!userId) return;
     (async () => {
@@ -303,18 +307,27 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  async function loadUserFiles() {
+  /** ===== Load files + folders ===== */
+  async function loadFiles() {
     if (!userId) return;
-    setFilesLoading(true);
+    setLoadingFiles(true);
     try {
       const res = await fetch("/api/files?scope=all", { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
       if (res.ok) {
         const all = (j.files || []) as FileItem[];
-        setFiles(all.filter((f) => fileBelongsToUser(f, userId)));
+
+        // Show: files assigned to this user OR uploadedBy this user
+        const filtered = all.filter((f) => {
+          const assignedToUser = (f.assignments || []).some((a) => a.user?.id === userId);
+          const uploadedByUser = f.uploadedBy?.id === userId;
+          return assignedToUser || uploadedByUser;
+        });
+
+        setFilesAll(filtered);
       }
     } finally {
-      setFilesLoading(false);
+      setLoadingFiles(false);
     }
   }
 
@@ -322,9 +335,7 @@ export default function AdminUserProfilePage() {
     if (!userId) return;
     setLoadingFolders(true);
     try {
-      const res = await fetch(`/api/pdf-folders?scope=admin&userId=${encodeURIComponent(userId)}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(ADMIN_FOLDERS_LIST(userId), { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
       if (res.ok) setFolders(j.folders || []);
     } finally {
@@ -334,53 +345,35 @@ export default function AdminUserProfilePage() {
 
   useEffect(() => {
     if (!userId) return;
-    loadUserFiles();
+    loadFiles();
     loadFolders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  async function uploadForUser() {
-    if (!userId) return;
-    if (!upTitle.trim() || !upFile) {
-      alert("Συμπληρώστε τίτλο και επιλέξτε αρχείο.");
-      return;
-    }
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("title", upTitle.trim());
-      fd.append("file", upFile);
-      fd.append("assignTo", userId);
-
-      const res = await fetch("/api/files", { method: "POST", body: fd });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || "Αποτυχία upload");
-      }
-
-      setUpTitle("");
-      setUpFile(null);
-      await loadUserFiles();
-    } catch (e: any) {
-      alert(e?.message || "Σφάλμα upload");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function movePdf(fileId: string, pdfFolderId: string | null) {
-    const res = await fetch(`/api/files/${fileId}/pdf-folder`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pdfFolderId, userId }),
+  /** ===== Derived (search + split) ===== */
+  const filteredByQuery = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return filesAll;
+    return filesAll.filter((f) => {
+      const t = (f.title || "").toLowerCase();
+      const o = (f.originalName || "").toLowerCase();
+      return t.includes(q) || o.includes(q);
     });
-    if (!res.ok) {
-      alert("Αποτυχία μετακίνησης PDF.");
-      return;
-    }
-    setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
-  }
+  }, [filesAll, query]);
 
+  const { pdfs, others } = useMemo(() => {
+    const p = filteredByQuery.filter(isPdfFile);
+    const o = filteredByQuery.filter((x) => !isPdfFile(x));
+    return { pdfs: p, others: o };
+  }, [filteredByQuery]);
+
+  const pdfsFilteredByFolder = useMemo(() => {
+    if (folderFilter === "ALL") return pdfs;
+    if (folderFilter === "NONE") return pdfs.filter((p) => !p.pdfFolderId);
+    return pdfs.filter((p) => p.pdfFolderId === folderFilter);
+  }, [pdfs, folderFilter]);
+
+  /** ===== Folder actions ===== */
   async function createFolder() {
     if (!userId) return;
     const name = prompt("Όνομα φακέλου (PDF):")?.trim();
@@ -388,10 +381,10 @@ export default function AdminUserProfilePage() {
 
     setCreatingFolder(true);
     try {
-      const res = await fetch("/api/pdf-folders", {
+      const res = await fetch(ADMIN_FOLDERS_CREATE, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, userId, scope: "admin" }),
+        body: JSON.stringify({ userId, name }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -405,16 +398,16 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  async function renameFolder(folderId: string, current: string) {
-    if (!userId) return;
+  async function renameFolder(id: string, current: string) {
     const name = prompt("Νέο όνομα φακέλου:", current)?.trim();
     if (!name || name === current) return;
 
-    const res = await fetch(`/api/pdf-folders/${folderId}`, {
+    const res = await fetch(ADMIN_FOLDERS_ITEM(id), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, userId, scope: "admin" }),
+      body: JSON.stringify({ name }),
     });
+
     if (!res.ok) {
       alert("Αποτυχία μετονομασίας.");
       return;
@@ -422,45 +415,65 @@ export default function AdminUserProfilePage() {
     await loadFolders();
   }
 
-  async function deleteFolder(folderId: string) {
-    if (!userId) return;
-    if (!confirm("Διαγραφή φακέλου; (τα PDF δεν θα διαγραφούν, απλά θα βγουν από τον φάκελο)")) return;
+  async function deleteFolder(id: string) {
+    if (!confirm("Διαγραφή φακέλου; (τα PDF δεν διαγράφονται, απλά βγαίνουν από τον φάκελο)")) return;
 
-    const res = await fetch(`/api/pdf-folders/${folderId}?scope=admin&userId=${encodeURIComponent(userId)}`, {
-      method: "DELETE",
-    });
+    const res = await fetch(ADMIN_FOLDERS_ITEM(id), { method: "DELETE" });
     if (!res.ok) {
       alert("Αποτυχία διαγραφής φακέλου.");
       return;
     }
 
-    setFiles((prev) => prev.map((f) => (f.pdfFolderId === folderId ? { ...f, pdfFolderId: null } : f)));
+    setFilesAll((prev) => prev.map((f) => (f.pdfFolderId === id ? { ...f, pdfFolderId: null } : f)));
     setFolderFilter("ALL");
     await loadFolders();
   }
 
-  const filteredFiles = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return files;
-    return files.filter((f) => {
-      const t = (f.title || "").toLowerCase();
-      const o = (f.originalName || "").toLowerCase();
-      return t.includes(q) || o.includes(q);
+  async function movePdf(fileId: string, pdfFolderId: string | null) {
+    const res = await fetch(`/api/files/${fileId}/pdf-folder`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pdfFolderId }),
     });
-  }, [files, query]);
+    if (!res.ok) {
+      alert("Αποτυχία μετακίνησης PDF.");
+      return;
+    }
+    setFilesAll((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
+  }
 
-  const { pdfs, others } = useMemo(() => {
-    const p = filteredFiles.filter(isPdfFile);
-    const o = filteredFiles.filter((x) => !isPdfFile(x));
-    return { pdfs: p, others: o };
-  }, [filteredFiles]);
+  /** ===== Upload (admin -> user) ===== */
+  async function uploadToUser() {
+    if (!userId) return;
+    if (!upTitle.trim() || !upFile) {
+      alert("Συμπληρώστε τίτλο και επιλέξτε αρχείο.");
+      return;
+    }
 
-  const pdfsFilteredByFolder = useMemo(() => {
-    if (folderFilter === "ALL") return pdfs;
-    if (folderFilter === "NONE") return pdfs.filter((p) => !p.pdfFolderId);
-    return pdfs.filter((p) => p.pdfFolderId === folderFilter);
-  }, [pdfs, folderFilter]);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("title", upTitle.trim());
+      fd.append("file", upFile);
+      fd.append("assignTo", userId); // IMPORTANT: assign to this user
 
+      const res = await fetch("/api/files", { method: "POST", body: fd });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(t || "Αποτυχία upload");
+      }
+
+      setUpTitle("");
+      setUpFile(null);
+      await loadFiles();
+    } catch (e: any) {
+      alert(e?.message || "Σφάλμα upload");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  /** ===== Render loading ===== */
   if (loading || !profile) {
     return (
       <div className="p-6">
@@ -469,27 +482,29 @@ export default function AdminUserProfilePage() {
     );
   }
 
+  /** ===== UI ===== */
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 sm:p-6">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Προφίλ πελάτη</h1>
           {user && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 break-words">
               {user.name || "—"} · {user.email}
             </p>
           )}
         </div>
       </header>
 
-      {/* wider: on xl give more space to files column */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(540px,1fr)_minmax(720px,1.35fr)]">
-        {/* LEFT: PROFILE */}
+      {/* ✅ FIXED GRID: prevents the left column from collapsing */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(560px,1fr)_minmax(760px,1.35fr)]">
+        {/* ================= LEFT: PROFILE ================= */}
         <section className="min-w-0 rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-5">
+          {/* Βασικά στοιχεία */}
           <div>
             <h2 className="font-semibold mb-2">Βασικά στοιχεία</h2>
             <div className="grid gap-3 md:grid-cols-2">
-              <label className="block">
+              <label className="block min-w-0">
                 <span className="text-sm">Επωνυμία επιχείρησης</span>
                 <input
                   className="w-full border rounded p-2 text-sm"
@@ -498,7 +513,7 @@ export default function AdminUserProfilePage() {
                 />
               </label>
 
-              <label className="block">
+              <label className="block min-w-0">
                 <span className="text-sm">Αρχικά υπευθύνου καταγραφής</span>
                 <input
                   className="w-full border rounded p-2 text-sm"
@@ -509,13 +524,17 @@ export default function AdminUserProfilePage() {
             </div>
           </div>
 
+          {/* Είδος επιχείρησης */}
           <div>
             <h2 className="font-semibold mb-2">Είδος επιχείρησης</h2>
             <div className="grid md:grid-cols-2 gap-2">
               {(Object.keys(BUSINESS_TYPES_LABELS) as BusinessType[]).map((key) => {
                 const checked = profile.businessTypes.includes(key);
                 return (
-                  <label key={key} className="flex items-center gap-2 border rounded p-2 text-sm">
+                  <label
+                    key={key}
+                    className="min-w-0 flex items-start gap-2 border rounded p-2 text-sm"
+                  >
                     <input
                       type="checkbox"
                       checked={checked}
@@ -525,13 +544,14 @@ export default function AdminUserProfilePage() {
                         update("businessTypes", Array.from(set) as BusinessType[]);
                       }}
                     />
-                    <span>{BUSINESS_TYPES_LABELS[key]}</span>
+                    <span className="min-w-0 break-words">{BUSINESS_TYPES_LABELS[key]}</span>
                   </label>
                 );
               })}
             </div>
           </div>
 
+          {/* Εξοπλισμός */}
           <div>
             <h2 className="font-semibold mb-2">Εξοπλισμός αποθήκευσης/διατήρησης τροφίμων</h2>
             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -543,6 +563,7 @@ export default function AdminUserProfilePage() {
             </div>
           </div>
 
+          {/* Ημέρες / Αργίες / Αυγουστος */}
           <div>
             <h2 className="font-semibold mb-2">Ημέρες & περίοδοι λειτουργίας</h2>
             <div className="grid md:grid-cols-2 gap-4">
@@ -562,7 +583,9 @@ export default function AdminUserProfilePage() {
                         }}
                         className={[
                           "px-3 py-1 rounded-full border text-xs",
-                          checked ? "bg-[color:var(--brand,#25C3F4)] text-black border-transparent" : "border-gray-300",
+                          checked
+                            ? "bg-[color:var(--brand,#25C3F4)] text-black border-transparent"
+                            : "border-gray-300",
                         ].join(" ")}
                       >
                         {WEEKDAY_LABELS[day]}
@@ -578,7 +601,7 @@ export default function AdminUserProfilePage() {
                   {(Object.keys(HOLIDAY_LABELS) as PublicHoliday[]).map((h) => {
                     const checked = profile.closedHolidays.includes(h);
                     return (
-                      <label key={h} className="flex items-center gap-2 border rounded p-2 text-xs">
+                      <label key={h} className="min-w-0 flex items-center gap-2 border rounded p-2 text-xs">
                         <input
                           type="checkbox"
                           checked={checked}
@@ -588,7 +611,7 @@ export default function AdminUserProfilePage() {
                             update("closedHolidays", Array.from(set) as PublicHoliday[]);
                           }}
                         />
-                        <span>{HOLIDAY_LABELS[h]}</span>
+                        <span className="min-w-0 break-words">{HOLIDAY_LABELS[h]}</span>
                       </label>
                     );
                   })}
@@ -603,18 +626,23 @@ export default function AdminUserProfilePage() {
                   type="date"
                   className="border rounded p-2 text-sm"
                   value={profile.augustRange.from}
-                  onChange={(e) => update("augustRange", { ...profile.augustRange, from: e.target.value })}
+                  onChange={(e) =>
+                    update("augustRange", { ...profile.augustRange, from: e.target.value })
+                  }
                 />
                 <input
                   type="date"
                   className="border rounded p-2 text-sm"
                   value={profile.augustRange.to}
-                  onChange={(e) => update("augustRange", { ...profile.augustRange, to: e.target.value })}
+                  onChange={(e) =>
+                    update("augustRange", { ...profile.augustRange, to: e.target.value })
+                  }
                 />
               </div>
             </div>
           </div>
 
+          {/* ✅ Password reset for admin */}
           <div className="pt-2 border-t border-[color:var(--border)]">
             <h2 className="font-semibold mb-2">Reset κωδικού</h2>
             <div className="grid md:grid-cols-2 gap-3 max-w-xl">
@@ -647,7 +675,11 @@ export default function AdminUserProfilePage() {
                 onClick={resetPassword}
                 disabled={pwSaving}
                 className="rounded-xl px-4 py-2 text-sm font-semibold border"
-                style={{ borderColor: "var(--border)", backgroundColor: "rgba(37,195,244,.12)", color: "#061630" }}
+                style={{
+                  borderColor: "var(--border)",
+                  backgroundColor: "rgba(37,195,244,.12)",
+                  color: "#061630",
+                }}
               >
                 {pwSaving ? "Ενημέρωση…" : "Αλλαγή κωδικού"}
               </button>
@@ -670,89 +702,119 @@ export default function AdminUserProfilePage() {
           </div>
         </section>
 
-        {/* RIGHT: FILES */}
+        {/* ================= RIGHT: FILES (ADMIN) ================= */}
         <section className="min-w-0 rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">Αρχεία χρήστη</h2>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="font-semibold">Αρχεία χρήστη</h2>
               <p className="text-xs text-gray-500">Upload & διαχείριση PDF φακέλων/αρχείων.</p>
             </div>
 
             <button
+              type="button"
               onClick={async () => {
-                await loadUserFiles();
+                await loadFiles();
                 await loadFolders();
               }}
-              className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5"
+              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
             >
-              Ανανέωση
+              <RefreshCcw size={16} /> Ανανέωση
             </button>
           </div>
 
-          <div className="rounded-xl border bg-white p-3">
-            <div className="font-medium mb-2">Upload αρχείου στον χρήστη</div>
+          {/* Upload */}
+          <div className="rounded-2xl border border-[color:var(--border)] bg-white p-3">
+            <div className="font-medium text-sm mb-2">Upload αρχείου στον χρήστη</div>
+
             <div className="grid gap-2">
               <input
-                className="w-full rounded-lg border px-3 py-2 text-sm"
+                className="w-full border rounded px-3 py-2 text-sm"
                 placeholder="Τίτλος"
                 value={upTitle}
                 onChange={(e) => setUpTitle(e.target.value)}
               />
               <input
                 type="file"
-                className="w-full rounded-lg border px-3 py-2 bg-white text-sm"
+                className="w-full border rounded px-3 py-2 text-sm bg-white"
                 onChange={(e) => setUpFile(e.currentTarget.files?.[0] ?? null)}
               />
+
               <button
-                onClick={uploadForUser}
+                type="button"
+                onClick={uploadToUser}
                 disabled={uploading}
-                className="w-full rounded-lg bg-[color:var(--brand,#25C3F4)] text-black px-4 py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-60"
+                className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-black disabled:opacity-60"
+                style={{ backgroundColor: "var(--brand,#25C3F4)" }}
               >
                 {uploading ? "Upload…" : "Upload & Ανάθεση στον χρήστη"}
               </button>
             </div>
           </div>
 
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          {/* Search + counts */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Αναζήτηση αρχείων…"
-              className="w-full lg:max-w-[520px] rounded-xl border px-3 py-2 text-sm"
+              className="w-full md:max-w-[420px] rounded-xl border px-3 py-2 text-sm"
             />
-            <div className="text-sm text-gray-500">
-              {filteredFiles.length} αρχείο(α) · {pdfs.length} PDF
+            <div className="text-sm text-gray-500 shrink-0">
+              {filteredByQuery.length} αρχείο(α) · {pdfs.length} PDF
             </div>
           </div>
 
-          {filesLoading ? (
+          {loadingFiles ? (
             <div className="text-sm text-[color:var(--muted)]">Φόρτωση αρχείων…</div>
           ) : (
-            <div className="grid gap-4">
-              {/* ✅ wider 2-column inside right panel on xl */}
-              <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-                {/* NON PDF */}
-                <div className="rounded-xl border bg-white p-3">
-                  <div className="font-semibold">Αρχεία (όχι PDF) ({others.length})</div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(520px,1fr)_minmax(320px,420px)]">
+              {/* LEFT: Non-PDF */}
+              <div className="min-w-0 rounded-2xl border border-[color:var(--border)] bg-white p-3">
+                <h3 className="font-semibold text-sm">Αρχεία (όχι PDF) ({others.length})</h3>
 
-                  {others.length === 0 ? (
-                    <p className="mt-2 text-sm text-gray-500">Δεν υπάρχουν αρχεία.</p>
-                  ) : (
-                    <div className="mt-3 overflow-x-auto">
-                      {/* ✅ table keeps width, scrolls if needed */}
-                      <table className="min-w-[780px] w-full text-sm">
-                        <colgroup>
-                          <col className="w-[52%]" />
-                          <col className="w-[26%]" />
-                          <col className="w-[10%]" />
-                          <col className="w-[12%]" />
-                        </colgroup>
+                {others.length === 0 ? (
+                  <p className="mt-2 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
+                ) : (
+                  <>
+                    {/* Mobile cards */}
+                    <div className="mt-3 grid gap-2 sm:hidden">
+                      {others.map((f) => {
+                        const dt = new Date(f.createdAt);
+                        return (
+                          <div key={f.id} className="rounded-xl border p-3">
+                            <div className="font-medium break-words">{f.title || "—"}</div>
+                            <div className="text-xs text-gray-600 mt-1">
+                              {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
+                            </div>
+                            <div className="mt-2">
+                              {f.url ? (
+                                <a
+                                  href={f.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black"
+                                  style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                                >
+                                  Λήψη
+                                </a>
+                              ) : (
+                                <span className="text-sm text-gray-500">—</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Desktop table */}
+                    <div className="mt-3 hidden sm:block overflow-x-auto">
+                      <table className="w-full min-w-[680px] text-sm">
                         <thead className="bg-gray-50 text-gray-700">
                           <tr className="text-left">
-                            <Th>Τίτλος</Th>
-                            <Th className="whitespace-nowrap">Ανέβηκε</Th>
-                            <Th className="whitespace-nowrap">Μέγεθος</Th>
-                            <Th className="text-right whitespace-nowrap">Ενέργεια</Th>
+                            <Th className="w-[54%]">Τίτλος</Th>
+                            <Th className="w-[26%]">Ανέβηκε</Th>
+                            <Th className="w-[10%]">Μέγεθος</Th>
+                            <Th className="w-[10%] text-right">Ενέργεια</Th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -771,7 +833,7 @@ export default function AdminUserProfilePage() {
                                       href={f.url}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="inline-block rounded-lg px-3 py-2 font-semibold text-black"
+                                      className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
                                       style={{ backgroundColor: "var(--brand, #25C3F4)" }}
                                     >
                                       Λήψη
@@ -786,152 +848,152 @@ export default function AdminUserProfilePage() {
                         </tbody>
                       </table>
                     </div>
-                  )}
-                </div>
+                  </>
+                )}
+              </div>
 
-                {/* PDF */}
-                <div className="rounded-xl border bg-white p-3">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-semibold">PDF ({pdfs.length})</div>
-                      <button
-                        type="button"
-                        onClick={createFolder}
-                        disabled={creatingFolder}
-                        className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-60"
-                      >
-                        <Plus size={16} /> Φάκελος
-                      </button>
-                    </div>
+              {/* RIGHT: PDFs + folders */}
+              <div className="min-w-0 rounded-2xl border border-[color:var(--border)] bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold text-sm">PDF ({pdfs.length})</h3>
 
-                    {/* ✅ filter full width */}
+                  <div className="flex items-center gap-2">
                     <select
-                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                      className="rounded-lg border px-2 py-1 text-sm"
                       value={folderFilter}
                       onChange={(e) => setFolderFilter(e.target.value)}
                     >
                       <option value="ALL">Όλα</option>
                       <option value="NONE">Χωρίς φάκελο</option>
-                      {folders.map((fo) => (
-                        <option key={fo.id} value={fo.id}>
-                          {fo.name}
+                      {folders.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
                         </option>
                       ))}
                     </select>
+
+                    <button
+                      type="button"
+                      onClick={createFolder}
+                      disabled={creatingFolder}
+                      className="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm disabled:opacity-60"
+                    >
+                      <Plus size={16} /> Φάκελος
+                    </button>
                   </div>
+                </div>
 
-                  {/* folders */}
-                  <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[220px] overflow-auto">
-                    {loadingFolders ? (
-                      <div className="text-sm text-gray-500 px-2 py-2">Φόρτωση φακέλων…</div>
-                    ) : folders.length === 0 ? (
-                      <div className="text-sm text-gray-500 px-2 py-2">Δεν υπάρχουν φάκελοι.</div>
-                    ) : (
-                      <div className="grid gap-1">
-                        <FolderRow active={folderFilter === "ALL"} name="Όλα" onClick={() => setFolderFilter("ALL")} />
-                        <FolderRow active={folderFilter === "NONE"} name="Χωρίς φάκελο" onClick={() => setFolderFilter("NONE")} />
-                        <div className="my-1 h-px bg-gray-200" />
-                        {folders.map((fo) => (
-                          <div
-                            key={fo.id}
-                            className={[
-                              "group flex items-center justify-between gap-2 rounded-lg px-2 py-2 cursor-pointer",
-                              folderFilter === fo.id ? "bg-white border" : "hover:bg-white/70",
-                            ].join(" ")}
-                            onClick={() => setFolderFilter(fo.id)}
-                            title={fo.name}
-                          >
-                            <div className="min-w-0 flex items-center gap-2">
-                              <Folder size={16} className="shrink-0" />
-                              <div className="truncate text-sm">{fo.name}</div>
-                            </div>
-
-                            <div className="flex items-center gap-1 opacity-100 xl:opacity-0 xl:group-hover:opacity-100">
-                              <button
-                                type="button"
-                                className="p-1 rounded hover:bg-gray-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  renameFolder(fo.id, fo.name);
-                                }}
-                                aria-label="Μετονομασία"
-                              >
-                                <Pencil size={14} />
-                              </button>
-                              <button
-                                type="button"
-                                className="p-1 rounded hover:bg-gray-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteFolder(fo.id);
-                                }}
-                                aria-label="Διαγραφή"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* pdf list */}
-                  {pdfsFilteredByFolder.length === 0 ? (
-                    <p className="mt-4 text-sm text-gray-500">Δεν βρέθηκαν PDF.</p>
+                {/* folders list */}
+                <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[240px] overflow-auto">
+                  {loadingFolders ? (
+                    <div className="text-sm text-gray-500 px-2 py-2">Φόρτωση φακέλων…</div>
+                  ) : folders.length === 0 ? (
+                    <div className="text-sm text-gray-500 px-2 py-2">Δεν υπάρχουν φάκελοι.</div>
                   ) : (
-                    <div className="mt-4 grid gap-2">
-                      {pdfsFilteredByFolder.map((f) => {
-                        const dt = new Date(f.createdAt);
-                        return (
-                          <div key={f.id} className="rounded-xl border p-3">
-                            {/* ✅ grid prevents squeeze */}
-                            <div className="grid gap-2">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <FileText size={16} className="shrink-0" />
-                                    <div className="font-medium break-words">
-                                      {f.title || f.originalName || "PDF"}
-                                    </div>
-                                  </div>
-                                  <div className="text-xs text-gray-600 mt-1">
-                                    {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
-                                  </div>
-                                </div>
+                    <div className="grid gap-1">
+                      <FolderRow active={folderFilter === "ALL"} name="Όλα" onClick={() => setFolderFilter("ALL")} />
+                      <FolderRow active={folderFilter === "NONE"} name="Χωρίς φάκελο" onClick={() => setFolderFilter("NONE")} />
+                      <div className="my-1 h-px bg-gray-200" />
 
-                                {f.url ? (
-                                  <a
-                                    href={f.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-black"
-                                    style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                                  >
-                                    Λήψη
-                                  </a>
-                                ) : null}
-                              </div>
-
-                              <select
-                                className="w-full rounded-lg border px-3 py-2 text-sm"
-                                value={f.pdfFolderId ?? ""}
-                                onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
-                              >
-                                <option value="">(Χωρίς)</option>
-                                {folders.map((fo) => (
-                                  <option key={fo.id} value={fo.id}>
-                                    {fo.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
+                      {folders.map((f) => (
+                        <div
+                          key={f.id}
+                          className={[
+                            "group flex items-center justify-between gap-2 rounded-lg px-2 py-2 cursor-pointer",
+                            folderFilter === f.id ? "bg-white border" : "hover:bg-white/70",
+                          ].join(" ")}
+                          onClick={() => setFolderFilter(f.id)}
+                          title={f.name}
+                        >
+                          <div className="min-w-0 flex items-center gap-2">
+                            <Folder size={16} className="shrink-0" />
+                            <div className="truncate text-sm">{f.name}</div>
                           </div>
-                        );
-                      })}
+
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              className="p-1 rounded hover:bg-gray-100"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                renameFolder(f.id, f.name);
+                              }}
+                              aria-label="Μετονομασία"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="p-1 rounded hover:bg-gray-100"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteFolder(f.id);
+                              }}
+                              aria-label="Διαγραφή"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
+
+                {/* PDFs list */}
+                {pdfsFilteredByFolder.length === 0 ? (
+                  <p className="mt-3 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
+                ) : (
+                  <div className="mt-3 grid gap-2">
+                    {pdfsFilteredByFolder.map((f) => {
+                      const dt = new Date(f.createdAt);
+                      return (
+                        <div key={f.id} className="rounded-xl border p-3 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <FileText size={16} className="shrink-0" />
+                              <div className="font-medium break-words">
+                                {f.title || f.originalName || "PDF"}
+                              </div>
+                            </div>
+                            <div className="text-xs text-gray-600 mt-1">
+                              {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <select
+                              className="rounded-lg border px-2 py-1 text-xs w-[170px]"
+                              value={f.pdfFolderId ?? ""}
+                              onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
+                            >
+                              <option value="">(Χωρίς)</option>
+                              {folders.map((fo) => (
+                                <option key={fo.id} value={fo.id}>
+                                  {fo.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            {f.url ? (
+                              <a
+                                href={f.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black"
+                                style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                              >
+                                Λήψη
+                              </a>
+                            ) : (
+                              <span className="text-gray-500">—</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -941,7 +1003,16 @@ export default function AdminUserProfilePage() {
   );
 }
 
-function FolderRow({ active, name, onClick }: { active: boolean; name: string; onClick: () => void }) {
+/** ===== UI helpers ===== */
+function FolderRow({
+  active,
+  name,
+  onClick,
+}: {
+  active: boolean;
+  name: string;
+  onClick: () => void;
+}) {
   return (
     <div
       className={[
@@ -956,11 +1027,47 @@ function FolderRow({ active, name, onClick }: { active: boolean; name: string; o
   );
 }
 
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Th({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
 }
-function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+
+function Td({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return <td className={`px-3 py-3 ${className}`}>{children}</td>;
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm">{label}</span>
+      <input
+        type="number"
+        min={0}
+        className="w-full border rounded p-2 text-sm"
+        value={value}
+        onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
+      />
+    </label>
+  );
 }
 
 function formatSize(bytes: number | null | undefined) {
@@ -973,19 +1080,4 @@ function formatSize(bytes: number | null | undefined) {
     i++;
   }
   return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
-}
-
-function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label className="block">
-      <span className="text-sm">{label}</span>
-      <input
-        type="number"
-        min={0}
-        className="w-full border rounded p-2 text-sm"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
-      />
-    </label>
-  );
 }
