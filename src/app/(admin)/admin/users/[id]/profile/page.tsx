@@ -155,10 +155,11 @@ function isPdfFile(f: FileItem) {
   return false;
 }
 
-/** If your admin folder endpoints differ, update these 3 lines. */
-const ADMIN_FOLDERS_LIST = (userId: string) => `/api/admin/pdf-folders?userId=${encodeURIComponent(userId)}`;
-const ADMIN_FOLDERS_CREATE = `/api/admin/pdf-folders`;
-const ADMIN_FOLDERS_ITEM = (id: string) => `/api/admin/pdf-folders/${encodeURIComponent(id)}`;
+// ✅ Use the existing folders API (admin can target user via userId)
+const ADMIN_FOLDERS_LIST = (userId: string) => `/api/pdf-folders?userId=${encodeURIComponent(userId)}`;
+const ADMIN_FOLDERS_CREATE = `/api/pdf-folders?userId=`;
+const ADMIN_FOLDERS_ITEM = (id: string, userId: string) =>
+  `/api/pdf-folders/${encodeURIComponent(id)}?userId=${encodeURIComponent(userId)}`;
 
 export default function AdminUserProfilePage() {
   const params = useParams<{ id: string }>();
@@ -339,11 +340,17 @@ export default function AdminUserProfilePage() {
     try {
       const res = await fetch(ADMIN_FOLDERS_LIST(userId), { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
-      if (res.ok) setFolders(j.folders || []);
+      if (!res.ok) {
+        // show real reason (helps debugging)
+        console.error("loadFolders failed:", j);
+        return;
+      }
+      setFolders(j.folders || []);
     } finally {
       setLoadingFolders(false);
     }
   }
+
 
   async function refreshFilesPanel() {
     await loadFiles();
@@ -382,59 +389,76 @@ export default function AdminUserProfilePage() {
 
   /** ===== Folder actions ===== */
   async function createFolder() {
-    if (!userId) return;
-    const name = prompt("Όνομα φακέλου (PDF):")?.trim();
-    if (!name) return;
+  if (!userId) return;
 
-    setCreatingFolder(true);
-    try {
-      const res = await fetch(ADMIN_FOLDERS_CREATE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, name }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(j?.error === "folder_exists" ? "Ο φάκελος υπάρχει ήδη." : "Αποτυχία δημιουργίας φακέλου.");
-        return;
-      }
-      await loadFolders();
-      setFolderFilter(j.folder?.id || "ALL");
-    } finally {
-      setCreatingFolder(false);
-    }
-  }
+  const name = prompt("Όνομα φακέλου (PDF):")?.trim();
+  if (!name) return;
 
-  async function renameFolder(id: string, current: string) {
-    const name = prompt("Νέο όνομα φακέλου:", current)?.trim();
-    if (!name || name === current) return;
-
-    const res = await fetch(ADMIN_FOLDERS_ITEM(id), {
-      method: "PATCH",
+  setCreatingFolder(true);
+  try {
+    const res = await fetch(`/api/pdf-folders?userId=${encodeURIComponent(userId)}`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
 
-    if (!res.ok) {
-      alert("Αποτυχία μετονομασίας.");
-      return;
-    }
-    await loadFolders();
-  }
+    const j = await res.json().catch(() => ({}));
 
-  async function deleteFolder(id: string) {
-    if (!confirm("Διαγραφή φακέλου; (τα PDF δεν διαγράφονται, απλά βγαίνουν από τον φάκελο)")) return;
-
-    const res = await fetch(ADMIN_FOLDERS_ITEM(id), { method: "DELETE" });
     if (!res.ok) {
-      alert("Αποτυχία διαγραφής φακέλου.");
+      console.error("createFolder failed:", j);
+      alert(j?.error === "folder_exists" ? "Ο φάκελος υπάρχει ήδη." : (j?.error || "Αποτυχία δημιουργίας φακέλου."));
       return;
     }
 
-    setFilesAll((prev) => prev.map((f) => (f.pdfFolderId === id ? { ...f, pdfFolderId: null } : f)));
-    setFolderFilter("ALL");
     await loadFolders();
+    setFolderFilter(j.folder?.id || "ALL");
+  } finally {
+    setCreatingFolder(false);
   }
+}
+
+
+  async function renameFolder(id: string, current: string) {
+  if (!userId) return;
+
+  const name = prompt("Νέο όνομα φακέλου:", current)?.trim();
+  if (!name || name === current) return;
+
+  const res = await fetch(ADMIN_FOLDERS_ITEM(id, userId), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error("renameFolder failed:", j);
+    alert(j?.error || "Αποτυχία μετονομασίας.");
+    return;
+  }
+
+  await loadFolders();
+}
+
+async function deleteFolder(id: string) {
+  if (!userId) return;
+
+  if (!confirm("Διαγραφή φακέλου; (τα PDF δεν διαγράφονται, απλά βγαίνουν από τον φάκελο)")) return;
+
+  const res = await fetch(ADMIN_FOLDERS_ITEM(id, userId), { method: "DELETE" });
+  const j = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    console.error("deleteFolder failed:", j);
+    alert(j?.error || "Αποτυχία διαγραφής φακέλου.");
+    return;
+  }
+
+  setFilesAll((prev) => prev.map((f) => (f.pdfFolderId === id ? { ...f, pdfFolderId: null } : f)));
+  setFolderFilter("ALL");
+  await loadFolders();
+}
+
 
   async function movePdf(fileId: string, pdfFolderId: string | null) {
     const res = await fetch(`/api/files/${fileId}/pdf-folder`, {
