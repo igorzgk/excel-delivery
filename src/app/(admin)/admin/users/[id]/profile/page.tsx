@@ -1,11 +1,9 @@
-// src/app/(admin)/admin/users/[id]/profile/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Folder, FileText, Plus, Pencil, Trash2, RefreshCcw, X } from "lucide-react";
+import { Folder, FileText, Plus, Pencil, Trash2 } from "lucide-react";
 
-/** ====== TYPES (Profile) ====== */
 type BusinessType =
   | "RESTAURANT_GRILL"
   | "RESTAURANT_GRILL_HYGIENE_WITH_COFFEE"
@@ -24,6 +22,7 @@ type BusinessType =
   | "BAKERY_NO_COFFEE"
   | "BAKERY_PASTRY_WITH_COFFEE"
   | "PASTRY_WITH_COFFEE"
+  | "PASTRY_SHOP_NO_COFFEE" // keep if you have it in DB
   | "PASTRY_NO_COFFEE"
   | "GROCERY_FRUIT"
   | "WINE_NUTS_SHOP"
@@ -101,7 +100,7 @@ const BUSINESS_TYPES_LABELS: Record<BusinessType, string> = {
   GROCERY_FRUIT: "Παντοπωλείο / οπωροπωλείο",
   WINE_NUTS_SHOP: "Κάβα / κατάστημα ξηρών καρπών",
   FROZEN_PRODUCTS_SHOP: "Πρατήριο κατεψυγμένων προϊόντων",
-  PACKAGED_FRESH_FROZEN_DRY: "Συσκευασμένα προϊόντα νωπά/κατεψυμένα/ξηρού φορτίου",
+  PACKAGED_FRESH_FROZEN_DRY: "Συσκευασμένα προϊόντα νωπά/κατεψυγμένα/ξηρού φορτίου",
   ICE_CREAM_SHOP: "Παγωτοπωλείο",
   PUFF_PASTRY_PRODUCTION: "Παρασκευή – πώληση σφολιατοειδών προϊόντων",
 };
@@ -129,7 +128,7 @@ const HOLIDAY_LABELS: Record<PublicHoliday, string> = {
   BOXING_DAY: "26/12 (Επίσημη αργία)",
 };
 
-/** ====== TYPES (Files) ====== */
+// ---------- Files / PDF types ----------
 type FileItem = {
   id: string;
   title: string;
@@ -139,8 +138,8 @@ type FileItem = {
   url?: string | null;
   mime?: string | null;
   pdfFolderId?: string | null;
-  assignments?: { user: { id: string; email: string; name?: string | null } }[];
   uploadedBy?: { id: string; email: string; name?: string | null } | null;
+  assignments?: { user: { id: string; email: string; name?: string | null } }[];
 };
 
 type FolderItem = { id: string; name: string };
@@ -155,17 +154,22 @@ function isPdfFile(f: FileItem) {
   return false;
 }
 
-// ✅ Use the existing folders API (admin can target user via userId)
-const ADMIN_FOLDERS_LIST = (userId: string) => `/api/pdf-folders?userId=${encodeURIComponent(userId)}`;
-const ADMIN_FOLDERS_CREATE = `/api/pdf-folders?userId=`;
-const ADMIN_FOLDERS_ITEM = (id: string, userId: string) =>
-  `/api/pdf-folders/${encodeURIComponent(id)}?userId=${encodeURIComponent(userId)}`;
+function formatSize(bytes: number | null | undefined) {
+  if (!bytes || bytes <= 0) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let v = bytes;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
 
 export default function AdminUserProfilePage() {
   const params = useParams<{ id: string }>();
   const userId = params?.id;
 
-  /** ===== Profile state ===== */
   const [user, setUser] = useState<AdminUserMeta | null>(null);
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -179,24 +183,23 @@ export default function AdminUserProfilePage() {
   const [pwMsg, setPwMsg] = useState<string | null>(null);
   const [pwErr, setPwErr] = useState<string | null>(null);
 
-  /** ===== Files panel state ===== */
+  // drawer state
   const [filesOpen, setFilesOpen] = useState(false);
 
-  const [filesAll, setFilesAll] = useState<FileItem[]>([]);
-  const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [loadingFiles, setLoadingFiles] = useState(true);
-  const [loadingFolders, setLoadingFolders] = useState(false);
-
+  // drawer data
   const [query, setQuery] = useState("");
+  const [allFiles, setAllFiles] = useState<FileItem[]>([]);
+  const [folders, setFolders] = useState<FolderItem[]>([]);
   const [folderFilter, setFolderFilter] = useState<string>("ALL"); // ALL | NONE | folderId
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingFolders, setLoadingFolders] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
 
-  // upload (admin -> user)
+  // upload-to-user state
   const [upTitle, setUpTitle] = useState("");
   const [upFile, setUpFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  /** ===== Load profile ===== */
   useEffect(() => {
     if (!userId) return;
     (async () => {
@@ -238,10 +241,7 @@ export default function AdminUserProfilePage() {
             supervisorInitials: p.supervisorInitials ?? "",
             closedWeekdays: (p.closedWeekdays ?? []) as Weekday[],
             closedHolidays: (p.closedHolidays ?? []) as PublicHoliday[],
-            augustRange: {
-              from: p.augustRange?.from || "",
-              to: p.augustRange?.to || "",
-            },
+            augustRange: { from: p.augustRange?.from || "", to: p.augustRange?.to || "" },
           });
         }
       } catch (err: any) {
@@ -310,25 +310,27 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  /** ===== Load files + folders ===== */
-  async function loadFiles() {
+  // ---------------- Drawer: load files + folders ----------------
+  async function refreshFiles() {
     if (!userId) return;
     setLoadingFiles(true);
     try {
       const res = await fetch("/api/files?scope=all", { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
-      if (res.ok) {
-        const all = (j.files || []) as FileItem[];
+      if (!res.ok) throw new Error(j?.error || "Αποτυχία φόρτωσης αρχείων");
 
-        // Show: files assigned to this user OR uploadedBy this user
-        const filtered = all.filter((f) => {
-          const assignedToUser = (f.assignments || []).some((a) => a.user?.id === userId);
-          const uploadedByUser = f.uploadedBy?.id === userId;
-          return assignedToUser || uploadedByUser;
-        });
+      const rows = (j.files || []) as FileItem[];
 
-        setFilesAll(filtered);
-      }
+      // only this user's files:
+      const filtered = rows.filter((f) => {
+        const assigned = (f.assignments || []).some((a) => a.user.id === userId);
+        const uploadedBy = f.uploadedBy?.id === userId;
+        return assigned || uploadedBy;
+      });
+
+      setAllFiles(filtered);
+    } catch (e) {
+      // silent-ish
     } finally {
       setLoadingFiles(false);
     }
@@ -338,127 +340,107 @@ export default function AdminUserProfilePage() {
     if (!userId) return;
     setLoadingFolders(true);
     try {
-      const res = await fetch(ADMIN_FOLDERS_LIST(userId), { cache: "no-store" });
+      // IMPORTANT: pass userId so admin creates folders for that user
+      const res = await fetch(`/api/pdf-folders?userId=${encodeURIComponent(userId)}`, { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        // show real reason (helps debugging)
-        console.error("loadFolders failed:", j);
-        return;
-      }
-      setFolders(j.folders || []);
+      if (res.ok) setFolders(j.folders || []);
     } finally {
       setLoadingFolders(false);
     }
   }
 
+  useEffect(() => {
+    if (!filesOpen) return;
+    refreshFiles();
+    loadFolders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filesOpen, userId]);
 
-  async function refreshFilesPanel() {
-    await loadFiles();
+  // Upload file to user (create + assign)
+  async function uploadToUser() {
+    if (!userId) return;
+    if (!upTitle.trim() || !upFile) {
+      alert("Συμπληρώστε τίτλο και επιλέξτε αρχείο.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("title", upTitle.trim());
+      fd.append("file", upFile);
+      fd.append("assignTo", userId); // ✅ auto-assign to this user
+
+      const res = await fetch("/api/files", { method: "POST", body: fd });
+      const txt = await res.text().catch(() => "");
+      if (!res.ok) throw new Error(txt || "Αποτυχία upload");
+
+      setUpTitle("");
+      setUpFile(null);
+      await refreshFiles();
+    } catch (e: any) {
+      alert(e?.message || "Αποτυχία upload");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function createFolder() {
+    if (!userId) return;
+    const name = prompt("Όνομα φακέλου (PDF):")?.trim();
+    if (!name) return;
+
+    setCreatingFolder(true);
+    try {
+      const res = await fetch("/api/pdf-folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // ✅ include userId so admin creates folder for selected user
+        body: JSON.stringify({ name, userId }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(j?.error === "folder_exists" ? "Ο φάκελος υπάρχει ήδη." : "Αποτυχία δημιουργίας φακέλου.");
+        return;
+      }
+      await loadFolders();
+      setFolderFilter(j.folder?.id || "ALL");
+    } finally {
+      setCreatingFolder(false);
+    }
+  }
+
+  async function renameFolder(id: string, current: string) {
+    if (!userId) return;
+    const name = prompt("Νέο όνομα φακέλου:", current)?.trim();
+    if (!name || name === current) return;
+
+    const res = await fetch(`/api/pdf-folders/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      // ✅ include userId to authorize admin-side rename properly (if your API expects it)
+      body: JSON.stringify({ name, userId }),
+    });
+    if (!res.ok) {
+      alert("Αποτυχία μετονομασίας.");
+      return;
+    }
     await loadFolders();
   }
 
-  // Load files/folders once (so opening modal is instant)
-  useEffect(() => {
+  async function deleteFolder(id: string) {
     if (!userId) return;
-    refreshFilesPanel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+    if (!confirm("Διαγραφή φακέλου; (τα PDF δεν θα διαγραφούν, απλά θα βγουν από τον φάκελο)")) return;
 
-  /** ===== Derived (search + split) ===== */
-  const filteredByQuery = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return filesAll;
-    return filesAll.filter((f) => {
-      const t = (f.title || "").toLowerCase();
-      const o = (f.originalName || "").toLowerCase();
-      return t.includes(q) || o.includes(q);
-    });
-  }, [filesAll, query]);
-
-  const { pdfs, others } = useMemo(() => {
-    const p = filteredByQuery.filter(isPdfFile);
-    const o = filteredByQuery.filter((x) => !isPdfFile(x));
-    return { pdfs: p, others: o };
-  }, [filteredByQuery]);
-
-  const pdfsFilteredByFolder = useMemo(() => {
-    if (folderFilter === "ALL") return pdfs;
-    if (folderFilter === "NONE") return pdfs.filter((p) => !p.pdfFolderId);
-    return pdfs.filter((p) => p.pdfFolderId === folderFilter);
-  }, [pdfs, folderFilter]);
-
-  /** ===== Folder actions ===== */
-  async function createFolder() {
-  if (!userId) return;
-
-  const name = prompt("Όνομα φακέλου (PDF):")?.trim();
-  if (!name) return;
-
-  setCreatingFolder(true);
-  try {
-    const res = await fetch(`/api/pdf-folders?userId=${encodeURIComponent(userId)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-
-    const j = await res.json().catch(() => ({}));
-
+    const res = await fetch(`/api/pdf-folders/${id}?userId=${encodeURIComponent(userId)}`, { method: "DELETE" });
     if (!res.ok) {
-      console.error("createFolder failed:", j);
-      alert(j?.error === "folder_exists" ? "Ο φάκελος υπάρχει ήδη." : (j?.error || "Αποτυχία δημιουργίας φακέλου."));
+      alert("Αποτυχία διαγραφής φακέλου.");
       return;
     }
 
+    setAllFiles((prev) => prev.map((f) => (f.pdfFolderId === id ? { ...f, pdfFolderId: null } : f)));
+    setFolderFilter("ALL");
     await loadFolders();
-    setFolderFilter(j.folder?.id || "ALL");
-  } finally {
-    setCreatingFolder(false);
   }
-}
-
-
-  async function renameFolder(id: string, current: string) {
-  if (!userId) return;
-
-  const name = prompt("Νέο όνομα φακέλου:", current)?.trim();
-  if (!name || name === current) return;
-
-  const res = await fetch(ADMIN_FOLDERS_ITEM(id, userId), {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    console.error("renameFolder failed:", j);
-    alert(j?.error || "Αποτυχία μετονομασίας.");
-    return;
-  }
-
-  await loadFolders();
-}
-
-async function deleteFolder(id: string) {
-  if (!userId) return;
-
-  if (!confirm("Διαγραφή φακέλου; (τα PDF δεν διαγράφονται, απλά βγαίνουν από τον φάκελο)")) return;
-
-  const res = await fetch(ADMIN_FOLDERS_ITEM(id, userId), { method: "DELETE" });
-  const j = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    console.error("deleteFolder failed:", j);
-    alert(j?.error || "Αποτυχία διαγραφής φακέλου.");
-    return;
-  }
-
-  setFilesAll((prev) => prev.map((f) => (f.pdfFolderId === id ? { ...f, pdfFolderId: null } : f)));
-  setFolderFilter("ALL");
-  await loadFolders();
-}
-
 
   async function movePdf(fileId: string, pdfFolderId: string | null) {
     const res = await fetch(`/api/files/${fileId}/pdf-folder`, {
@@ -470,50 +452,32 @@ async function deleteFolder(id: string) {
       alert("Αποτυχία μετακίνησης PDF.");
       return;
     }
-    setFilesAll((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
+    setAllFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
   }
 
-  /** ===== Upload (admin -> user) ===== */
-  async function uploadToUser() {
-    if (!userId) return;
-    if (!upTitle.trim() || !upFile) {
-      alert("Συμπληρώστε τίτλο και επιλέξτε αρχείο.");
-      return;
-    }
+  // filtered lists
+  const filteredFiles = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allFiles;
+    return allFiles.filter((f) => {
+      const t = (f.title || "").toLowerCase();
+      const o = (f.originalName || "").toLowerCase();
+      return t.includes(q) || o.includes(q);
+    });
+  }, [allFiles, query]);
 
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("title", upTitle.trim());
-      fd.append("file", upFile);
-      fd.append("assignTo", userId); // IMPORTANT: assign to this user
+  const { pdfs, others } = useMemo(() => {
+    const p = filteredFiles.filter(isPdfFile);
+    const o = filteredFiles.filter((x) => !isPdfFile(x));
+    return { pdfs: p, others: o };
+  }, [filteredFiles]);
 
-      const res = await fetch("/api/files", { method: "POST", body: fd });
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(t || "Αποτυχία upload");
-      }
+  const pdfsFilteredByFolder = useMemo(() => {
+    if (folderFilter === "ALL") return pdfs;
+    if (folderFilter === "NONE") return pdfs.filter((p) => !p.pdfFolderId);
+    return pdfs.filter((p) => p.pdfFolderId === folderFilter);
+  }, [pdfs, folderFilter]);
 
-      setUpTitle("");
-      setUpFile(null);
-      await loadFiles();
-    } catch (e: any) {
-      alert(e?.message || "Σφάλμα upload");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  // Close modal on Escape
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setFilesOpen(false);
-    }
-    if (filesOpen) window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [filesOpen]);
-
-  /** ===== Render loading ===== */
   if (loading || !profile) {
     return (
       <div className="p-6">
@@ -523,39 +487,34 @@ async function deleteFolder(id: string) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 p-4 sm:p-6">
+    <div className="mx-auto max-w-6xl space-y-6 p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Προφίλ πελάτη</h1>
           {user && (
-            <p className="text-sm text-gray-500 break-words">
+            <p className="text-sm text-gray-500 truncate">
               {user.name || "—"} · {user.email}
             </p>
           )}
         </div>
 
-        {/* ✅ This fixes responsiveness: files are in a drawer/modal, not a 2nd column */}
         <button
           type="button"
           onClick={() => setFilesOpen(true)}
-          className="rounded-xl px-4 py-2 text-sm font-semibold border"
-          style={{
-            borderColor: "var(--border)",
-            backgroundColor: "rgba(37,195,244,.12)",
-            color: "#061630",
-          }}
+          className="rounded-xl px-4 py-2 text-sm font-semibold"
+          style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}
         >
-          Άνοιγμα αρχείων χρήστη
+          Αρχεία χρήστη
         </button>
       </header>
 
-      {/* ================= PROFILE ONLY (always clean & responsive) ================= */}
+      {/* MAIN CARD */}
       <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] shadow-sm p-4 space-y-5">
         {/* Βασικά στοιχεία */}
         <div>
           <h2 className="font-semibold mb-2">Βασικά στοιχεία</h2>
           <div className="grid gap-3 md:grid-cols-2">
-            <label className="block min-w-0">
+            <label className="block">
               <span className="text-sm">Επωνυμία επιχείρησης</span>
               <input
                 className="w-full border rounded p-2 text-sm"
@@ -564,7 +523,7 @@ async function deleteFolder(id: string) {
               />
             </label>
 
-            <label className="block min-w-0">
+            <label className="block">
               <span className="text-sm">Αρχικά υπευθύνου καταγραφής</span>
               <input
                 className="w-full border rounded p-2 text-sm"
@@ -582,7 +541,7 @@ async function deleteFolder(id: string) {
             {(Object.keys(BUSINESS_TYPES_LABELS) as BusinessType[]).map((key) => {
               const checked = profile.businessTypes.includes(key);
               return (
-                <label key={key} className="min-w-0 flex items-start gap-2 border rounded p-2 text-sm">
+                <label key={key} className="flex items-center gap-2 border rounded p-2 text-sm">
                   <input
                     type="checkbox"
                     checked={checked}
@@ -592,7 +551,7 @@ async function deleteFolder(id: string) {
                       update("businessTypes", Array.from(set) as BusinessType[]);
                     }}
                   />
-                  <span className="min-w-0 break-words">{BUSINESS_TYPES_LABELS[key]}</span>
+                  <span>{BUSINESS_TYPES_LABELS[key]}</span>
                 </label>
               );
             })}
@@ -607,7 +566,11 @@ async function deleteFolder(id: string) {
             <NumberField label="Αριθμός καταψύξεων" value={profile.freezerCount} onChange={(v) => update("freezerCount", v)} />
             <NumberField label="Αριθμός θερμοθαλάμων / Bain Marie" value={profile.hotCabinetCount} onChange={(v) => update("hotCabinetCount", v)} />
             <NumberField label="Αριθμός θαλάμων Dry Aged" value={profile.dryAgedChamberCount} onChange={(v) => update("dryAgedChamberCount", v)} />
-            <NumberField label="Αριθμός καταψύκτη/έκθεσης παγωτών" value={profile.iceCreamFreezerCount} onChange={(v) => update("iceCreamFreezerCount", v)} />
+            <NumberField
+              label="Αριθμός καταψύκτη/έκθεσης παγωτών"
+              value={profile.iceCreamFreezerCount}
+              onChange={(v) => update("iceCreamFreezerCount", v)}
+            />
           </div>
         </div>
 
@@ -631,9 +594,7 @@ async function deleteFolder(id: string) {
                       }}
                       className={[
                         "px-3 py-1 rounded-full border text-xs",
-                        checked
-                          ? "bg-[color:var(--brand,#25C3F4)] text-black border-transparent"
-                          : "border-gray-300",
+                        checked ? "bg-[color:var(--brand,#25C3F4)] text-black border-transparent" : "border-gray-300",
                       ].join(" ")}
                     >
                       {WEEKDAY_LABELS[day]}
@@ -649,7 +610,7 @@ async function deleteFolder(id: string) {
                 {(Object.keys(HOLIDAY_LABELS) as PublicHoliday[]).map((h) => {
                   const checked = profile.closedHolidays.includes(h);
                   return (
-                    <label key={h} className="min-w-0 flex items-center gap-2 border rounded p-2 text-xs">
+                    <label key={h} className="flex items-center gap-2 border rounded p-2 text-xs">
                       <input
                         type="checkbox"
                         checked={checked}
@@ -659,7 +620,7 @@ async function deleteFolder(id: string) {
                           update("closedHolidays", Array.from(set) as PublicHoliday[]);
                         }}
                       />
-                      <span className="min-w-0 break-words">{HOLIDAY_LABELS[h]}</span>
+                      <span>{HOLIDAY_LABELS[h]}</span>
                     </label>
                   );
                 })}
@@ -686,7 +647,7 @@ async function deleteFolder(id: string) {
           </div>
         </div>
 
-        {/* Password reset */}
+        {/* ✅ Password reset for admin */}
         <div className="pt-2 border-t border-[color:var(--border)]">
           <h2 className="font-semibold mb-2">Reset κωδικού</h2>
           <div className="grid md:grid-cols-2 gap-3 max-w-xl">
@@ -746,20 +707,19 @@ async function deleteFolder(id: string) {
         </div>
       </section>
 
-      {/* ================= FILES DRAWER / MODAL ================= */}
-      {filesOpen ? (
-        <div className="fixed inset-0 z-[60]">
-          {/* backdrop */}
+      {/* ===================== DRAWER ===================== */}
+      {filesOpen && (
+        <div className="fixed inset-0 z-50">
+          {/* overlay */}
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() => setFilesOpen(false)}
-            aria-hidden="true"
           />
 
           {/* panel */}
-          <div className="absolute inset-y-0 right-0 w-full sm:w-[92vw] lg:w-[980px] bg-white shadow-2xl flex flex-col">
-            {/* top bar */}
-            <div className="flex items-center justify-between gap-2 border-b p-3">
+          <div className="absolute inset-y-0 right-0 w-full max-w-[980px] bg-white shadow-2xl flex flex-col">
+            {/* header */}
+            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
               <div className="min-w-0">
                 <div className="font-semibold">Αρχεία χρήστη</div>
                 <div className="text-xs text-gray-500 truncate">
@@ -770,162 +730,133 @@ async function deleteFolder(id: string) {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={refreshFilesPanel}
-                  className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+                  onClick={() => {
+                    refreshFiles();
+                    loadFolders();
+                  }}
+                  className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5"
                 >
-                  <RefreshCcw size={16} /> Ανανέωση
+                  Ανανέωση
                 </button>
                 <button
                   type="button"
                   onClick={() => setFilesOpen(false)}
-                  className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
-                  aria-label="Κλείσιμο"
+                  className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5"
                 >
-                  <X size={16} /> Κλείσιμο
+                  ✕ Κλείσιμο
                 </button>
               </div>
             </div>
 
-            {/* scroll body */}
-            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-4">
-              {/* Upload */}
-              <div className="rounded-2xl border p-3">
-                <div className="font-medium text-sm mb-2">Upload αρχείου στον χρήστη</div>
+            {/* body */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
+              <div className="px-4 py-4 space-y-4 min-w-0">
+                {/* upload */}
+                <section className="rounded-2xl border bg-white p-4">
+                  <h3 className="font-semibold">Upload αρχείου στον χρήστη</h3>
+                  <p className="text-xs text-gray-500 mb-3">Το αρχείο θα ανατεθεί αυτόματα στον χρήστη.</p>
 
-                <div className="grid gap-2">
+                  <div className="grid gap-2">
+                    <input
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      placeholder="Τίτλος"
+                      value={upTitle}
+                      onChange={(e) => setUpTitle(e.target.value)}
+                    />
+                    <input
+                      type="file"
+                      className="w-full border rounded px-3 py-2 text-sm bg-white"
+                      onChange={(e) => setUpFile(e.currentTarget.files?.[0] ?? null)}
+                    />
+
+                    <button
+                      type="button"
+                      disabled={uploading}
+                      onClick={uploadToUser}
+                      className="w-full rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
+                      style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}
+                    >
+                      {uploading ? "Upload…" : "Upload & Ανάθεση στον χρήστη"}
+                    </button>
+                  </div>
+                </section>
+
+                {/* search + counts */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <input
-                    className="w-full border rounded px-3 py-2 text-sm"
-                    placeholder="Τίτλος"
-                    value={upTitle}
-                    onChange={(e) => setUpTitle(e.target.value)}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Αναζήτηση αρχείων…"
+                    className="w-full max-w-[420px] rounded-xl border px-3 py-2 text-sm"
                   />
-                  <input
-                    type="file"
-                    className="w-full border rounded px-3 py-2 text-sm bg-white"
-                    onChange={(e) => setUpFile(e.currentTarget.files?.[0] ?? null)}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={uploadToUser}
-                    disabled={uploading}
-                    className="w-full rounded-xl px-4 py-2 text-sm font-semibold text-black disabled:opacity-60"
-                    style={{ backgroundColor: "var(--brand,#25C3F4)" }}
-                  >
-                    {uploading ? "Upload…" : "Upload & Ανάθεση στον χρήστη"}
-                  </button>
+                  <div className="text-sm text-gray-500">
+                    {loadingFiles ? "Φόρτωση…" : `${filteredFiles.length} αρχείο(α) · ${pdfs.length} PDF`}
+                  </div>
                 </div>
-              </div>
 
-              {/* Search + counts */}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Αναζήτηση αρχείων…"
-                  className="w-full md:max-w-[420px] rounded-xl border px-3 py-2 text-sm"
-                />
-                <div className="text-sm text-gray-500 shrink-0">
-                  {filteredByQuery.length} αρχείο(α) · {pdfs.length} PDF
-                </div>
-              </div>
-
-              {loadingFiles ? (
-                <div className="text-sm text-[color:var(--muted)]">Φόρτωση αρχείων…</div>
-              ) : (
-                <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-                  {/* LEFT: Non-PDF */}
-                  <div className="min-w-0 rounded-2xl border p-3">
-                    <h3 className="font-semibold text-sm">Αρχεία (όχι PDF) ({others.length})</h3>
+                {/* files + pdf grid */}
+                <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr] min-w-0">
+                  {/* LEFT: other files */}
+                  <section className="min-w-0 rounded-2xl border bg-white p-4">
+                    <div className="flex items-baseline justify-between">
+                      <h3 className="font-semibold">Αρχεία (όχι PDF) ({others.length})</h3>
+                    </div>
 
                     {others.length === 0 ? (
-                      <p className="mt-2 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
+                      <p className="mt-3 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
                     ) : (
-                      <>
-                        {/* Mobile cards */}
-                        <div className="mt-3 grid gap-2 sm:hidden">
-                          {others.map((f) => {
-                            const dt = new Date(f.createdAt);
-                            return (
-                              <div key={f.id} className="rounded-xl border p-3">
-                                <div className="font-medium break-words">{f.title || "—"}</div>
-                                <div className="text-xs text-gray-600 mt-1">
-                                  {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
-                                </div>
-                                <div className="mt-2">
-                                  {f.url ? (
-                                    <a
-                                      href={f.url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black"
-                                      style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                                    >
-                                      Λήψη
-                                    </a>
-                                  ) : (
-                                    <span className="text-sm text-gray-500">—</span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Desktop table */}
-                        <div className="mt-3 hidden sm:block overflow-x-auto">
-                          <table className="w-full min-w-[720px] text-sm">
-                            <thead className="bg-gray-50 text-gray-700">
-                              <tr className="text-left">
-                                <Th className="w-[56%]">Τίτλος</Th>
-                                <Th className="w-[24%]">Ανέβηκε</Th>
-                                <Th className="w-[10%]">Μέγεθος</Th>
-                                <Th className="w-[10%] text-right">Ενέργεια</Th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {others.map((f) => {
-                                const dt = new Date(f.createdAt);
-                                return (
-                                  <tr key={f.id} className="align-top">
-                                    <Td className="break-words">{f.title || "—"}</Td>
-                                    <Td className="whitespace-nowrap">
-                                      {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
-                                    </Td>
-                                    <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
-                                    <Td className="text-right whitespace-nowrap">
-                                      {f.url ? (
-                                        <a
-                                          href={f.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
-                                          style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                                        >
-                                          Λήψη
-                                        </a>
-                                      ) : (
-                                        <span className="text-gray-500">—</span>
-                                      )}
-                                    </Td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
+                      <div className="mt-3 w-full overflow-x-auto">
+                        <table className="min-w-[720px] w-full text-sm">
+                          <thead className="bg-gray-50 text-gray-700">
+                            <tr className="text-left">
+                              <Th className="w-[54%]">Τίτλος</Th>
+                              <Th className="w-[24%]">Ανέβηκε</Th>
+                              <Th className="w-[12%]">Μέγεθος</Th>
+                              <Th className="w-[10%] text-right">Ενέργεια</Th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {others.map((f) => {
+                              const dt = new Date(f.createdAt);
+                              return (
+                                <tr key={f.id} className="align-top">
+                                  <Td className="break-words">{f.title || "—"}</Td>
+                                  <Td className="whitespace-nowrap">
+                                    {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
+                                  </Td>
+                                  <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
+                                  <Td className="text-right whitespace-nowrap">
+                                    {f.url ? (
+                                      <a
+                                        href={f.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
+                                        style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                                      >
+                                        Λήψη
+                                      </a>
+                                    ) : (
+                                      <span className="text-gray-500">—</span>
+                                    )}
+                                  </Td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
-                  </div>
+                  </section>
 
-                  {/* RIGHT: PDFs + folders */}
-                  <div className="min-w-0 rounded-2xl border p-3">
+                  {/* RIGHT: PDFs */}
+                  <section className="min-w-0 rounded-2xl border bg-white p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="font-semibold text-sm">PDF ({pdfs.length})</h3>
+                      <h3 className="font-semibold">PDF ({pdfs.length})</h3>
 
                       <div className="flex items-center gap-2">
                         <select
-                          className="rounded-lg border px-2 py-1 text-sm"
+                          className="rounded-lg border px-2 py-1 text-sm max-w-[160px]"
                           value={folderFilter}
                           onChange={(e) => setFolderFilter(e.target.value)}
                         >
@@ -950,7 +881,7 @@ async function deleteFolder(id: string) {
                     </div>
 
                     {/* folders list */}
-                    <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[240px] overflow-auto">
+                    <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[220px] overflow-auto">
                       {loadingFolders ? (
                         <div className="text-sm text-gray-500 px-2 py-2">Φόρτωση φακέλων…</div>
                       ) : folders.length === 0 ? (
@@ -958,7 +889,11 @@ async function deleteFolder(id: string) {
                       ) : (
                         <div className="grid gap-1">
                           <FolderRow active={folderFilter === "ALL"} name="Όλα" onClick={() => setFolderFilter("ALL")} />
-                          <FolderRow active={folderFilter === "NONE"} name="Χωρίς φάκελο" onClick={() => setFolderFilter("NONE")} />
+                          <FolderRow
+                            active={folderFilter === "NONE"}
+                            name="Χωρίς φάκελο"
+                            onClick={() => setFolderFilter("NONE")}
+                          />
                           <div className="my-1 h-px bg-gray-200" />
 
                           {folders.map((f) => (
@@ -1006,11 +941,11 @@ async function deleteFolder(id: string) {
                       )}
                     </div>
 
-                    {/* PDFs list */}
+                    {/* pdf list */}
                     {pdfsFilteredByFolder.length === 0 ? (
-                      <p className="mt-3 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
+                      <p className="mt-4 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
                     ) : (
-                      <div className="mt-3 grid gap-2">
+                      <div className="mt-4 grid gap-2">
                         {pdfsFilteredByFolder.map((f) => {
                           const dt = new Date(f.createdAt);
                           return (
@@ -1025,9 +960,9 @@ async function deleteFolder(id: string) {
                                 </div>
                               </div>
 
-                              <div className="flex flex-col items-end gap-2 shrink-0">
+                              <div className="flex items-center gap-2 shrink-0">
                                 <select
-                                  className="rounded-lg border px-2 py-1 text-xs w-[170px]"
+                                  className="rounded-lg border px-2 py-1 text-xs max-w-[150px]"
                                   value={f.pdfFolderId ?? ""}
                                   onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
                                 >
@@ -1058,30 +993,40 @@ async function deleteFolder(id: string) {
                         })}
                       </div>
                     )}
-                  </div>
+                  </section>
                 </div>
-              )}
-            </div>
 
-            {/* bottom bar (optional) */}
-            <div className="border-t p-3 text-xs text-gray-500">
-              Tip: Πάτησε <b>Esc</b> για κλείσιμο.
+                <div className="text-xs text-gray-500 pt-2">
+                  Tip: Πάτησε <b>Esc</b> για κλείσιμο.
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* ESC close */}
+          <EscClose onClose={() => setFilesOpen(false)} />
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
 
-/** ===== UI helpers ===== */
+function EscClose({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return null;
+}
+
 function FolderRow({ active, name, onClick }: { active: boolean; name: string; onClick: () => void }) {
   return (
     <div
-      className={[
-        "flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer",
-        active ? "bg-white border" : "hover:bg-white/70",
-      ].join(" ")}
+      className={["flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer", active ? "bg-white border" : "hover:bg-white/70"].join(" ")}
       onClick={onClick}
     >
       <Folder size={16} className="shrink-0" />
@@ -1090,14 +1035,35 @@ function FolderRow({ active, name, onClick }: { active: boolean; name: string; o
   );
 }
 
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Th({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
 }
-function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+
+function Td({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return <td className={`px-3 py-3 ${className}`}>{children}</td>;
 }
 
-function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function NumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
   return (
     <label className="block">
       <span className="text-sm">{label}</span>
@@ -1106,20 +1072,13 @@ function NumberField({ label, value, onChange }: { label: string; value: number;
         min={0}
         className="w-full border rounded p-2 text-sm"
         value={value}
-        onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (raw === "") return onChange(0);
+          const n = Number(raw);
+          onChange(Number.isFinite(n) ? n : 0);
+        }}
       />
     </label>
   );
-}
-
-function formatSize(bytes: number | null | undefined) {
-  if (!bytes || bytes <= 0) return "—";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0;
-  let v = bytes;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
