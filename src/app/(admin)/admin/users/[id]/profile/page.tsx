@@ -443,17 +443,48 @@ export default function AdminUserProfilePage() {
   }
 
   async function movePdf(fileId: string, pdfFolderId: string | null) {
-    const res = await fetch(`/api/files/${fileId}/pdf-folder`, {
+  try {
+    // 1) Try the "file-centric" endpoint first
+    const r1 = await fetch(`/api/files/${fileId}/pdf-folder`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pdfFolderId }),
     });
-    if (!res.ok) {
+
+    if (r1.ok) {
+      setAllFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
+      return;
+    }
+
+    // Read error text to help debugging, but don't stop yet
+    const err1 = await r1.text().catch(() => "");
+
+    // 2) Fallback: try the folder move route (admin-friendly in many setups)
+    // We include userId as well, because in admin view you are moving files for another user.
+    const r2 = await fetch(`/api/pdf-folders/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileId,
+        pdfFolderId, // can be null for "(Χωρίς)"
+        userId, // <-- IMPORTANT in admin context
+      }),
+    });
+
+    if (!r2.ok) {
+      const err2 = await r2.text().catch(() => "");
+      console.error("movePdf failed:", { r1Status: r1.status, err1, r2Status: r2.status, err2 });
       alert("Αποτυχία μετακίνησης PDF.");
       return;
     }
+
     setAllFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
+  } catch (e) {
+    console.error(e);
+    alert("Αποτυχία μετακίνησης PDF.");
   }
+}
+
 
   // filtered lists
   const filteredFiles = useMemo(() => {
