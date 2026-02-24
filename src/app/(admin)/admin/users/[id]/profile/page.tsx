@@ -1,3 +1,4 @@
+// src/app/(admin)/admin/users/[id]/profile/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -183,10 +184,10 @@ export default function AdminUserProfilePage() {
   const [pwMsg, setPwMsg] = useState<string | null>(null);
   const [pwErr, setPwErr] = useState<string | null>(null);
 
-  // drawer state
+  // modal state
   const [filesOpen, setFilesOpen] = useState(false);
 
-  // drawer data
+  // modal data
   const [query, setQuery] = useState("");
   const [allFiles, setAllFiles] = useState<FileItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
@@ -252,6 +253,16 @@ export default function AdminUserProfilePage() {
     })();
   }, [userId]);
 
+  // Lock body scroll when modal open (prevents weird horizontal/vertical scroll)
+  useEffect(() => {
+    if (!filesOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [filesOpen]);
+
   function update<K extends keyof ProfilePayload>(key: K, value: ProfilePayload[K]) {
     if (!profile) return;
     setProfile({ ...profile, [key]: value });
@@ -310,7 +321,7 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  // ---------------- Drawer: load files + folders ----------------
+  // ---------------- Modal: load files + folders ----------------
   async function refreshFiles() {
     if (!userId) return;
     setLoadingFiles(true);
@@ -329,8 +340,8 @@ export default function AdminUserProfilePage() {
       });
 
       setAllFiles(filtered);
-    } catch (e) {
-      // silent-ish
+    } catch {
+      // silent
     } finally {
       setLoadingFiles(false);
     }
@@ -340,7 +351,6 @@ export default function AdminUserProfilePage() {
     if (!userId) return;
     setLoadingFolders(true);
     try {
-      // IMPORTANT: pass userId so admin creates folders for that user
       const res = await fetch(`/api/pdf-folders?userId=${encodeURIComponent(userId)}`, { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
       if (res.ok) setFolders(j.folders || []);
@@ -368,7 +378,7 @@ export default function AdminUserProfilePage() {
       const fd = new FormData();
       fd.append("title", upTitle.trim());
       fd.append("file", upFile);
-      fd.append("assignTo", userId); // ✅ auto-assign to this user
+      fd.append("assignTo", userId);
 
       const res = await fetch("/api/files", { method: "POST", body: fd });
       const txt = await res.text().catch(() => "");
@@ -394,7 +404,6 @@ export default function AdminUserProfilePage() {
       const res = await fetch("/api/pdf-folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // ✅ include userId so admin creates folder for selected user
         body: JSON.stringify({ name, userId }),
       });
       const j = await res.json().catch(() => ({}));
@@ -417,7 +426,6 @@ export default function AdminUserProfilePage() {
     const res = await fetch(`/api/pdf-folders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      // ✅ include userId to authorize admin-side rename properly (if your API expects it)
       body: JSON.stringify({ name, userId }),
     });
     if (!res.ok) {
@@ -443,48 +451,39 @@ export default function AdminUserProfilePage() {
   }
 
   async function movePdf(fileId: string, pdfFolderId: string | null) {
-  try {
-    // 1) Try the "file-centric" endpoint first
-    const r1 = await fetch(`/api/files/${fileId}/pdf-folder`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pdfFolderId }),
-    });
+    try {
+      const r1 = await fetch(`/api/files/${fileId}/pdf-folder`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfFolderId }),
+      });
 
-    if (r1.ok) {
+      if (r1.ok) {
+        setAllFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
+        return;
+      }
+
+      const err1 = await r1.text().catch(() => "");
+
+      const r2 = await fetch(`/api/pdf-folders/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId, pdfFolderId, userId }),
+      });
+
+      if (!r2.ok) {
+        const err2 = await r2.text().catch(() => "");
+        console.error("movePdf failed:", { r1Status: r1.status, err1, r2Status: r2.status, err2 });
+        alert("Αποτυχία μετακίνησης PDF.");
+        return;
+      }
+
       setAllFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
-      return;
-    }
-
-    // Read error text to help debugging, but don't stop yet
-    const err1 = await r1.text().catch(() => "");
-
-    // 2) Fallback: try the folder move route (admin-friendly in many setups)
-    // We include userId as well, because in admin view you are moving files for another user.
-    const r2 = await fetch(`/api/pdf-folders/move`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fileId,
-        pdfFolderId, // can be null for "(Χωρίς)"
-        userId, // <-- IMPORTANT in admin context
-      }),
-    });
-
-    if (!r2.ok) {
-      const err2 = await r2.text().catch(() => "");
-      console.error("movePdf failed:", { r1Status: r1.status, err1, r2Status: r2.status, err2 });
+    } catch (e) {
+      console.error(e);
       alert("Αποτυχία μετακίνησης PDF.");
-      return;
     }
-
-    setAllFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
-  } catch (e) {
-    console.error(e);
-    alert("Αποτυχία μετακίνησης PDF.");
   }
-}
-
 
   // filtered lists
   const filteredFiles = useMemo(() => {
@@ -738,24 +737,19 @@ export default function AdminUserProfilePage() {
         </div>
       </section>
 
-      {/* ===================== DRAWER ===================== */}
+      {/* ===================== FULL SCREEN MODAL (no overflow) ===================== */}
       {filesOpen && (
-        <div className="fixed inset-0 z-50">
+        <div className="fixed inset-0 z-50 overflow-hidden">
           {/* overlay */}
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setFilesOpen(false)}
-          />
+          <div className="absolute inset-0 bg-black/40" onClick={() => setFilesOpen(false)} />
 
-          {/* panel */}
-          <div className="absolute inset-y-0 right-0 w-full max-w-[980px] bg-white shadow-2xl flex flex-col">
+          {/* modal */}
+          <div className="absolute inset-0 bg-white flex flex-col min-w-0">
             {/* header */}
             <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
               <div className="min-w-0">
                 <div className="font-semibold">Αρχεία χρήστη</div>
-                <div className="text-xs text-gray-500 truncate">
-                  Upload & διαχείριση PDF φακέλων/αρχείων
-                </div>
+                <div className="text-xs text-gray-500 truncate">Upload & διαχείριση PDF φακέλων/αρχείων</div>
               </div>
 
               <div className="flex items-center gap-2">
@@ -781,7 +775,7 @@ export default function AdminUserProfilePage() {
 
             {/* body */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden">
-              <div className="px-4 py-4 space-y-4 min-w-0">
+              <div className="mx-auto w-full max-w-6xl px-4 py-4 space-y-4 min-w-0">
                 {/* upload */}
                 <section className="rounded-2xl border bg-white p-4">
                   <h3 className="font-semibold">Upload αρχείου στον χρήστη</h3>
@@ -920,11 +914,7 @@ export default function AdminUserProfilePage() {
                       ) : (
                         <div className="grid gap-1">
                           <FolderRow active={folderFilter === "ALL"} name="Όλα" onClick={() => setFolderFilter("ALL")} />
-                          <FolderRow
-                            active={folderFilter === "NONE"}
-                            name="Χωρίς φάκελο"
-                            onClick={() => setFolderFilter("NONE")}
-                          />
+                          <FolderRow active={folderFilter === "NONE"} name="Χωρίς φάκελο" onClick={() => setFolderFilter("NONE")} />
                           <div className="my-1 h-px bg-gray-200" />
 
                           {folders.map((f) => (
@@ -1057,7 +1047,10 @@ function EscClose({ onClose }: { onClose: () => void }) {
 function FolderRow({ active, name, onClick }: { active: boolean; name: string; onClick: () => void }) {
   return (
     <div
-      className={["flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer", active ? "bg-white border" : "hover:bg-white/70"].join(" ")}
+      className={[
+        "flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer",
+        active ? "bg-white border" : "hover:bg-white/70",
+      ].join(" ")}
       onClick={onClick}
     >
       <Folder size={16} className="shrink-0" />
@@ -1066,35 +1059,14 @@ function FolderRow({ active, name, onClick }: { active: boolean; name: string; o
   );
 }
 
-function Th({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
 }
-
-function Td({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <td className={`px-3 py-3 ${className}`}>{children}</td>;
 }
 
-function NumberField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
+function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
     <label className="block">
       <span className="text-sm">{label}</span>
