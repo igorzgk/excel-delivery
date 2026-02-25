@@ -521,11 +521,7 @@ export default function AdminUserProfilePage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Προφίλ πελάτη</h1>
-          {user && (
-            <p className="text-sm text-gray-500 truncate">
-              {user.name || "—"} · {user.email}
-            </p>
-          )}
+          {user && <p className="text-sm text-gray-500 truncate">{user.name || "—"} · {user.email}</p>}
         </div>
 
         <button
@@ -546,20 +542,12 @@ export default function AdminUserProfilePage() {
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block">
               <span className="text-sm">Επωνυμία επιχείρησης</span>
-              <input
-                className="w-full border rounded p-2 text-sm"
-                value={profile.businessName}
-                onChange={(e) => update("businessName", e.target.value)}
-              />
+              <input className="w-full border rounded p-2 text-sm" value={profile.businessName} onChange={(e) => update("businessName", e.target.value)} />
             </label>
 
             <label className="block">
               <span className="text-sm">Αρχικά υπευθύνου καταγραφής</span>
-              <input
-                className="w-full border rounded p-2 text-sm"
-                value={profile.supervisorInitials}
-                onChange={(e) => update("supervisorInitials", e.target.value)}
-              />
+              <input className="w-full border rounded p-2 text-sm" value={profile.supervisorInitials} onChange={(e) => update("supervisorInitials", e.target.value)} />
             </label>
           </div>
         </div>
@@ -596,11 +584,7 @@ export default function AdminUserProfilePage() {
             <NumberField label="Αριθμός καταψύξεων" value={profile.freezerCount} onChange={(v) => update("freezerCount", v)} />
             <NumberField label="Αριθμός θερμοθαλάμων / Bain Marie" value={profile.hotCabinetCount} onChange={(v) => update("hotCabinetCount", v)} />
             <NumberField label="Αριθμός θαλάμων Dry Aged" value={profile.dryAgedChamberCount} onChange={(v) => update("dryAgedChamberCount", v)} />
-            <NumberField
-              label="Αριθμός καταψύκτη/έκθεσης παγωτών"
-              value={profile.iceCreamFreezerCount}
-              onChange={(v) => update("iceCreamFreezerCount", v)}
-            />
+            <NumberField label="Αριθμός καταψύκτη/έκθεσης παγωτών" value={profile.iceCreamFreezerCount} onChange={(v) => update("iceCreamFreezerCount", v)} />
           </div>
         </div>
 
@@ -661,18 +645,8 @@ export default function AdminUserProfilePage() {
           <div className="mt-4 max-w-md">
             <div className="text-sm mb-1">Διάστημα Αυγούστου (κλειστά)</div>
             <div className="grid grid-cols-2 gap-2">
-              <input
-                type="date"
-                className="border rounded p-2 text-sm"
-                value={profile.augustRange.from}
-                onChange={(e) => update("augustRange", { ...profile.augustRange, from: e.target.value })}
-              />
-              <input
-                type="date"
-                className="border rounded p-2 text-sm"
-                value={profile.augustRange.to}
-                onChange={(e) => update("augustRange", { ...profile.augustRange, to: e.target.value })}
-              />
+              <input type="date" className="border rounded p-2 text-sm" value={profile.augustRange.from} onChange={(e) => update("augustRange", { ...profile.augustRange, from: e.target.value })} />
+              <input type="date" className="border rounded p-2 text-sm" value={profile.augustRange.to} onChange={(e) => update("augustRange", { ...profile.augustRange, to: e.target.value })} />
             </div>
           </div>
         </div>
@@ -683,21 +657,11 @@ export default function AdminUserProfilePage() {
           <div className="grid md:grid-cols-2 gap-3 max-w-xl">
             <label className="block">
               <span className="text-sm">Νέος κωδικός</span>
-              <input
-                type="password"
-                className="w-full border rounded p-2 text-sm"
-                value={pw.newPassword}
-                onChange={(e) => setPw({ ...pw, newPassword: e.target.value })}
-              />
+              <input type="password" className="w-full border rounded p-2 text-sm" value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} />
             </label>
             <label className="block">
               <span className="text-sm">Επιβεβαίωση</span>
-              <input
-                type="password"
-                className="w-full border rounded p-2 text-sm"
-                value={pw.confirm}
-                onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
-              />
+              <input type="password" className="w-full border rounded p-2 text-sm" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} />
             </label>
           </div>
 
@@ -710,11 +674,7 @@ export default function AdminUserProfilePage() {
               onClick={resetPassword}
               disabled={pwSaving}
               className="rounded-xl px-4 py-2 text-sm font-semibold border"
-              style={{
-                borderColor: "var(--border)",
-                backgroundColor: "rgba(37,195,244,.12)",
-                color: "#061630",
-              }}
+              style={{ borderColor: "var(--border)", backgroundColor: "rgba(37,195,244,.12)", color: "#061630" }}
             >
               {pwSaving ? "Ενημέρωση…" : "Αλλαγή κωδικού"}
             </button>
@@ -725,19 +685,13 @@ export default function AdminUserProfilePage() {
         {okMessage && <p className="text-sm text-green-700">{okMessage}</p>}
 
         <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className="rounded-xl px-4 py-2 text-sm font-semibold"
-            style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}
-          >
+          <button type="button" onClick={save} disabled={saving} className="rounded-xl px-4 py-2 text-sm font-semibold" style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}>
             {saving ? "Αποθήκευση…" : "Αποθήκευση αλλαγών"}
           </button>
         </div>
       </section>
 
-      {/* ===================== FULL SCREEN MODAL (no overflow) ===================== */}
+      {/* ===================== FULL SCREEN MODAL (WIDER CONTENT) ===================== */}
       {filesOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden">
           {/* overlay */}
@@ -763,11 +717,7 @@ export default function AdminUserProfilePage() {
                 >
                   Ανανέωση
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setFilesOpen(false)}
-                  className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5"
-                >
+                <button type="button" onClick={() => setFilesOpen(false)} className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5">
                   ✕ Κλείσιμο
                 </button>
               </div>
@@ -775,24 +725,16 @@ export default function AdminUserProfilePage() {
 
             {/* body */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden">
-              <div className="mx-auto w-full max-w-6xl px-4 py-4 space-y-4 min-w-0">
+              {/* ✅ WIDER MAX WIDTH + SMALLER SIDE PADDING */}
+              <div className="mx-auto w-full max-w-[1400px] px-2 sm:px-4 lg:px-6 py-4 space-y-4 min-w-0">
                 {/* upload */}
                 <section className="rounded-2xl border bg-white p-4">
                   <h3 className="font-semibold">Upload αρχείου στον χρήστη</h3>
                   <p className="text-xs text-gray-500 mb-3">Το αρχείο θα ανατεθεί αυτόματα στον χρήστη.</p>
 
                   <div className="grid gap-2">
-                    <input
-                      className="w-full border rounded px-3 py-2 text-sm"
-                      placeholder="Τίτλος"
-                      value={upTitle}
-                      onChange={(e) => setUpTitle(e.target.value)}
-                    />
-                    <input
-                      type="file"
-                      className="w-full border rounded px-3 py-2 text-sm bg-white"
-                      onChange={(e) => setUpFile(e.currentTarget.files?.[0] ?? null)}
-                    />
+                    <input className="w-full border rounded px-3 py-2 text-sm" placeholder="Τίτλος" value={upTitle} onChange={(e) => setUpTitle(e.target.value)} />
+                    <input type="file" className="w-full border rounded px-3 py-2 text-sm bg-white" onChange={(e) => setUpFile(e.currentTarget.files?.[0] ?? null)} />
 
                     <button
                       type="button"
@@ -808,19 +750,12 @@ export default function AdminUserProfilePage() {
 
                 {/* search + counts */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Αναζήτηση αρχείων…"
-                    className="w-full max-w-[420px] rounded-xl border px-3 py-2 text-sm"
-                  />
-                  <div className="text-sm text-gray-500">
-                    {loadingFiles ? "Φόρτωση…" : `${filteredFiles.length} αρχείο(α) · ${pdfs.length} PDF`}
-                  </div>
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Αναζήτηση αρχείων…" className="w-full max-w-[520px] rounded-xl border px-3 py-2 text-sm" />
+                  <div className="text-sm text-gray-500">{loadingFiles ? "Φόρτωση…" : `${filteredFiles.length} αρχείο(α) · ${pdfs.length} PDF`}</div>
                 </div>
 
-                {/* files + pdf grid */}
-                <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr] min-w-0">
+                {/* ✅ WIDER COLUMNS */}
+                <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr] min-w-0">
                   {/* LEFT: other files */}
                   <section className="min-w-0 rounded-2xl border bg-white p-4">
                     <div className="flex items-baseline justify-between">
@@ -831,7 +766,7 @@ export default function AdminUserProfilePage() {
                       <p className="mt-3 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
                     ) : (
                       <div className="mt-3 w-full overflow-x-auto">
-                        <table className="min-w-[720px] w-full text-sm">
+                        <table className="min-w-[760px] w-full text-sm">
                           <thead className="bg-gray-50 text-gray-700">
                             <tr className="text-left">
                               <Th className="w-[54%]">Τίτλος</Th>
@@ -852,13 +787,7 @@ export default function AdminUserProfilePage() {
                                   <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
                                   <Td className="text-right whitespace-nowrap">
                                     {f.url ? (
-                                      <a
-                                        href={f.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
-                                        style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                                      >
+                                      <a href={f.url} target="_blank" rel="noreferrer" className="inline-block rounded-lg px-3 py-1 font-semibold text-black" style={{ backgroundColor: "var(--brand, #25C3F4)" }}>
                                         Λήψη
                                       </a>
                                     ) : (
@@ -880,11 +809,7 @@ export default function AdminUserProfilePage() {
                       <h3 className="font-semibold">PDF ({pdfs.length})</h3>
 
                       <div className="flex items-center gap-2">
-                        <select
-                          className="rounded-lg border px-2 py-1 text-sm max-w-[160px]"
-                          value={folderFilter}
-                          onChange={(e) => setFolderFilter(e.target.value)}
-                        >
+                        <select className="rounded-lg border px-2 py-1 text-sm max-w-[200px]" value={folderFilter} onChange={(e) => setFolderFilter(e.target.value)}>
                           <option value="ALL">Όλα</option>
                           <option value="NONE">Χωρίς φάκελο</option>
                           {folders.map((f) => (
@@ -894,19 +819,14 @@ export default function AdminUserProfilePage() {
                           ))}
                         </select>
 
-                        <button
-                          type="button"
-                          onClick={createFolder}
-                          disabled={creatingFolder}
-                          className="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm disabled:opacity-60"
-                        >
+                        <button type="button" onClick={createFolder} disabled={creatingFolder} className="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm disabled:opacity-60">
                           <Plus size={16} /> Φάκελος
                         </button>
                       </div>
                     </div>
 
                     {/* folders list */}
-                    <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[220px] overflow-auto">
+                    <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[240px] overflow-auto">
                       {loadingFolders ? (
                         <div className="text-sm text-gray-500 px-2 py-2">Φόρτωση φακέλων…</div>
                       ) : folders.length === 0 ? (
@@ -920,10 +840,7 @@ export default function AdminUserProfilePage() {
                           {folders.map((f) => (
                             <div
                               key={f.id}
-                              className={[
-                                "group flex items-center justify-between gap-2 rounded-lg px-2 py-2 cursor-pointer",
-                                folderFilter === f.id ? "bg-white border" : "hover:bg-white/70",
-                              ].join(" ")}
+                              className={["group flex items-center justify-between gap-2 rounded-lg px-2 py-2 cursor-pointer", folderFilter === f.id ? "bg-white border" : "hover:bg-white/70"].join(" ")}
                               onClick={() => setFolderFilter(f.id)}
                               title={f.name}
                             >
@@ -982,11 +899,7 @@ export default function AdminUserProfilePage() {
                               </div>
 
                               <div className="flex items-center gap-2 shrink-0">
-                                <select
-                                  className="rounded-lg border px-2 py-1 text-xs max-w-[150px]"
-                                  value={f.pdfFolderId ?? ""}
-                                  onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
-                                >
+                                <select className="rounded-lg border px-2 py-1 text-xs max-w-[200px]" value={f.pdfFolderId ?? ""} onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}>
                                   <option value="">(Χωρίς)</option>
                                   {folders.map((fo) => (
                                     <option key={fo.id} value={fo.id}>
@@ -996,13 +909,7 @@ export default function AdminUserProfilePage() {
                                 </select>
 
                                 {f.url ? (
-                                  <a
-                                    href={f.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black"
-                                    style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                                  >
+                                  <a href={f.url} target="_blank" rel="noreferrer" className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black" style={{ backgroundColor: "var(--brand, #25C3F4)" }}>
                                     Λήψη
                                   </a>
                                 ) : (
@@ -1046,13 +953,7 @@ function EscClose({ onClose }: { onClose: () => void }) {
 
 function FolderRow({ active, name, onClick }: { active: boolean; name: string; onClick: () => void }) {
   return (
-    <div
-      className={[
-        "flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer",
-        active ? "bg-white border" : "hover:bg-white/70",
-      ].join(" ")}
-      onClick={onClick}
-    >
+    <div className={["flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer", active ? "bg-white border" : "hover:bg-white/70"].join(" ")} onClick={onClick}>
       <Folder size={16} className="shrink-0" />
       <span className="text-sm">{name}</span>
     </div>
