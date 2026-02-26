@@ -202,6 +202,9 @@ export default function AdminUserProfilePage() {
   const [upFile, setUpFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  // ✅ NEW: delete state
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!userId) return;
     (async () => {
@@ -488,6 +491,24 @@ export default function AdminUserProfilePage() {
     }
   }
 
+  // ✅ NEW: delete file (admin)
+  async function deleteFile(fileId: string) {
+    if (!confirm("Διαγραφή αρχείου;")) return;
+
+    setDeletingId(fileId);
+    try {
+      const res = await fetch(`/api/admin/files/${fileId}`, { method: "DELETE" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || "Αποτυχία διαγραφής");
+
+      setAllFiles((prev) => prev.filter((f) => f.id !== fileId));
+    } catch (e: any) {
+      alert(e?.message || "Αποτυχία διαγραφής");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   // filtered lists
   const filteredFiles = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -524,7 +545,11 @@ export default function AdminUserProfilePage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Προφίλ πελάτη</h1>
-          {user && <p className="text-sm text-gray-500 truncate">{user.name || "—"} · {user.email}</p>}
+          {user && (
+            <p className="text-sm text-gray-500 truncate">
+              {user.name || "—"} · {user.email}
+            </p>
+          )}
         </div>
 
         <button
@@ -857,19 +882,32 @@ export default function AdminUserProfilePage() {
                                   </Td>
                                   <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
                                   <Td className="text-right whitespace-nowrap">
-                                    {f.url ? (
-                                      <a
-                                        href={f.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
-                                        style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                                    <div className="inline-flex items-center gap-2">
+                                      {f.url ? (
+                                        <a
+                                          href={f.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
+                                          style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                                        >
+                                          Λήψη
+                                        </a>
+                                      ) : (
+                                        <span className="text-gray-500">—</span>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => deleteFile(f.id)}
+                                        disabled={deletingId === f.id}
+                                        className="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm disabled:opacity-60 hover:bg-black/5"
+                                        title="Διαγραφή"
                                       >
-                                        Λήψη
-                                      </a>
-                                    ) : (
-                                      <span className="text-gray-500">—</span>
-                                    )}
+                                        <Trash2 size={16} />
+                                        {deletingId === f.id ? "…" : "Διαγραφή"}
+                                      </button>
+                                    </div>
                                   </Td>
                                 </tr>
                               );
@@ -1014,6 +1052,17 @@ export default function AdminUserProfilePage() {
                                 ) : (
                                   <span className="text-gray-500">—</span>
                                 )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => deleteFile(f.id)}
+                                  disabled={deletingId === f.id}
+                                  className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-60 hover:bg-black/5"
+                                  title="Διαγραφή"
+                                >
+                                  <Trash2 size={16} />
+                                  {deletingId === f.id ? "…" : "Διαγραφή"}
+                                </button>
                               </div>
                             </div>
                           );
