@@ -21,26 +21,30 @@ async function requireSignedIn() {
   return { ok: true as const, userId, role };
 }
 
-export async function GET() {
+const CreateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  userId: z.string().trim().min(1).optional(), // ✅ only for ADMIN
+});
+
+export async function GET(req: Request) {
   const guard = await requireSignedIn();
   if (!guard.ok) return guard.res;
 
-  const where = guard.role === "ADMIN" ? {} : { ownerId: guard.userId };
+  const { searchParams } = new URL(req.url);
+  const userIdParam = searchParams.get("userId")?.trim() || undefined;
 
+  // ✅ Admin can query folders for any user; normal user only self
+  const ownerId = guard.role === "ADMIN" ? (userIdParam ?? guard.userId) : guard.userId;
+
+  // ✅ IMPORTANT: NEVER return "global" folders (ownerId null) unless you explicitly want that.
   const folders = await prisma.pdfFolder.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
+    where: { ownerId },
+    orderBy: { name: "asc" },
     select: { id: true, name: true, ownerId: true, createdAt: true },
   });
 
-  return NextResponse.json({ ok: true, folders }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ok: true, folders });
 }
-
-const CreateSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  // ✅ admin can optionally create folder for another user
-  ownerId: z.string().optional(),
-});
 
 export async function POST(req: Request) {
   const guard = await requireSignedIn();
@@ -52,12 +56,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
   }
 
-  const targetOwnerId =
-    guard.role === "ADMIN" && parsed.data.ownerId ? parsed.data.ownerId : guard.userId;
+  const name = parsed.data.name;
 
-  // prevent duplicates per owner
+  // ✅ IMPORTANT: ownerId MUST be a real user id (never null)
+  const ownerId =
+    guard.role === "ADMIN"
+      ? (parsed.data.userId ?? guard.userId)
+      : guard.userId;
+
+  if (!ownerId) {
+    return NextResponse.json({ ok: false, error: "missing_owner" }, { status: 400 });
+  }
+
+  // unique per ownerId + name (matches Prisma @@unique([ownerId,name]))
   const exists = await prisma.pdfFolder.findFirst({
-    where: { ownerId: targetOwnerId, name: parsed.data.name },
+    where: { ownerId, name },
     select: { id: true },
   });
   if (exists) {
@@ -65,7 +78,7 @@ export async function POST(req: Request) {
   }
 
   const folder = await prisma.pdfFolder.create({
-    data: { name: parsed.data.name, ownerId: targetOwnerId },
+    data: { name, ownerId }, // ✅ never null
     select: { id: true, name: true, ownerId: true, createdAt: true },
   });
 

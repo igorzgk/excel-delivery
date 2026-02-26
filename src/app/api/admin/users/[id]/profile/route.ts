@@ -7,7 +7,6 @@ import { z } from "zod";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// ✅ Accepts empty strings/null and converts to null
 const AugustRangeSchema = z
   .object({
     from: z.string().optional().nullable(),
@@ -21,7 +20,7 @@ const AugustRangeSchema = z
     const from = (val.from ?? "").trim();
     const to = (val.to ?? "").trim();
 
-    // if either empty => treat as null (no August closed range)
+    // empty inputs => null
     if (!from || !to) return null;
 
     if (!ISO_DATE.test(from) || !ISO_DATE.test(to)) return null;
@@ -30,9 +29,8 @@ const AugustRangeSchema = z
   });
 
 const ProfileSchema = z.object({
-  // ✅ allow empty (admin may save progressively)
+  // ✅ keep required DB fields safe with defaults
   businessName: z.string().trim().optional().default(""),
-  // ✅ allow empty array
   businessTypes: z.array(z.string()).optional().default([]),
 
   fridgeCount: z.number().int().nonnegative().optional().default(0),
@@ -102,10 +100,7 @@ export async function GET(req: Request, ctx: { params: { id: string } }) {
             closedHolidays: p.closedHolidays ?? [],
             augustRange:
               p.augustClosedFrom && p.augustClosedTo
-                ? {
-                    from: toISODate(p.augustClosedFrom),
-                    to: toISODate(p.augustClosedTo),
-                  }
+                ? { from: toISODate(p.augustClosedFrom), to: toISODate(p.augustClosedTo) }
                 : null,
           }
         : null,
@@ -139,7 +134,9 @@ export async function PUT(req: Request, ctx: { params: { id: string } }) {
     where: { userId: user.id },
     create: {
       userId: user.id,
-      businessName: data.businessName ?? "",
+
+      // ✅ DB requires these
+      businessName: data.businessName || "",
       businessTypes: (data.businessTypes ?? []) as any,
 
       fridgeCount: data.fridgeCount ?? 0,
@@ -157,7 +154,7 @@ export async function PUT(req: Request, ctx: { params: { id: string } }) {
       augustClosedTo: augustTo,
     },
     update: {
-      businessName: data.businessName ?? "",
+      businessName: data.businessName || "",
       businessTypes: (data.businessTypes ?? []) as any,
 
       fridgeCount: data.fridgeCount ?? 0,
