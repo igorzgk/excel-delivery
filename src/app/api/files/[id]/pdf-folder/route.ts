@@ -5,40 +5,64 @@ import { z } from "zod";
 
 export const runtime = "nodejs";
 
+const BodySchema = z.object({
+  // Accept: null | "cuid" | ""  ("" => null)
+  pdfFolderId: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z.string().nullable()
+  ),
+});
+
 export async function PATCH(req: Request, ctx: { params: { id: string } }) {
   const guard = await requireRole("USER");
-  if (!guard.ok) return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
+  if (!guard.ok) {
+    return NextResponse.json(
+      { error: "unauthorized" },
+      { status: guard.status, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 
   const userId = guard.user.id;
   const fileId = ctx.params.id;
 
-  const Schema = z.object({
-    pdfFolderId: z.string().nullable(), // null => no folder
-  });
-
   const body = await req.json().catch(() => ({}));
-  const { pdfFolderId } = Schema.parse(body);
+  const parsed = BodySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { ok: false, error: "invalid_payload" },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  const { pdfFolderId } = parsed.data;
 
   // file must exist and be visible to user (uploadedBy or assigned)
   const file = await prisma.file.findFirst({
     where: {
       id: fileId,
-      OR: [
-        { uploadedById: userId },
-        { assignments: { some: { userId } } }, // assumes File has assignments relation
-      ],
+      OR: [{ uploadedById: userId }, { assignments: { some: { userId } } }],
     },
     select: { id: true, mime: true, originalName: true },
   });
 
-  if (!file) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  if (!file) {
+    return NextResponse.json(
+      { ok: false, error: "not_found" },
+      { status: 404, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 
   // only allow foldering for PDFs (mime or extension)
   const isPdf =
     (file.mime || "").toLowerCase().includes("pdf") ||
     (file.originalName || "").toLowerCase().endsWith(".pdf");
 
-  if (!isPdf) return NextResponse.json({ ok: false, error: "not_pdf" }, { status: 400 });
+  if (!isPdf) {
+    return NextResponse.json(
+      { ok: false, error: "not_pdf" },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 
   if (pdfFolderId) {
     // folder must belong to user
@@ -46,7 +70,12 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       where: { id: pdfFolderId, ownerId: userId },
       select: { id: true },
     });
-    if (!folder) return NextResponse.json({ ok: false, error: "folder_not_found" }, { status: 404 });
+    if (!folder) {
+      return NextResponse.json(
+        { ok: false, error: "folder_not_found" },
+        { status: 404, headers: { "Cache-Control": "no-store" } }
+      );
+    }
   }
 
   const updated = await prisma.file.update({
@@ -55,5 +84,8 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     select: { id: true, pdfFolderId: true },
   });
 
-  return NextResponse.json({ ok: true, file: updated }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(
+    { ok: true, file: updated },
+    { status: 200, headers: { "Cache-Control": "no-store" } }
+  );
 }

@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -49,6 +50,10 @@ export async function GET(req: Request) {
       mime: true,
       size: true,
       createdAt: true,
+
+      // ✅ IMPORTANT: this is what your UI needs to persist "move to folder"
+      pdfFolderId: true,
+
       uploadedBy: { select: { id: true, name: true, email: true } },
       ...(isAdmin
         ? {
@@ -60,7 +65,16 @@ export async function GET(req: Request) {
     },
   });
 
-  return NextResponse.json({ files });
+  return NextResponse.json(
+    { files },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    }
+  );
 }
 
 // Admin manual upload from /admin/files
@@ -126,21 +140,19 @@ export async function POST(req: Request) {
     });
 
     // ✅ assignment if selected
-      if (assignTo) {
-        // who is doing the assignment (admin)
-        const me = await currentUser();
-        if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    if (assignTo) {
+      // who is doing the assignment (admin)
+      const me = await currentUser();
+      if (!me) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
-        await prisma.fileAssignment.create({
-          data: {
-            file: { connect: { id: created.id } },
-            user: { connect: { id: assignTo } },
-            assignedBy: { connect: { id: (me as any).id } }, // ✅ REQUIRED by your schema
-          },
-        });
-      }
-
-
+      await prisma.fileAssignment.create({
+        data: {
+          file: { connect: { id: created.id } },
+          user: { connect: { id: assignTo } },
+          assignedBy: { connect: { id: (me as any).id } }, // ✅ REQUIRED by your schema
+        },
+      });
+    }
 
     return NextResponse.json({ ok: true, id: created.id }, { status: 201 });
   } catch (e: any) {
