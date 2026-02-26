@@ -12,7 +12,7 @@ function getAdminClient() {
 }
 
 function getBucket() {
-  return process.env.SUPABASE_BUCKET || "excel";
+  return process.env.SUPABASE_BUCKET || "Files";
 }
 
 export async function supabaseRemove(paths: string[]) {
