@@ -830,7 +830,7 @@ export default function AdminUserProfilePage() {
                   {/* LEFT: other files */}
                   <section className="min-w-0 rounded-2xl border bg-white p-4">
                     <div className="flex items-baseline justify-between">
-                      <h3 className="font-semibold">Αρχεία (όχι PDF) ({others.length})</h3>
+                      <h3 className="font-semibold">Αρχεία θερμοκρασιών και ημερήσιας υγιεινής ({others.length})</h3>
                     </div>
 
                     {others.length === 0 ? (
