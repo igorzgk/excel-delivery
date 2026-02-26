@@ -1,4 +1,4 @@
-// src/app/api/pdf-folders/route.ts
+// src/app/api/pdf-folders/[id]/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
@@ -21,56 +21,78 @@ async function requireSignedIn() {
   return { ok: true as const, userId, role };
 }
 
-const CreateSchema = z.object({
+const PatchSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  userId: z.string().trim().min(1).optional(), // ✅ only used by ADMIN
 });
 
-export async function GET(req: Request) {
+export async function PATCH(req: Request, ctx: { params: { id: string } }) {
   const guard = await requireSignedIn();
   if (!guard.ok) return guard.res;
 
-  const { searchParams } = new URL(req.url);
-  const userIdParam = searchParams.get("userId")?.trim() || undefined;
-
-  // ✅ Admin can query folders for any user, normal user only self
-  const ownerId = guard.role === "ADMIN" ? (userIdParam ?? guard.userId) : guard.userId;
-
-  const folders = await prisma.pdfFolder.findMany({
-    where: { ownerId },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, ownerId: true, createdAt: true },
-  });
-
-  return NextResponse.json({ ok: true, folders });
-}
-
-export async function POST(req: Request) {
-  const guard = await requireSignedIn();
-  if (!guard.ok) return guard.res;
+  const folderId = ctx.params.id;
 
   const body = await req.json().catch(() => ({}));
-  const parsed = CreateSchema.safeParse(body);
+  const parsed = PatchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
   }
 
-  const name = parsed.data.name;
-  const ownerId = guard.role === "ADMIN" ? (parsed.data.userId ?? guard.userId) : guard.userId;
-
-  // ✅ Prevent "global folder": always ownerId-scoped
-  const exists = await prisma.pdfFolder.findFirst({
-    where: { ownerId, name },
-    select: { id: true },
+  // 1) Find folder
+  const folder = await prisma.pdfFolder.findUnique({
+    where: { id: folderId },
+    select: { id: true, ownerId: true },
   });
-  if (exists) {
-    return NextResponse.json({ ok: false, error: "folder_exists" }, { status: 409 });
+
+  if (!folder) {
+    return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
-  const folder = await prisma.pdfFolder.create({
-    data: { name, ownerId },
+  // 2) Permission check
+  if (guard.role !== "ADMIN" && folder.ownerId !== guard.userId) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+
+  // 3) Update by unique id
+  const updated = await prisma.pdfFolder.update({
+    where: { id: folderId },
+    data: { name: parsed.data.name },
     select: { id: true, name: true, ownerId: true, createdAt: true },
   });
 
-  return NextResponse.json({ ok: true, folder }, { status: 201 });
+  return NextResponse.json({ ok: true, folder: updated });
+}
+
+export async function DELETE(req: Request, ctx: { params: { id: string } }) {
+  const guard = await requireSignedIn();
+  if (!guard.ok) return guard.res;
+
+  const folderId = ctx.params.id;
+
+  // 1) Find folder
+  const folder = await prisma.pdfFolder.findUnique({
+    where: { id: folderId },
+    select: { id: true, ownerId: true },
+  });
+
+  if (!folder) {
+    return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  }
+
+  // 2) Permission check
+  if (guard.role !== "ADMIN" && folder.ownerId !== guard.userId) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+
+  // 3) Detach files first
+  await prisma.file.updateMany({
+    where: { pdfFolderId: folderId },
+    data: { pdfFolderId: null },
+  });
+
+  // 4) Delete by unique id
+  await prisma.pdfFolder.delete({
+    where: { id: folderId },
+  });
+
+  return NextResponse.json({ ok: true });
 }
