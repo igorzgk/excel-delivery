@@ -114,6 +114,9 @@ model UserProfile {
   // Επωνυμία
   businessName String
 
+  // Οδός (για διάκριση ίδιων επωνυμιών/ΑΦΜ)
+  addressStreet String?
+
   // Business types (enum, πολλά)
   businessTypes BusinessType[]
 

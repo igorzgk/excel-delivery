@@ -6,6 +6,7 @@ import { z } from "zod";
 
 const ProfileSchema = z.object({
   businessName: z.string().min(1),
+  addressStreet: z.string().trim().max(120).optional().nullable(), // ✅ NEW
   businessTypes: z.array(z.string()).min(1),
 
   fridgeCount: z.coerce.number().int().min(0).default(0),
@@ -80,6 +81,7 @@ export async function POST(req: Request) {
         data: {
           userId: user.id,
           businessName: profile.businessName,
+          addressStreet: profile.addressStreet?.trim() || null, // ✅ NEW
           businessTypes: profile.businessTypes as any,
 
           fridgeCount: profile.fridgeCount ?? 0,

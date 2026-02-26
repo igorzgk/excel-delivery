@@ -57,6 +57,7 @@ type PublicHoliday =
 
 type ProfilePayload = {
   businessName: string;
+  addressStreet: string; // ✅ NEW
   businessTypes: BusinessType[];
 
   fridgeCount: number;
@@ -137,19 +138,19 @@ export default function RegisterPage() {
 
   // Βήμα 2 – Profile fields
   const [profile, setProfile] = useState<ProfilePayload>({
-    businessName: "",
-    businessTypes: [],
-    fridgeCount: 0,
-    freezerCount: 0,
-    hotCabinetCount: 0,
-    dryAgedChamberCount: 0,
-    iceCreamFreezerCount: 0,
-    supervisorInitials: "",
-    closedWeekdays: [],
-    closedHolidays: [],
-    augustRange: { from: "", to: "" },
-  });
-  
+  businessName: "",
+  addressStreet: "", // ✅ NEW
+  businessTypes: [],
+  fridgeCount: 0,
+  freezerCount: 0,
+  hotCabinetCount: 0,
+  dryAgedChamberCount: 0,
+  iceCreamFreezerCount: 0,
+  supervisorInitials: "",
+  closedWeekdays: [],
+  closedHolidays: [],
+  augustRange: { from: "", to: "" },
+});
   const updateProfile = <K extends keyof ProfilePayload>(
     key: K,
     value: ProfilePayload[K]
@@ -298,6 +299,20 @@ export default function RegisterPage() {
               value={profile.businessName}
               onChange={(e) => updateProfile("businessName", e.target.value)}
             />
+          </label>
+
+          {/* 1b) Οδός */}
+          <label className="block">
+            <span className="text-sm">Οδός (π.χ. Πατησίων 12)</span>
+            <input
+              className="w-full border rounded p-2"
+              value={profile.addressStreet}
+              onChange={(e) => updateProfile("addressStreet", e.target.value)}
+              placeholder="Οδός / διεύθυνση"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Χρησιμοποιείται για να ξεχωρίζουμε επιχειρήσεις με ίδια επωνυμία/ΑΦΜ.
+            </p>
           </label>
 
           {/* 2) Business types */}

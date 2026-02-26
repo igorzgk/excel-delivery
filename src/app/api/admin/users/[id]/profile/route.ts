@@ -32,6 +32,7 @@ const ProfileSchema = z.object({
   // ✅ keep required DB fields safe with defaults
   businessName: z.string().trim().optional().default(""),
   businessTypes: z.array(z.string()).optional().default([]),
+  addressStreet: z.string().max(120).optional().nullable(),
 
   fridgeCount: z.number().int().nonnegative().optional().default(0),
   freezerCount: z.number().int().nonnegative().optional().default(0),
@@ -90,6 +91,7 @@ export async function GET(req: Request, ctx: { params: { id: string } }) {
         ? {
             businessName: p.businessName ?? "",
             businessTypes: p.businessTypes ?? [],
+            addressStreet: p.addressStreet ?? null,
             fridgeCount: p.fridgeCount ?? 0,
             freezerCount: p.freezerCount ?? 0,
             hotCabinetCount: p.hotCabinetCount ?? 0,
@@ -138,6 +140,7 @@ export async function PUT(req: Request, ctx: { params: { id: string } }) {
       // ✅ DB requires these
       businessName: data.businessName || "",
       businessTypes: (data.businessTypes ?? []) as any,
+      addressStreet: data.addressStreet ?? null,
 
       fridgeCount: data.fridgeCount ?? 0,
       freezerCount: data.freezerCount ?? 0,
@@ -156,6 +159,7 @@ export async function PUT(req: Request, ctx: { params: { id: string } }) {
     update: {
       businessName: data.businessName || "",
       businessTypes: (data.businessTypes ?? []) as any,
+      addressStreet: data.addressStreet ?? null,
 
       fridgeCount: data.fridgeCount ?? 0,
       freezerCount: data.freezerCount ?? 0,

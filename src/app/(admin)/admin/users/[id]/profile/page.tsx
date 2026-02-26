@@ -55,6 +55,7 @@ type PublicHoliday =
 
 type ProfilePayload = {
   businessName: string;
+  addressStreet: string; // ✅ NEW
   businessTypes: BusinessType[];
 
   fridgeCount: number;
@@ -219,6 +220,7 @@ export default function AdminUserProfilePage() {
         if (!p) {
           setProfile({
             businessName: "",
+            addressStreet: "", // ✅ NEW
             businessTypes: [],
             fridgeCount: 0,
             freezerCount: 0,
@@ -233,6 +235,7 @@ export default function AdminUserProfilePage() {
         } else {
           setProfile({
             businessName: p.businessName ?? "",
+            addressStreet: p.addressStreet ?? "", // ✅ NEW
             businessTypes: (p.businessTypes ?? []) as BusinessType[],
             fridgeCount: p.fridgeCount ?? 0,
             freezerCount: p.freezerCount ?? 0,
@@ -542,12 +545,30 @@ export default function AdminUserProfilePage() {
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block">
               <span className="text-sm">Επωνυμία επιχείρησης</span>
-              <input className="w-full border rounded p-2 text-sm" value={profile.businessName} onChange={(e) => update("businessName", e.target.value)} />
+              <input
+                className="w-full border rounded p-2 text-sm"
+                value={profile.businessName}
+                onChange={(e) => update("businessName", e.target.value)}
+              />
             </label>
 
             <label className="block">
+              <span className="text-sm">Οδός</span>
+              <input
+                className="w-full border rounded p-2 text-sm"
+                placeholder="π.χ. Πατησίων 12"
+                value={profile.addressStreet}
+                onChange={(e) => update("addressStreet", e.target.value)}
+              />
+            </label>
+
+            <label className="block md:col-span-2">
               <span className="text-sm">Αρχικά υπευθύνου καταγραφής</span>
-              <input className="w-full border rounded p-2 text-sm" value={profile.supervisorInitials} onChange={(e) => update("supervisorInitials", e.target.value)} />
+              <input
+                className="w-full border rounded p-2 text-sm"
+                value={profile.supervisorInitials}
+                onChange={(e) => update("supervisorInitials", e.target.value)}
+              />
             </label>
           </div>
         </div>
@@ -584,7 +605,11 @@ export default function AdminUserProfilePage() {
             <NumberField label="Αριθμός καταψύξεων" value={profile.freezerCount} onChange={(v) => update("freezerCount", v)} />
             <NumberField label="Αριθμός θερμοθαλάμων / Bain Marie" value={profile.hotCabinetCount} onChange={(v) => update("hotCabinetCount", v)} />
             <NumberField label="Αριθμός θαλάμων Dry Aged" value={profile.dryAgedChamberCount} onChange={(v) => update("dryAgedChamberCount", v)} />
-            <NumberField label="Αριθμός καταψύκτη/έκθεσης παγωτών" value={profile.iceCreamFreezerCount} onChange={(v) => update("iceCreamFreezerCount", v)} />
+            <NumberField
+              label="Αριθμός καταψύκτη/έκθεσης παγωτών"
+              value={profile.iceCreamFreezerCount}
+              onChange={(v) => update("iceCreamFreezerCount", v)}
+            />
           </div>
         </div>
 
@@ -645,8 +670,18 @@ export default function AdminUserProfilePage() {
           <div className="mt-4 max-w-md">
             <div className="text-sm mb-1">Διάστημα Αυγούστου (κλειστά)</div>
             <div className="grid grid-cols-2 gap-2">
-              <input type="date" className="border rounded p-2 text-sm" value={profile.augustRange.from} onChange={(e) => update("augustRange", { ...profile.augustRange, from: e.target.value })} />
-              <input type="date" className="border rounded p-2 text-sm" value={profile.augustRange.to} onChange={(e) => update("augustRange", { ...profile.augustRange, to: e.target.value })} />
+              <input
+                type="date"
+                className="border rounded p-2 text-sm"
+                value={profile.augustRange.from}
+                onChange={(e) => update("augustRange", { ...profile.augustRange, from: e.target.value })}
+              />
+              <input
+                type="date"
+                className="border rounded p-2 text-sm"
+                value={profile.augustRange.to}
+                onChange={(e) => update("augustRange", { ...profile.augustRange, to: e.target.value })}
+              />
             </div>
           </div>
         </div>
@@ -657,11 +692,21 @@ export default function AdminUserProfilePage() {
           <div className="grid md:grid-cols-2 gap-3 max-w-xl">
             <label className="block">
               <span className="text-sm">Νέος κωδικός</span>
-              <input type="password" className="w-full border rounded p-2 text-sm" value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} />
+              <input
+                type="password"
+                className="w-full border rounded p-2 text-sm"
+                value={pw.newPassword}
+                onChange={(e) => setPw({ ...pw, newPassword: e.target.value })}
+              />
             </label>
             <label className="block">
               <span className="text-sm">Επιβεβαίωση</span>
-              <input type="password" className="w-full border rounded p-2 text-sm" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} />
+              <input
+                type="password"
+                className="w-full border rounded p-2 text-sm"
+                value={pw.confirm}
+                onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
+              />
             </label>
           </div>
 
@@ -685,7 +730,13 @@ export default function AdminUserProfilePage() {
         {okMessage && <p className="text-sm text-green-700">{okMessage}</p>}
 
         <div className="flex justify-end">
-          <button type="button" onClick={save} disabled={saving} className="rounded-xl px-4 py-2 text-sm font-semibold" style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="rounded-xl px-4 py-2 text-sm font-semibold"
+            style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}
+          >
             {saving ? "Αποθήκευση…" : "Αποθήκευση αλλαγών"}
           </button>
         </div>
@@ -717,7 +768,11 @@ export default function AdminUserProfilePage() {
                 >
                   Ανανέωση
                 </button>
-                <button type="button" onClick={() => setFilesOpen(false)} className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5">
+                <button
+                  type="button"
+                  onClick={() => setFilesOpen(false)}
+                  className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5"
+                >
                   ✕ Κλείσιμο
                 </button>
               </div>
@@ -733,8 +788,17 @@ export default function AdminUserProfilePage() {
                   <p className="text-xs text-gray-500 mb-3">Το αρχείο θα ανατεθεί αυτόματα στον χρήστη.</p>
 
                   <div className="grid gap-2">
-                    <input className="w-full border rounded px-3 py-2 text-sm" placeholder="Τίτλος" value={upTitle} onChange={(e) => setUpTitle(e.target.value)} />
-                    <input type="file" className="w-full border rounded px-3 py-2 text-sm bg-white" onChange={(e) => setUpFile(e.currentTarget.files?.[0] ?? null)} />
+                    <input
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      placeholder="Τίτλος"
+                      value={upTitle}
+                      onChange={(e) => setUpTitle(e.target.value)}
+                    />
+                    <input
+                      type="file"
+                      className="w-full border rounded px-3 py-2 text-sm bg-white"
+                      onChange={(e) => setUpFile(e.currentTarget.files?.[0] ?? null)}
+                    />
 
                     <button
                       type="button"
@@ -750,8 +814,15 @@ export default function AdminUserProfilePage() {
 
                 {/* search + counts */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Αναζήτηση αρχείων…" className="w-full max-w-[520px] rounded-xl border px-3 py-2 text-sm" />
-                  <div className="text-sm text-gray-500">{loadingFiles ? "Φόρτωση…" : `${filteredFiles.length} αρχείο(α) · ${pdfs.length} PDF`}</div>
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Αναζήτηση αρχείων…"
+                    className="w-full max-w-[520px] rounded-xl border px-3 py-2 text-sm"
+                  />
+                  <div className="text-sm text-gray-500">
+                    {loadingFiles ? "Φόρτωση…" : `${filteredFiles.length} αρχείο(α) · ${pdfs.length} PDF`}
+                  </div>
                 </div>
 
                 {/* ✅ WIDER COLUMNS */}
@@ -787,7 +858,13 @@ export default function AdminUserProfilePage() {
                                   <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
                                   <Td className="text-right whitespace-nowrap">
                                     {f.url ? (
-                                      <a href={f.url} target="_blank" rel="noreferrer" className="inline-block rounded-lg px-3 py-1 font-semibold text-black" style={{ backgroundColor: "var(--brand, #25C3F4)" }}>
+                                      <a
+                                        href={f.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-block rounded-lg px-3 py-1 font-semibold text-black"
+                                        style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                                      >
                                         Λήψη
                                       </a>
                                     ) : (
@@ -809,7 +886,11 @@ export default function AdminUserProfilePage() {
                       <h3 className="font-semibold">PDF ({pdfs.length})</h3>
 
                       <div className="flex items-center gap-2">
-                        <select className="rounded-lg border px-2 py-1 text-sm max-w-[200px]" value={folderFilter} onChange={(e) => setFolderFilter(e.target.value)}>
+                        <select
+                          className="rounded-lg border px-2 py-1 text-sm max-w-[200px]"
+                          value={folderFilter}
+                          onChange={(e) => setFolderFilter(e.target.value)}
+                        >
                           <option value="ALL">Όλα</option>
                           <option value="NONE">Χωρίς φάκελο</option>
                           {folders.map((f) => (
@@ -819,7 +900,12 @@ export default function AdminUserProfilePage() {
                           ))}
                         </select>
 
-                        <button type="button" onClick={createFolder} disabled={creatingFolder} className="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm disabled:opacity-60">
+                        <button
+                          type="button"
+                          onClick={createFolder}
+                          disabled={creatingFolder}
+                          className="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm disabled:opacity-60"
+                        >
                           <Plus size={16} /> Φάκελος
                         </button>
                       </div>
@@ -840,7 +926,10 @@ export default function AdminUserProfilePage() {
                           {folders.map((f) => (
                             <div
                               key={f.id}
-                              className={["group flex items-center justify-between gap-2 rounded-lg px-2 py-2 cursor-pointer", folderFilter === f.id ? "bg-white border" : "hover:bg-white/70"].join(" ")}
+                              className={[
+                                "group flex items-center justify-between gap-2 rounded-lg px-2 py-2 cursor-pointer",
+                                folderFilter === f.id ? "bg-white border" : "hover:bg-white/70",
+                              ].join(" ")}
                               onClick={() => setFolderFilter(f.id)}
                               title={f.name}
                             >
@@ -899,7 +988,11 @@ export default function AdminUserProfilePage() {
                               </div>
 
                               <div className="flex items-center gap-2 shrink-0">
-                                <select className="rounded-lg border px-2 py-1 text-xs max-w-[200px]" value={f.pdfFolderId ?? ""} onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}>
+                                <select
+                                  className="rounded-lg border px-2 py-1 text-xs max-w-[200px]"
+                                  value={f.pdfFolderId ?? ""}
+                                  onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
+                                >
                                   <option value="">(Χωρίς)</option>
                                   {folders.map((fo) => (
                                     <option key={fo.id} value={fo.id}>
@@ -909,7 +1002,13 @@ export default function AdminUserProfilePage() {
                                 </select>
 
                                 {f.url ? (
-                                  <a href={f.url} target="_blank" rel="noreferrer" className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black" style={{ backgroundColor: "var(--brand, #25C3F4)" }}>
+                                  <a
+                                    href={f.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black"
+                                    style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                                  >
                                     Λήψη
                                   </a>
                                 ) : (
@@ -953,7 +1052,13 @@ function EscClose({ onClose }: { onClose: () => void }) {
 
 function FolderRow({ active, name, onClick }: { active: boolean; name: string; onClick: () => void }) {
   return (
-    <div className={["flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer", active ? "bg-white border" : "hover:bg-white/70"].join(" ")} onClick={onClick}>
+    <div
+      className={[
+        "flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer",
+        active ? "bg-white border" : "hover:bg-white/70",
+      ].join(" ")}
+      onClick={onClick}
+    >
       <Folder size={16} className="shrink-0" />
       <span className="text-sm">{name}</span>
     </div>
