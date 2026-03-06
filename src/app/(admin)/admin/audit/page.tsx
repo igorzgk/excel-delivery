@@ -28,7 +28,7 @@ export default function AdminAuditPage() {
       if (next) q.set("cursor", next);
       const r = await fetch(`/api/admin/audit?${q.toString()}`, { cache: "no-store" });
       const { items, nextCursor } = await r.json();
-      setRows(prev => (next ? [...prev, ...items] : items));
+      setRows((prev) => (next ? [...prev, ...items] : items));
       setCursor(nextCursor);
       setHasMore(!!nextCursor);
     } catch (e: any) {
@@ -38,7 +38,9 @@ export default function AdminAuditPage() {
     }
   }
 
-  useEffect(() => { load(null); }, []);
+  useEffect(() => {
+    load(null);
+  }, []);
 
   return (
     <div className="grid gap-4 text-[inherit]">
@@ -46,15 +48,19 @@ export default function AdminAuditPage() {
 
       {err && <div className="text-sm text-red-600">{err}</div>}
 
-      {/* -------- MOBILE LIST (2 σειρές) -------- */}
+      {/* MOBILE */}
       <section className="sm:hidden grid gap-3">
         {rows.map((r) => {
           const created = new Date(r.createdAt).toLocaleString();
           const actor = r.actor ? `${r.actor.email}${r.actor.name ? ` (${r.actor.name})` : ""}` : "—";
           const metaPreview = jsonPreview(r.meta);
+          const status = getStatusLabel(r.meta?.status);
+
           return (
-            <div key={r.id} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-3">
-              {/* Row 1: Action + time, and actor below */}
+            <div
+              key={r.id}
+              className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-3"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-medium break-words">{humanizeAction(r.action)}</div>
@@ -63,11 +69,13 @@ export default function AdminAuditPage() {
                 <div className="shrink-0 text-xs text-gray-600 whitespace-nowrap">{created}</div>
               </div>
 
-              {/* Row 2: Target + meta preview */}
+              <div className="mt-2">{status && <StatusBadge status={r.meta?.status} />}</div>
+
               <div className="mt-3 grid gap-2">
                 <div className="text-sm break-words">
                   <span className="text-gray-600">Στόχος:</span>{" "}
-                  {r.target ?? "—"} {r.targetId ? <span className="text-[color:var(--muted)]">#{r.targetId}</span> : null}
+                  {r.target ?? "—"}{" "}
+                  {r.targetId ? <span className="text-[color:var(--muted)]">#{r.targetId}</span> : null}
                 </div>
 
                 <pre className="text-xs bg-black/5 rounded p-2 max-h-[12rem] overflow-auto whitespace-pre-wrap break-words">
@@ -91,36 +99,50 @@ export default function AdminAuditPage() {
         </div>
       </section>
 
-      {/* -------- DESKTOP/TABLET TABLE -------- */}
+      {/* DESKTOP */}
       <section className="hidden sm:block rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
         <div className="overflow-hidden">
           <table className="w-full table-fixed text-sm text-[inherit]">
             <thead className="bg-gray-50 text-gray-700">
               <tr className="text-left">
-                <Th className="w-[18%]">Ώρα</Th>
-                <Th className="w-[18%]">Ενέργεια</Th>
-                <Th className="w-[22%]">Χρήστης</Th>
-                <Th className="w-[17%]">Στόχος</Th>
+                <Th className="w-[16%]">Ώρα</Th>
+                <Th className="w-[15%]">Ενέργεια</Th>
+                <Th className="w-[12%]">Κατάσταση</Th>
+                <Th className="w-[18%]">Χρήστης</Th>
+                <Th className="w-[14%]">Στόχος</Th>
                 <Th className="w-[25%]">Meta</Th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-gray-100">
               {rows.map((r) => (
                 <tr key={r.id} className="align-top">
                   <Td className="whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</Td>
-                  <Td className="font-medium whitespace-normal break-words">{humanizeAction(r.action)}</Td>
+
+                  <Td className="font-medium whitespace-normal break-words">
+                    {humanizeAction(r.action)}
+                  </Td>
+
+                  <Td>
+                    {r.meta?.status ? <StatusBadge status={r.meta.status} /> : <span className="text-gray-400">—</span>}
+                  </Td>
+
                   <Td className="whitespace-normal break-words">
                     {r.actor ? (
                       <>
                         {r.actor.email}
                         {r.actor.name ? <span className="text-gray-500"> ({r.actor.name})</span> : null}
                       </>
-                    ) : "—"}
+                    ) : (
+                      "—"
+                    )}
                   </Td>
+
                   <Td className="whitespace-normal break-words">
                     {r.target ?? "—"}{" "}
                     {r.targetId ? <span className="text-[color:var(--muted)]">#{r.targetId}</span> : null}
                   </Td>
+
                   <Td className="whitespace-normal break-words">
                     <pre className="text-xs bg-black/5 rounded p-2 max-h-[10rem] overflow-auto">
                       {jsonPreview(r.meta) || "—"}
@@ -152,30 +174,77 @@ export default function AdminAuditPage() {
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
 }
+
 function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <td className={`px-3 py-3 ${className}`}>{children}</td>;
 }
 
 function humanizeAction(a: string) {
   switch (a) {
-    case "FILE_UPLOADED": return "Ανέβασμα αρχείου";
-    case "FILE_ASSIGNED": return "Ανάθεση αρχείου";
-    case "DOWNLOAD_GRANTED": return "Παραχώρηση λήψης";
-    case "USER_CREATED": return "Δημιουργία χρήστη";
-    case "APIKEY_CREATED": return "Δημιουργία API Key";
-    case "APIKEY_REVOKED": return "Ανάκληση API Key";
-    case "SUBSCRIPTION_TOGGLED": return "Εναλλαγή συνδρομής";
-    case "SUPPORT_TICKET": return "Αίτημα υποστήριξης";
-    default: return a;
+    case "FILE_UPLOADED":
+      return "Ανέβασμα αρχείου";
+    case "FILE_ASSIGNED":
+      return "Ανάθεση αρχείου";
+    case "DOWNLOAD_GRANTED":
+      return "Παραχώρηση λήψης";
+    case "USER_CREATED":
+      return "Δημιουργία χρήστη";
+    case "APIKEY_CREATED":
+      return "Δημιουργία API Key";
+    case "APIKEY_REVOKED":
+      return "Ανάκληση API Key";
+    case "SUBSCRIPTION_TOGGLED":
+      return "Εναλλαγή συνδρομής";
+    case "SUPPORT_TICKET":
+      return "Αίτημα υποστήριξης";
+    default:
+      return a;
   }
+}
+
+function getStatusLabel(status?: string) {
+  switch (status) {
+    case "success":
+      return "Επιτυχία";
+    case "partial_match":
+      return "Μερική αντιστοίχιση";
+    case "no_match":
+      return "Χωρίς αντιστοίχιση";
+    case "fetch_failed":
+      return "Αποτυχία λήψης";
+    case "server_error":
+      return "Σφάλμα server";
+    case "invalid_payload":
+      return "Μη έγκυρο payload";
+    default:
+      return "";
+  }
+}
+
+function StatusBadge({ status }: { status?: string }) {
+  const label = getStatusLabel(status);
+
+  const cls =
+    status === "success"
+      ? "border-green-300 bg-green-50 text-green-700"
+      : status === "partial_match"
+      ? "border-amber-300 bg-amber-50 text-amber-700"
+      : status === "no_match" || status === "fetch_failed" || status === "server_error" || status === "invalid_payload"
+      ? "border-red-300 bg-red-50 text-red-700"
+      : "border-gray-300 bg-gray-50 text-gray-700";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${cls}`}>
+      {label || status || "—"}
+    </span>
+  );
 }
 
 function jsonPreview(meta: any) {
   if (!meta) return "";
   try {
     const s = JSON.stringify(meta, null, 2);
-    // keep it compact for preview
-    return s.length > 1000 ? s.slice(0, 1000) + " …" : s;
+    return s.length > 2000 ? s.slice(0, 2000) + " …" : s;
   } catch {
     return String(meta);
   }
