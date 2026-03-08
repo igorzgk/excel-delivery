@@ -11,10 +11,18 @@ export const runtime = "nodejs";
 // (shared with uploads route) - find who "assigns" (admin if uploader isn't admin)
 async function getAssignerId(uploadedById?: string | null) {
   if (uploadedById) {
-    const u = await prisma.user.findUnique({ where: { id: uploadedById }, select: { role: true } });
+    const u = await prisma.user.findUnique({
+      where: { id: uploadedById },
+      select: { role: true },
+    });
     if (u?.role === "ADMIN") return uploadedById;
   }
-  const admin = await prisma.user.findFirst({ where: { role: "ADMIN", status: "ACTIVE" }, select: { id: true } });
+
+  const admin = await prisma.user.findFirst({
+    where: { role: "ADMIN", status: "ACTIVE" },
+    select: { id: true },
+  });
+
   return admin?.id ?? null;
 }
 
@@ -36,8 +44,9 @@ export async function GET(req: Request) {
         uploadedByEmail: "string (optional, attribution if it matches a user)",
       },
       notes: [
-        "Replace behavior: αν υπάρχει αρχείο με ίδιο filename, γίνεται overwrite (μένει μόνο το τελευταίο).",
-        "Ανάθεση: ανιχνεύουμε emails μέσα στο title/original filename.",
+        "Replace behavior: αν υπάρχει αρχείο με ίδιο filename, γίνεται overwrite στο storage.",
+        "Ανάθεση: ανιχνεύουμε emails μέσα στο title/original filename/uploadedByEmail.",
+        "Ασφάλεια: δεν διαγράφουμε παλιά DB records αν η νέα ανάθεση αποτύχει.",
       ],
       time: new Date().toISOString(),
     },
@@ -62,12 +71,16 @@ export async function POST(req: Request) {
   try {
     form = await req.formData();
   } catch {
-    return NextResponse.json({ ok: false, error: "invalid_multipart" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "invalid_multipart" },
+      { status: 400 }
+    );
   }
 
   const title = String(form.get("title") || "").trim();
   const file = form.get("file") as File | null;
-  const uploadedByEmail = (String(form.get("uploadedByEmail") || "").trim() || undefined) as string | undefined;
+  const uploadedByEmail =
+    (String(form.get("uploadedByEmail") || "").trim() || undefined) as string | undefined;
 
   if (!title || !file) {
     return NextResponse.json(
@@ -78,42 +91,63 @@ export async function POST(req: Request) {
 
   // 1) Read file bytes
   const originalNameRaw = (file as any).name || `${title}.xlsx`;
-  const safeName = String(originalNameRaw).replace(/[^\w.\-@]+/g, "_"); // <-- already needed later
+  const safeName = String(originalNameRaw).replace(/[^\w.\-@]+/g, "_");
 
   const contentTypeRaw = (file.type || "").toLowerCase();
   const safeNameLower = safeName.toLowerCase();
   const contentType =
     contentTypeRaw ||
-    (safeNameLower.endsWith(".pdf") ? "application/pdf" : "application/octet-stream");
+    (safeNameLower.endsWith(".pdf")
+      ? "application/pdf"
+      : "application/octet-stream");
 
   const ab = await file.arrayBuffer();
   const buf = Buffer.from(ab);
 
-  // ✅ ΣΤΑΘΕΡΟ path = ίδιο filename => overwrite
+  // 2) Stable storage path = overwrite same filename
   const keyPath = `uploads/${safeName}`;
+  const publicUrl = `/api/files/download/${keyPath}`;
 
-  // 3) Storage replace: delete old (if exists) then upload (upsert)
+  // 3) Storage overwrite
   try {
     await supabaseRemove([keyPath]);
   } catch {
-    // ignore remove errors to avoid blocking (optional)
+    // ignore remove errors
   }
+
   const put = await supabasePutBuffer(keyPath, buf, contentType);
 
-  // 4) Attribution who uploaded & who assigns
+  // 4) Work out attribution
   let uploadedById: string | undefined;
   if (uploadedByEmail) {
-    const u = await prisma.user.findUnique({ where: { email: uploadedByEmail }, select: { id: true } });
+    const u = await prisma.user.findUnique({
+      where: { email: uploadedByEmail },
+      select: { id: true },
+    });
     uploadedById = u?.id;
   }
+
   const assignerId = await getAssignerId(uploadedById);
 
-  // 5) DB record (delete previous record for same storage path so we keep only one)
-  const publicUrl = `/api/files/download/${keyPath}`;
+  // 5) Resolve assignees BEFORE deleting any old DB rows
+  const candidates = Array.from(
+    new Set([
+      ...extractEmailsFromText(`${title} ${safeName}`),
+      ...(uploadedByEmail ? [uploadedByEmail] : []),
+    ])
+  );
 
-  // 👇 delete old db record(s) for same storage file so app doesn't "keep all"
-  await prisma.file.deleteMany({ where: { url: publicUrl } });
+  const assigneeIds = candidates.length
+    ? await resolveAssigneeIdsByEmails(candidates)
+    : [];
 
+  // Keep old records for this storage path in case new assignment fails
+  const oldFiles = await prisma.file.findMany({
+    where: { url: publicUrl },
+    select: { id: true, url: true, originalName: true },
+  });
+
+  // 6) Create new file record
   const record = await prisma.file.create({
     data: {
       title,
@@ -123,15 +157,18 @@ export async function POST(req: Request) {
       size: buf.byteLength,
       uploadedById,
     },
-    select: { id: true, title: true, originalName: true, url: true, createdAt: true },
+    select: {
+      id: true,
+      title: true,
+      originalName: true,
+      url: true,
+      createdAt: true,
+    },
   });
 
-  // 6) Auto-assign by emails found in title/original filename + uploadedByEmail
-  const candidates = Array.from(
-    new Set([...extractEmailsFromText(`${title} ${safeName}`), ...(uploadedByEmail ? [uploadedByEmail] : [])])
-  );
+  let assignmentCreated = false;
 
-  const assigneeIds = candidates.length ? await resolveAssigneeIdsByEmails(candidates) : [];
+  // 7) Create assignments if possible
   if (assigneeIds.length && assignerId) {
     await prisma.fileAssignment.createMany({
       data: assigneeIds.map((userId) => ({
@@ -141,9 +178,22 @@ export async function POST(req: Request) {
       })),
       skipDuplicates: true,
     });
+    assignmentCreated = true;
   }
 
-  // 7) Audit log
+  // 8) Delete old duplicate DB rows ONLY if new file was assigned successfully
+  let deletedOldRecords = 0;
+
+  if (assignmentCreated) {
+    for (const oldFile of oldFiles) {
+      await prisma.file.delete({
+        where: { id: oldFile.id },
+      });
+      deletedOldRecords++;
+    }
+  }
+
+  // 9) Audit
   await logAudit({
     action: "FILE_UPLOADED",
     target: "File",
@@ -153,9 +203,17 @@ export async function POST(req: Request) {
       storageKey: keyPath,
       mime: contentType,
       size: buf.byteLength,
-      assigned: assigneeIds.length,
       emails: candidates,
-      replaced: true,
+      assigned: assigneeIds.length,
+      assignerId,
+      assignmentCreated,
+      replacedStorage: true,
+      deletedOldRecords,
+      oldRecordIds: oldFiles.map((f) => f.id),
+      warning:
+        assignmentCreated
+          ? null
+          : "Το αρχείο ανέβηκε αλλά δεν δημιουργήθηκε νέα ανάθεση. Τα παλιά records δεν διαγράφηκαν.",
     },
   });
 
@@ -167,6 +225,8 @@ export async function POST(req: Request) {
       key: keyPath,
       signedUrl: put.signedUrl,
       replaced: true,
+      assignmentCreated,
+      deletedOldRecords,
     },
     { status: 201, headers: { "Cache-Control": "no-store" } }
   );

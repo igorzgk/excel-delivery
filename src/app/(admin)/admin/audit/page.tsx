@@ -1,7 +1,7 @@
 // src/app/(admin)/admin/audit/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Row = {
   id: string;
@@ -20,14 +20,23 @@ export default function AdminAuditPage() {
   const [hasMore, setHasMore] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
+  const [query, setQuery] = useState("");
+  const [onlyUploads, setOnlyUploads] = useState(false);
+  const [onlyProblematic, setOnlyProblematic] = useState(false);
+
   async function load(next?: string | null) {
     setLoading(true);
     setErr(null);
     try {
       const q = new URLSearchParams({ limit: "50" });
       if (next) q.set("cursor", next);
-      const r = await fetch(`/api/admin/audit?${q.toString()}`, { cache: "no-store" });
+
+      const r = await fetch(`/api/admin/audit?${q.toString()}`, {
+        cache: "no-store",
+      });
+
       const { items, nextCursor } = await r.json();
+
       setRows((prev) => (next ? [...prev, ...items] : items));
       setCursor(nextCursor);
       setHasMore(!!nextCursor);
@@ -42,19 +51,85 @@ export default function AdminAuditPage() {
     load(null);
   }, []);
 
+  const filteredRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+
+    return rows.filter((r) => {
+      if (onlyUploads && r.action !== "FILE_UPLOADED") return false;
+
+      const problematic =
+        r.action === "FILE_UPLOADED" &&
+        (!!r.meta?.warning ||
+          r.meta?.assignmentCreated === false ||
+          Number(r.meta?.assigned || 0) === 0);
+
+      if (onlyProblematic && !problematic) return false;
+
+      if (!q) return true;
+
+      const actorText = r.actor
+        ? `${r.actor.email} ${r.actor.name || ""}`.toLowerCase()
+        : "";
+
+      const targetText = `${r.target || ""} ${r.targetId || ""}`.toLowerCase();
+      const actionText = `${r.action} ${humanizeAction(r.action)}`.toLowerCase();
+      const metaText = safeStringify(r.meta).toLowerCase();
+
+      return (
+        actorText.includes(q) ||
+        targetText.includes(q) ||
+        actionText.includes(q) ||
+        metaText.includes(q)
+      );
+    });
+  }, [rows, query, onlyUploads, onlyProblematic]);
+
   return (
     <div className="grid gap-4 text-[inherit]">
       <h1 className="text-xl font-semibold">Αρχεία Καταγραφής</h1>
 
       {err && <div className="text-sm text-red-600">{err}</div>}
 
+      <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
+        <div className="grid gap-3 md:grid-cols-[1.2fr_auto_auto_auto] md:items-center">
+          <input
+            className="w-full rounded-lg border px-3 py-2 text-sm"
+            placeholder="Αναζήτηση σε email, action, target, storageKey, warning, meta…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={onlyUploads}
+              onChange={(e) => setOnlyUploads(e.target.checked)}
+            />
+            <span>Μόνο uploads</span>
+          </label>
+
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={onlyProblematic}
+              onChange={(e) => setOnlyProblematic(e.target.checked)}
+            />
+            <span>Μόνο προβληματικά</span>
+          </label>
+
+          <div className="text-sm text-gray-500">
+            {filteredRows.length} εγγραφή(ές)
+          </div>
+        </div>
+      </section>
+
       {/* MOBILE */}
       <section className="sm:hidden grid gap-3">
-        {rows.map((r) => {
+        {filteredRows.map((r) => {
           const created = new Date(r.createdAt).toLocaleString();
-          const actor = r.actor ? `${r.actor.email}${r.actor.name ? ` (${r.actor.name})` : ""}` : "—";
-          const metaPreview = jsonPreview(r.meta);
-          const status = getStatusLabel(r.meta?.status);
+          const actor = r.actor
+            ? `${r.actor.email}${r.actor.name ? ` (${r.actor.name})` : ""}`
+            : "—";
 
           return (
             <div
@@ -66,21 +141,32 @@ export default function AdminAuditPage() {
                   <div className="font-medium break-words">{humanizeAction(r.action)}</div>
                   <div className="text-xs text-gray-600 break-words">{actor}</div>
                 </div>
-                <div className="shrink-0 text-xs text-gray-600 whitespace-nowrap">{created}</div>
+                <div className="shrink-0 text-xs text-gray-600 whitespace-nowrap">
+                  {created}
+                </div>
               </div>
-
-              <div className="mt-2">{status && <StatusBadge status={r.meta?.status} />}</div>
 
               <div className="mt-3 grid gap-2">
                 <div className="text-sm break-words">
                   <span className="text-gray-600">Στόχος:</span>{" "}
                   {r.target ?? "—"}{" "}
-                  {r.targetId ? <span className="text-[color:var(--muted)]">#{r.targetId}</span> : null}
+                  {r.targetId ? (
+                    <span className="text-[color:var(--muted)]">#{r.targetId}</span>
+                  ) : null}
                 </div>
 
-                <pre className="text-xs bg-black/5 rounded p-2 max-h-[12rem] overflow-auto whitespace-pre-wrap break-words">
-                  {metaPreview || "—"}
-                </pre>
+                {r.action === "FILE_UPLOADED" ? (
+                  <div className="grid gap-2 rounded-lg bg-black/5 p-2 text-xs">
+                    <AuditUploadSummary meta={r.meta} />
+                    <pre className="max-h-[14rem] overflow-auto whitespace-pre-wrap break-words">
+                      {jsonPreview(r.meta) || "—"}
+                    </pre>
+                  </div>
+                ) : (
+                  <pre className="text-xs bg-black/5 rounded p-2 max-h-[12rem] overflow-auto whitespace-pre-wrap break-words">
+                    {jsonPreview(r.meta) || "—"}
+                  </pre>
+                )}
               </div>
             </div>
           );
@@ -106,32 +192,31 @@ export default function AdminAuditPage() {
             <thead className="bg-gray-50 text-gray-700">
               <tr className="text-left">
                 <Th className="w-[16%]">Ώρα</Th>
-                <Th className="w-[15%]">Ενέργεια</Th>
-                <Th className="w-[12%]">Κατάσταση</Th>
+                <Th className="w-[14%]">Ενέργεια</Th>
                 <Th className="w-[18%]">Χρήστης</Th>
                 <Th className="w-[14%]">Στόχος</Th>
-                <Th className="w-[25%]">Meta</Th>
+                <Th className="w-[38%]">Meta</Th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-gray-100">
-              {rows.map((r) => (
+              {filteredRows.map((r) => (
                 <tr key={r.id} className="align-top">
-                  <Td className="whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</Td>
+                  <Td className="whitespace-nowrap">
+                    {new Date(r.createdAt).toLocaleString()}
+                  </Td>
 
                   <Td className="font-medium whitespace-normal break-words">
                     {humanizeAction(r.action)}
-                  </Td>
-
-                  <Td>
-                    {r.meta?.status ? <StatusBadge status={r.meta.status} /> : <span className="text-gray-400">—</span>}
                   </Td>
 
                   <Td className="whitespace-normal break-words">
                     {r.actor ? (
                       <>
                         {r.actor.email}
-                        {r.actor.name ? <span className="text-gray-500"> ({r.actor.name})</span> : null}
+                        {r.actor.name ? (
+                          <span className="text-gray-500"> ({r.actor.name})</span>
+                        ) : null}
                       </>
                     ) : (
                       "—"
@@ -140,13 +225,24 @@ export default function AdminAuditPage() {
 
                   <Td className="whitespace-normal break-words">
                     {r.target ?? "—"}{" "}
-                    {r.targetId ? <span className="text-[color:var(--muted)]">#{r.targetId}</span> : null}
+                    {r.targetId ? (
+                      <span className="text-[color:var(--muted)]">#{r.targetId}</span>
+                    ) : null}
                   </Td>
 
                   <Td className="whitespace-normal break-words">
-                    <pre className="text-xs bg-black/5 rounded p-2 max-h-[10rem] overflow-auto">
-                      {jsonPreview(r.meta) || "—"}
-                    </pre>
+                    {r.action === "FILE_UPLOADED" ? (
+                      <div className="grid gap-2">
+                        <AuditUploadSummary meta={r.meta} />
+                        <pre className="text-xs bg-black/5 rounded p-2 max-h-[12rem] overflow-auto whitespace-pre-wrap break-words">
+                          {jsonPreview(r.meta) || "—"}
+                        </pre>
+                      </div>
+                    ) : (
+                      <pre className="text-xs bg-black/5 rounded p-2 max-h-[10rem] overflow-auto whitespace-pre-wrap break-words">
+                        {jsonPreview(r.meta) || "—"}
+                      </pre>
+                    )}
                   </Td>
                 </tr>
               ))}
@@ -171,11 +267,23 @@ export default function AdminAuditPage() {
 }
 
 /* helpers */
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Th({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
 }
 
-function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Td({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return <td className={`px-3 py-3 ${className}`}>{children}</td>;
 }
 
@@ -202,42 +310,13 @@ function humanizeAction(a: string) {
   }
 }
 
-function getStatusLabel(status?: string) {
-  switch (status) {
-    case "success":
-      return "Επιτυχία";
-    case "partial_match":
-      return "Μερική αντιστοίχιση";
-    case "no_match":
-      return "Χωρίς αντιστοίχιση";
-    case "fetch_failed":
-      return "Αποτυχία λήψης";
-    case "server_error":
-      return "Σφάλμα server";
-    case "invalid_payload":
-      return "Μη έγκυρο payload";
-    default:
-      return "";
+function safeStringify(meta: any) {
+  if (!meta) return "";
+  try {
+    return JSON.stringify(meta);
+  } catch {
+    return String(meta);
   }
-}
-
-function StatusBadge({ status }: { status?: string }) {
-  const label = getStatusLabel(status);
-
-  const cls =
-    status === "success"
-      ? "border-green-300 bg-green-50 text-green-700"
-      : status === "partial_match"
-      ? "border-amber-300 bg-amber-50 text-amber-700"
-      : status === "no_match" || status === "fetch_failed" || status === "server_error" || status === "invalid_payload"
-      ? "border-red-300 bg-red-50 text-red-700"
-      : "border-gray-300 bg-gray-50 text-gray-700";
-
-  return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${cls}`}>
-      {label || status || "—"}
-    </span>
-  );
 }
 
 function jsonPreview(meta: any) {
@@ -248,4 +327,50 @@ function jsonPreview(meta: any) {
   } catch {
     return String(meta);
   }
+}
+
+function AuditUploadSummary({ meta }: { meta: any }) {
+  if (!meta) return <div className="text-xs text-gray-500">—</div>;
+
+  const assigned = meta?.assigned ?? "—";
+  const assignmentCreated =
+    meta?.assignmentCreated === true
+      ? "Ναι"
+      : meta?.assignmentCreated === false
+      ? "Όχι"
+      : "—";
+
+  const warning = meta?.warning || null;
+  const emails = Array.isArray(meta?.emails) ? meta.emails.join(", ") : "—";
+  const storageKey = meta?.storageKey || "—";
+  const replaced = meta?.replaced ?? meta?.replacedStorage;
+  const deletedOldRecords = meta?.deletedOldRecords ?? "—";
+
+  return (
+    <div className="grid gap-1 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs">
+      <div>
+        <span className="font-semibold">Emails:</span> {emails || "—"}
+      </div>
+      <div>
+        <span className="font-semibold">Assigned:</span> {String(assigned)}
+      </div>
+      <div>
+        <span className="font-semibold">Assignment created:</span> {assignmentCreated}
+      </div>
+      <div>
+        <span className="font-semibold">Replaced:</span> {String(replaced ?? "—")}
+      </div>
+      <div>
+        <span className="font-semibold">Deleted old records:</span> {String(deletedOldRecords)}
+      </div>
+      <div className="break-all">
+        <span className="font-semibold">Storage key:</span> {storageKey}
+      </div>
+      {warning ? (
+        <div className="text-red-700">
+          <span className="font-semibold">Warning:</span> {warning}
+        </div>
+      ) : null}
+    </div>
+  );
 }
