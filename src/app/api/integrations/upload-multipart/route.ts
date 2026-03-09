@@ -8,7 +8,6 @@ import { extractEmailsFromText, resolveAssigneeIdsByEmails } from "@/lib/assignm
 
 export const runtime = "nodejs";
 
-// (shared with uploads route) - find who "assigns" (admin if uploader isn't admin)
 async function getAssignerId(uploadedById?: string | null) {
   if (uploadedById) {
     const u = await prisma.user.findUnique({
@@ -26,7 +25,103 @@ async function getAssignerId(uploadedById?: string | null) {
   return admin?.id ?? null;
 }
 
-// -------- GET (scheduler / health / spec) --------
+function safePart(v: string) {
+  return String(v || "").replace(/[^\w.\-@]+/g, "_");
+}
+
+function normalizeFilenameForDedup(name: string) {
+  const n = (name || "").trim();
+  if (!n) return "";
+
+  const dot = n.lastIndexOf(".");
+  const base = dot > 0 ? n.slice(0, dot) : n;
+  const ext = dot > 0 ? n.slice(dot) : "";
+
+  // remove trailing month-year like:
+  // _3-2026, -03-2026, _03_2026, -3_2026
+  const cleanedBase = base.replace(/([_-])?(0?[1-9]|1[0-2])([_-])\d{4}$/i, "");
+
+  return (cleanedBase + ext).toLowerCase();
+}
+
+function extractStorageKeyFromDownloadUrl(url?: string | null) {
+  if (!url) return null;
+  const m = url.match(/\/api\/files\/download\/(.+)$/);
+  if (!m) return null;
+
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
+async function dedupeForAssignee(params: {
+  assigneeId: string;
+  keepFileId: string;
+  keepOriginalName: string;
+}) {
+  const { assigneeId, keepFileId, keepOriginalName } = params;
+
+  const dedupeKey = normalizeFilenameForDedup(keepOriginalName);
+  if (!dedupeKey) return { deletedOldRecords: 0 };
+
+  const existingAssignments = await prisma.fileAssignment.findMany({
+    where: { userId: assigneeId },
+    select: {
+      id: true,
+      fileId: true,
+      file: {
+        select: {
+          id: true,
+          originalName: true,
+          url: true,
+        },
+      },
+    },
+  });
+
+  const duplicates = existingAssignments.filter((a) => {
+    if (a.fileId === keepFileId) return false;
+    const candidateKey = normalizeFilenameForDedup(a.file.originalName || "");
+    return candidateKey === dedupeKey;
+  });
+
+  let deletedOldRecords = 0;
+
+  for (const dup of duplicates) {
+    await prisma.fileAssignment.deleteMany({
+      where: {
+        fileId: dup.fileId,
+        userId: assigneeId,
+      },
+    });
+
+    const remainingAssignments = await prisma.fileAssignment.count({
+      where: { fileId: dup.fileId },
+    });
+
+    if (remainingAssignments === 0) {
+      const storageKey = extractStorageKeyFromDownloadUrl(dup.file.url);
+      if (storageKey) {
+        try {
+          await supabaseRemove([storageKey]);
+        } catch {
+          // ignore storage delete errors
+        }
+      }
+
+      await prisma.file.delete({
+        where: { id: dup.fileId },
+      });
+
+      deletedOldRecords += 1;
+    }
+  }
+
+  return { deletedOldRecords };
+}
+
 export async function GET(req: Request) {
   const auth = requireApiKey(req);
   if (!auth.ok) return auth.res;
@@ -40,13 +135,12 @@ export async function GET(req: Request) {
       },
       expectsBody: {
         title: "string (required)",
-        file: "File (required, .xlsx from local disk)",
-        uploadedByEmail: "string (optional, attribution if it matches a user)",
+        file: "File (required)",
+        uploadedByEmail: "string (optional)",
       },
       notes: [
-        "Replace behavior: αν υπάρχει αρχείο με ίδιο filename, γίνεται overwrite στο storage.",
-        "Ανάθεση: ανιχνεύουμε emails μέσα στο title/original filename/uploadedByEmail.",
-        "Ασφάλεια: δεν διαγράφουμε παλιά DB records αν η νέα ανάθεση αποτύχει.",
+        "Το storage path είναι scoped ανά assignee email ώστε να μη συγκρούονται διαφορετικοί χρήστες με ίδιο filename.",
+        "Το replace γίνεται μόνο για παλαιότερα monthly versions του ίδιου assignee.",
       ],
       time: new Date().toISOString(),
     },
@@ -54,7 +148,6 @@ export async function GET(req: Request) {
   );
 }
 
-// -------- POST (multipart upload: title + file [+ uploadedByEmail]) --------
 export async function POST(req: Request) {
   const auth = requireApiKey(req);
   if (!auth.ok) return auth.res;
@@ -71,10 +164,7 @@ export async function POST(req: Request) {
   try {
     form = await req.formData();
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "invalid_multipart" },
-      { status: 400 }
-    );
+    return NextResponse.json({ ok: false, error: "invalid_multipart" }, { status: 400 });
   }
 
   const title = String(form.get("title") || "").trim();
@@ -89,9 +179,8 @@ export async function POST(req: Request) {
     );
   }
 
-  // 1) Read file bytes
   const originalNameRaw = (file as any).name || `${title}.xlsx`;
-  const safeName = String(originalNameRaw).replace(/[^\w.\-@]+/g, "_");
+  const safeName = safePart(originalNameRaw);
 
   const contentTypeRaw = (file.type || "").toLowerCase();
   const safeNameLower = safeName.toLowerCase();
@@ -104,20 +193,6 @@ export async function POST(req: Request) {
   const ab = await file.arrayBuffer();
   const buf = Buffer.from(ab);
 
-  // 2) Stable storage path = overwrite same filename
-  const keyPath = `uploads/${safeName}`;
-  const publicUrl = `/api/files/download/${keyPath}`;
-
-  // 3) Storage overwrite
-  try {
-    await supabaseRemove([keyPath]);
-  } catch {
-    // ignore remove errors
-  }
-
-  const put = await supabasePutBuffer(keyPath, buf, contentType);
-
-  // 4) Work out attribution
   let uploadedById: string | undefined;
   if (uploadedByEmail) {
     const u = await prisma.user.findUnique({
@@ -129,7 +204,6 @@ export async function POST(req: Request) {
 
   const assignerId = await getAssignerId(uploadedById);
 
-  // 5) Resolve assignees BEFORE deleting any old DB rows
   const candidates = Array.from(
     new Set([
       ...extractEmailsFromText(`${title} ${safeName}`),
@@ -141,13 +215,30 @@ export async function POST(req: Request) {
     ? await resolveAssigneeIdsByEmails(candidates)
     : [];
 
-  // Keep old records for this storage path in case new assignment fails
-  const oldFiles = await prisma.file.findMany({
-    where: { url: publicUrl },
-    select: { id: true, url: true, originalName: true },
-  });
+  // σημαντικό για debugging
+  let assignmentCreated = false;
+  let warning: string | null = null;
+  let assigneeScope = "unassigned";
 
-  // 6) Create new file record
+  // ✅ storage path scoped by first matched assignee email
+  // έτσι δεν συγκρούονται διαφορετικοί χρήστες με ίδιο filename
+  if (candidates.length > 0) {
+    assigneeScope = safePart(candidates[0].toLowerCase());
+  } else if (uploadedByEmail) {
+    assigneeScope = safePart(uploadedByEmail.toLowerCase());
+  }
+
+  const keyPath = `uploads/${assigneeScope}/${safeName}`;
+
+  try {
+    await supabaseRemove([keyPath]);
+  } catch {
+    // ignore
+  }
+
+  const put = await supabasePutBuffer(keyPath, buf, contentType);
+  const publicUrl = `/api/files/download/${keyPath}`;
+
   const record = await prisma.file.create({
     data: {
       title,
@@ -166,9 +257,6 @@ export async function POST(req: Request) {
     },
   });
 
-  let assignmentCreated = false;
-
-  // 7) Create assignments if possible
   if (assigneeIds.length && assignerId) {
     await prisma.fileAssignment.createMany({
       data: assigneeIds.map((userId) => ({
@@ -179,41 +267,45 @@ export async function POST(req: Request) {
       skipDuplicates: true,
     });
     assignmentCreated = true;
+  } else {
+    warning = assigneeIds.length === 0
+      ? "No assignee resolved from filename/title/uploadedByEmail"
+      : "No assignerId found";
   }
 
-  // 8) Delete old duplicate DB rows ONLY if new file was assigned successfully
   let deletedOldRecords = 0;
 
-  if (assignmentCreated) {
-    for (const oldFile of oldFiles) {
-      await prisma.file.delete({
-        where: { id: oldFile.id },
+  if (assigneeIds.length) {
+    for (const assigneeId of assigneeIds) {
+      const dedupe = await dedupeForAssignee({
+        assigneeId,
+        keepFileId: record.id,
+        keepOriginalName: record.originalName || "",
       });
-      deletedOldRecords++;
+      deletedOldRecords += dedupe.deletedOldRecords;
     }
   }
 
-  // 9) Audit
   await logAudit({
     action: "FILE_UPLOADED",
     target: "File",
     targetId: record.id,
     meta: {
       via: "integration_multipart_ingest",
-      storageKey: keyPath,
       mime: contentType,
       size: buf.byteLength,
       emails: candidates,
+      warning,
       assigned: assigneeIds.length,
-      assignerId,
       assignmentCreated,
-      replacedStorage: true,
+      assignerId,
+      storageKey: keyPath,
+      replaced: true,
       deletedOldRecords,
-      oldRecordIds: oldFiles.map((f) => f.id),
-      warning:
-        assignmentCreated
-          ? null
-          : "Το αρχείο ανέβηκε αλλά δεν δημιουργήθηκε νέα ανάθεση. Τα παλιά records δεν διαγράφηκαν.",
+      fileId: record.id,
+      title,
+      originalName: safeName,
+      assigneeScope,
     },
   });
 
@@ -222,11 +314,12 @@ export async function POST(req: Request) {
       ok: true,
       file: record,
       assignedCount: assigneeIds.length,
+      assignmentCreated,
       key: keyPath,
       signedUrl: put.signedUrl,
       replaced: true,
-      assignmentCreated,
       deletedOldRecords,
+      warning,
     },
     { status: 201, headers: { "Cache-Control": "no-store" } }
   );
