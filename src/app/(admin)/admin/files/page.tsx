@@ -30,6 +30,9 @@ export default function AdminFilesPage() {
   // --- missing storage check state ---
   const [checkingMissing, setCheckingMissing] = useState(false);
 
+  // --- missing storage cleanup state ---
+  const [cleaningMissing, setCleaningMissing] = useState(false);
+
   async function load() {
     setLoading(true);
     const f = await fetch("/api/files?scope=all", { cache: "no-store" });
@@ -145,6 +148,41 @@ export default function AdminFilesPage() {
     }
   }
 
+  async function cleanupMissingStorage() {
+    if (
+      !confirm(
+        "Να διαγραφούν από τη βάση όλα τα αρχεία που λείπουν από το Supabase Storage;\n\nΘα διαγραφούν και τα assignments τους."
+      )
+    ) {
+      return;
+    }
+
+    setCleaningMissing(true);
+    try {
+      const res = await fetch("/api/admin/files/cleanup-missing-storage", {
+        method: "POST",
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.detail || json?.error || "Αποτυχία cleanup missing files");
+      }
+
+      console.log("cleanup missing storage result:", json);
+
+      alert(
+        `Ο καθαρισμός ολοκληρώθηκε.\nMissing found: ${json.missingFound ?? 0}\nDeleted files: ${json.deletedFiles ?? 0}\nDeleted assignments: ${json.deletedAssignments ?? 0}`
+      );
+
+      await load();
+    } catch (err: any) {
+      alert(err?.message || "Σφάλμα κατά τον καθαρισμό broken files");
+    } finally {
+      setCleaningMissing(false);
+    }
+  }
+
   const activeUsers = users.filter((u) => u.status === "ACTIVE");
 
   return (
@@ -160,6 +198,15 @@ export default function AdminFilesPage() {
             className="rounded border px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
           >
             {checkingMissing ? "Έλεγχος storage…" : "Έλεγχος missing storage"}
+          </button>
+
+          <button
+            type="button"
+            onClick={cleanupMissingStorage}
+            disabled={cleaningMissing}
+            className="rounded border px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
+          >
+            {cleaningMissing ? "Καθαρισμός broken…" : "Καθαρισμός broken files"}
           </button>
 
           <button
