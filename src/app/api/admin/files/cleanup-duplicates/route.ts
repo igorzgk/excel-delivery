@@ -23,109 +23,130 @@ function transliterateGreek(input: string) {
     .join("");
 }
 
-function normalizeFilenameForDedup(name: string) {
-  const n = String(name || "").trim();
-  if (!n) return "";
-
-  const dot = n.lastIndexOf(".");
-  const ext = dot > 0 ? n.slice(dot).toLowerCase() : "";
-  let base = dot > 0 ? n.slice(0, dot) : n;
-
-  base = transliterateGreek(base)
+function normalizeText(input: string) {
+  return transliterateGreek(String(input || ""))
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-
-  // remove trailing month-year like _3-2026 / -03_2026 / 3 2026
-  base = base.replace(/([_\-\s])?(0?[1-9]|1[0-2])([_\-\s])\d{4}$/i, "");
-
-  base = base
-    .replace(/[^a-z0-9]+/g, "_")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9._-]+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
-
-  return `${base}${ext}`;
 }
 
-export async function POST() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+function normalizeExactFileKey(name: string) {
+  return normalizeText(name);
+}
 
-  const files = await prisma.file.findMany({
-    orderBy: { createdAt: "asc" }, // oldest first
-    select: {
-      id: true,
-      title: true,
-      originalName: true,
-      createdAt: true,
-      assignments: {
-        select: {
-          userId: true,
+type FileRow = {
+  id: string;
+  title: string;
+  originalName: string | null;
+  createdAt: Date;
+  assignments: { userId: string }[];
+};
+
+export async function POST() {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user || session.user.role !== "ADMIN") {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+
+    const files: FileRow[] = await prisma.file.findMany({
+      orderBy: { createdAt: "desc" }, // newest first
+      select: {
+        id: true,
+        title: true,
+        originalName: true,
+        createdAt: true,
+        assignments: {
+          select: {
+            userId: true,
+          },
         },
       },
-    },
-  });
+    });
 
-  type GroupItem = {
-    id: string;
-    createdAt: Date;
-  };
+    // group key = assigned user + exact normalized filename/title
+    const groups = new Map<string, FileRow[]>();
 
-  const groups = new Map<string, GroupItem[]>();
+    for (const file of files) {
+      const source = file.originalName || file.title || "";
+      const exactKey = normalizeExactFileKey(source);
+      if (!exactKey) continue;
 
-  for (const file of files) {
-    const nameSource = file.originalName || file.title || "";
-    const normalized = normalizeFilenameForDedup(nameSource);
-    if (!normalized) continue;
+      const assignedUserIds =
+        file.assignments.length > 0
+          ? [...new Set(file.assignments.map((a) => a.userId))].sort()
+          : ["__unassigned__"];
 
-    const assignedUserIds =
-      file.assignments?.length > 0
-        ? file.assignments.map((a) => a.userId).sort()
-        : ["__unassigned__"];
-
-    for (const userId of assignedUserIds) {
-      const key = `${userId}::${normalized}`;
-      const arr = groups.get(key) || [];
-      arr.push({
-        id: file.id,
-        createdAt: new Date(file.createdAt),
-      });
-      groups.set(key, arr);
+      for (const userId of assignedUserIds) {
+        const groupKey = `${userId}::${exactKey}`;
+        const arr = groups.get(groupKey) || [];
+        arr.push(file);
+        groups.set(groupKey, arr);
+      }
     }
-  }
 
-  let groupsFound = 0;
-  let deletedFiles = 0;
+    let groupsFound = 0;
+    let deletedFiles = 0;
+    const alreadyDeleted = new Set<string>();
 
-  for (const [, arr] of groups.entries()) {
-    if (arr.length <= 1) continue;
+    for (const [, arr] of groups.entries()) {
+      if (arr.length <= 1) continue;
 
-    groupsFound += 1;
+      groupsFound += 1;
 
-    // oldest first because query is asc, but sort anyway for safety
-    arr.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      // newest first already from query, but sort again for safety
+      const sorted = [...arr].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
 
-    // keep newest, delete all older
-    const toDelete = arr.slice(0, -1);
+      // keep newest, delete the rest
+      const toDelete = sorted.slice(1);
 
-    for (const row of toDelete) {
-      await prisma.fileAssignment.deleteMany({
-        where: { fileId: row.id },
-      });
+      for (const file of toDelete) {
+        if (alreadyDeleted.has(file.id)) continue;
 
-      await prisma.file.delete({
-        where: { id: row.id },
-      });
+        await prisma.$transaction(async (tx) => {
+          const exists = await tx.file.findUnique({
+            where: { id: file.id },
+            select: { id: true },
+          });
 
-      deletedFiles += 1;
+          if (!exists) return;
+
+          await tx.fileAssignment.deleteMany({
+            where: { fileId: file.id },
+          });
+
+          await tx.file.delete({
+            where: { id: file.id },
+          });
+        });
+
+        alreadyDeleted.add(file.id);
+        deletedFiles += 1;
+      }
     }
-  }
 
-  return NextResponse.json({
-    ok: true,
-    groupsFound,
-    deletedFiles,
-  });
+    return NextResponse.json({
+      ok: true,
+      groupsFound,
+      deletedFiles,
+      totalFilesChecked: files.length,
+    });
+  } catch (err: any) {
+    console.error("cleanup-duplicates failed:", err);
+
+    return NextResponse.json(
+      {
+        error: "cleanup_failed",
+        detail: err?.message || "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
 }
