@@ -29,14 +29,11 @@ function transliterateGreek(input: string) {
     Α: "A", Β: "V", Γ: "G", Δ: "D", Ε: "E", Ζ: "Z", Η: "I", Θ: "TH",
     Ι: "I", Κ: "K", Λ: "L", Μ: "M", Ν: "N", Ξ: "X", Ο: "O", Π: "P",
     Ρ: "R", Σ: "S", Τ: "T", Υ: "Y", Φ: "F", Χ: "CH", Ψ: "PS", Ω: "O",
-
     α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th",
     ι: "i", κ: "k", λ: "l", μ: "m", ν: "n", ξ: "x", ο: "o", π: "p",
     ρ: "r", σ: "s", ς: "s", τ: "t", υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o",
-
     Ά: "A", Έ: "E", Ή: "I", Ί: "I", Ό: "O", Ύ: "Y", Ώ: "O",
     ά: "a", έ: "e", ή: "i", ί: "i", ό: "o", ύ: "y", ώ: "o",
-
     Ϊ: "I", Ϋ: "Y", ϊ: "i", ϋ: "y", ΐ: "i", ΰ: "y",
   };
 
@@ -56,16 +53,26 @@ function safeStoragePart(v: string) {
 }
 
 function normalizeFilenameForDedup(name: string) {
-  const n = (name || "").trim();
+  const n = String(name || "").trim();
   if (!n) return "";
 
   const dot = n.lastIndexOf(".");
-  const base = dot > 0 ? n.slice(0, dot) : n;
-  const ext = dot > 0 ? n.slice(dot) : "";
+  const ext = dot > 0 ? n.slice(dot).toLowerCase() : "";
+  let base = dot > 0 ? n.slice(0, dot) : n;
 
-  const cleanedBase = base.replace(/([_-])?(0?[1-9]|1[0-2])([_-])\d{4}$/i, "");
+  base = transliterateGreek(base)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 
-  return (cleanedBase + ext).toLowerCase();
+  base = base.replace(/([_\-\s])?(0?[1-9]|1[0-2])([_\-\s])\d{4}$/i, "");
+
+  base = base
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return `${base}${ext}`;
 }
 
 function extractStorageKeyFromDownloadUrl(url?: string | null) {
