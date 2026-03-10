@@ -6,9 +6,13 @@ import { currentUser } from "@/lib/auth-helpers";
 
 export const runtime = "nodejs";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const BUCKET = "Files"; // ίδιο bucket με uploads / admin files
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_SERVICE_ROLE =
+  process.env.SUPABASE_SERVICE_ROLE ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_KEY!;
+const BUCKET = process.env.SUPABASE_BUCKET || "Files";
 
 export async function GET(req: Request, ctx: { params: { key: string[] } }) {
   try {
@@ -35,6 +39,7 @@ export async function GET(req: Request, ctx: { params: { key: string[] } }) {
           detail: error.message,
           bucket: BUCKET,
           keyPath,
+          supabaseUrl: SUPABASE_URL,
         },
         { status: 500 }
       );
