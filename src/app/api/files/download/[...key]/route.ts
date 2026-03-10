@@ -5,58 +5,113 @@ import { currentUser } from "@/lib/auth-helpers";
 
 export const runtime = "nodejs";
 
-function getAdminClient() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const BUCKET = "Files";
 
-  if (!url || !key) {
-    throw new Error("storage_not_configured");
+function transliterateGreek(input: string) {
+  const map: Record<string, string> = {
+    Α: "A", Β: "V", Γ: "G", Δ: "D", Ε: "E", Ζ: "Z", Η: "I", Θ: "TH",
+    Ι: "I", Κ: "K", Λ: "L", Μ: "M", Ν: "N", Ξ: "X", Ο: "O", Π: "P",
+    Ρ: "R", Σ: "S", Τ: "T", Υ: "Y", Φ: "F", Χ: "CH", Ψ: "PS", Ω: "O",
+    α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th",
+    ι: "i", κ: "k", λ: "l", μ: "m", ν: "n", ξ: "x", ο: "o", π: "p",
+    ρ: "r", σ: "s", ς: "s", τ: "t", υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o",
+    Ά: "A", Έ: "E", Ή: "I", Ί: "I", Ό: "O", Ύ: "Y", Ώ: "O",
+    ά: "a", έ: "e", ή: "i", ί: "i", ό: "o", ύ: "y", ώ: "o",
+    Ϊ: "I", Ϋ: "Y", ϊ: "i", ϋ: "y", ΐ: "i", ΰ: "y",
+  };
+
+  return Array.from(input || "")
+    .map((ch) => map[ch] ?? ch)
+    .join("");
+}
+
+function safeAsciiFilename(name: string) {
+  return transliterateGreek(String(name || ""))
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9._@()-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function safeLegacyFilename(name: string) {
+  return String(name || "").replace(/[^\w.\-@]+/g, "_");
+}
+
+function dedupe<T>(arr: T[]) {
+  return [...new Set(arr)];
+}
+
+function splitRequestedPath(requestedKeyPath: string) {
+  const prefix = "uploads/";
+  let rest = requestedKeyPath.startsWith(prefix)
+    ? requestedKeyPath.slice(prefix.length)
+    : requestedKeyPath;
+
+  const idx = rest.indexOf("__");
+
+  if (idx >= 0) {
+    return {
+      hasScopedPrefix: true,
+      scope: rest.slice(0, idx),
+      fileName: rest.slice(idx + 2),
+    };
   }
 
-  return createClient(url, key, { auth: { persistSession: false } });
+  return {
+    hasScopedPrefix: false,
+    scope: null as string | null,
+    fileName: rest,
+  };
 }
 
-function getBucket() {
-  return process.env.SUPABASE_BUCKET || "Files";
-}
+function buildCandidateKeys(requestedKeyPath: string) {
+  const { scope, fileName } = splitRequestedPath(requestedKeyPath);
 
-function buildCandidateKeys(rawKeyPath: string) {
-  const decoded = decodeURIComponent(rawKeyPath).replace(/^\/+/, "");
-  const keys = new Set<string>();
+  const decodedFileName = decodeURIComponent(fileName);
+  const asciiFileName = safeAsciiFilename(decodedFileName);
+  const legacyFileName = safeLegacyFilename(decodedFileName);
 
-  keys.add(decoded);
-  keys.add(decoded.replace(/\/+/g, "/"));
+  const candidates = [
+    requestedKeyPath,
+    `uploads/${decodedFileName}`,
+    `uploads/${asciiFileName}`,
+    `uploads/${legacyFileName}`,
+  ];
 
-  const filenameOnly = decoded.replace(/^uploads\/[^/]+__/, "uploads/");
-  if (filenameOnly !== decoded) keys.add(filenameOnly);
+  if (scope) {
+    candidates.push(
+      `uploads/${scope}__${decodedFileName}`,
+      `uploads/${scope}__${asciiFileName}`,
+      `uploads/${scope}__${legacyFileName}`
+    );
+  }
 
-  const withoutUploads = decoded.replace(/^uploads\//, "");
-  if (withoutUploads !== decoded) keys.add(`uploads/${withoutUploads}`);
-
-  return Array.from(keys);
+  return dedupe(candidates.filter(Boolean));
 }
 
 export async function GET(req: Request, ctx: { params: { key: string[] } }) {
   try {
-    const keyPath = decodeURIComponent((ctx.params.key || []).join("/"));
-    if (!keyPath) {
+    const requestedKeyPath = decodeURIComponent((ctx.params.key || []).join("/"));
+    if (!requestedKeyPath) {
       return NextResponse.json({ error: "key_missing" }, { status: 400 });
     }
 
-    const expiresSec =
-      Number(new URL(req.url).searchParams.get("expires")) || 60 * 60;
+    const expiresSec = Number(new URL(req.url).searchParams.get("expires")) || 60 * 60;
 
-    const supabase = getAdminClient();
-    const bucket = getBucket();
-    const triedKeys = buildCandidateKeys(keyPath);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
+      auth: { persistSession: false },
+    });
 
-    for (const candidate of triedKeys) {
+    const triedKeys = buildCandidateKeys(requestedKeyPath);
+
+    for (const keyPath of triedKeys) {
       const { data, error } = await supabase.storage
-        .from(bucket)
-        .createSignedUrl(candidate, expiresSec);
+        .from(BUCKET)
+        .createSignedUrl(keyPath, expiresSec);
 
       if (!error && data?.signedUrl) {
         const me = await currentUser().catch(() => null);
@@ -64,13 +119,13 @@ export async function GET(req: Request, ctx: { params: { key: string[] } }) {
         await logAudit({
           action: "DOWNLOAD_GRANTED",
           target: "File",
-          targetId: candidate,
+          targetId: keyPath,
           actorId: (me as any)?.id ?? null,
           meta: {
-            key: candidate,
-            requestedKey: keyPath,
+            key: keyPath,
+            requestedKeyPath,
             expires: expiresSec,
-            bucket,
+            bucket: BUCKET,
           },
         }).catch(() => {});
 
@@ -82,8 +137,8 @@ export async function GET(req: Request, ctx: { params: { key: string[] } }) {
       {
         error: "sign_failed",
         detail: "Object not found",
-        bucket,
-        requestedKeyPath: keyPath,
+        bucket: BUCKET,
+        requestedKeyPath,
         triedKeys,
       },
       { status: 500 }
