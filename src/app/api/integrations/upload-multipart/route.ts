@@ -1,4 +1,3 @@
-// src/app/api/integrations/upload-multipart/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey } from "@/lib/apiKeyAuth";
@@ -37,8 +36,6 @@ function normalizeFilenameForDedup(name: string) {
   const base = dot > 0 ? n.slice(0, dot) : n;
   const ext = dot > 0 ? n.slice(dot) : "";
 
-  // remove trailing month-year like:
-  // _3-2026, -03-2026, _03_2026, -3_2026
   const cleanedBase = base.replace(/([_-])?(0?[1-9]|1[0-2])([_-])\d{4}$/i, "");
 
   return (cleanedBase + ext).toLowerCase();
@@ -139,7 +136,7 @@ export async function GET(req: Request) {
         uploadedByEmail: "string (optional)",
       },
       notes: [
-        "Το storage path είναι scoped ανά assignee email ώστε να μη συγκρούονται διαφορετικοί χρήστες με ίδιο filename.",
+        "Το storage path είναι scoped ανά assignee email μέσα στο filename ώστε να μη συγκρούονται διαφορετικοί χρήστες με ίδιο filename.",
         "Το replace γίνεται μόνο για παλαιότερα monthly versions του ίδιου assignee.",
       ],
       time: new Date().toISOString(),
@@ -215,19 +212,17 @@ export async function POST(req: Request) {
     ? await resolveAssigneeIdsByEmails(candidates)
     : [];
 
-  // σημαντικό για debugging
   let assignmentCreated = false;
   let warning: string | null = null;
   let assigneeScope = "unassigned";
 
-  // ✅ storage path scoped by first matched assignee email
-  // έτσι δεν συγκρούονται διαφορετικοί χρήστες με ίδιο filename
   if (candidates.length > 0) {
     assigneeScope = safePart(candidates[0].toLowerCase());
   } else if (uploadedByEmail) {
     assigneeScope = safePart(uploadedByEmail.toLowerCase());
   }
 
+  // ✅ no subfolder, but still unique per assignee
   const keyPath = `uploads/${assigneeScope}__${safeName}`;
 
   try {

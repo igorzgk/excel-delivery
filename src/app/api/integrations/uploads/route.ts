@@ -1,4 +1,3 @@
-// src/app/api/integrations/uploads/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey } from "@/lib/apiKeyAuth";
@@ -30,7 +29,7 @@ const SchemaDoc = {
   },
   notes: [
     "Auto-assign: ανιχνεύουμε emails μέσα σε title/originalName/url.",
-    "Το storage path είναι scoped ανά assignee ώστε να μη συγκρούονται διαφορετικοί χρήστες με ίδιο filename.",
+    "Το storage path είναι scoped ανά assignee μέσα στο filename ώστε να μη συγκρούονται διαφορετικοί χρήστες με ίδιο filename.",
     "Το replace γίνεται μόνο για παλιότερα monthly versions του ίδιου assignee.",
     "Επιστρέφουμε πάντα JSON.",
   ],
@@ -65,8 +64,6 @@ function normalizeFilenameForDedup(name: string) {
   const base = dot > 0 ? n.slice(0, dot) : n;
   const ext = dot > 0 ? n.slice(dot) : "";
 
-  // αφαιρεί trailing month-year:
-  // _2-2026, -02-2026, _02_2026, -2_2026
   const cleanedBase = base.replace(/([_-])?(0?[1-9]|1[0-2])([_-])\d{4}$/i, "");
 
   return (cleanedBase + ext).toLowerCase();
@@ -175,7 +172,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
   }
 
-  // 1) Download file bytes
   const r = await fetch(data.url, { redirect: "follow" });
   if (!r.ok) {
     return NextResponse.json(
@@ -188,7 +184,6 @@ export async function POST(req: Request) {
   const ab = await r.arrayBuffer();
   const buf = Buffer.from(ab);
 
-  // 2) Attribution
   let uploadedById: string | undefined;
   if (data.uploadedByEmail) {
     const u = await prisma.user.findUnique({
@@ -200,7 +195,6 @@ export async function POST(req: Request) {
 
   const assignerId = await getAssignerId(uploadedById);
 
-  // 3) Resolve candidates / assignees BEFORE storage path
   const fallbackName = data.originalName || data.title || "upload.xlsx";
   const safeName = safePart(fallbackName);
 
@@ -225,7 +219,7 @@ export async function POST(req: Request) {
     assigneeScope = safePart(data.uploadedByEmail.toLowerCase());
   }
 
-  // 4) Scoped storage path ανά assignee
+  // ✅ no subfolder, but still unique per assignee
   const keyPath = `uploads/${assigneeScope}__${safeName}`;
 
   try {
@@ -237,7 +231,6 @@ export async function POST(req: Request) {
   const put = await supabasePutBuffer(keyPath, buf, contentType);
   const publicUrl = `/api/files/download/${keyPath}`;
 
-  // 5) Create DB record
   const record = await prisma.file.create({
     data: {
       title: data.title || safeName,
@@ -256,7 +249,6 @@ export async function POST(req: Request) {
     },
   });
 
-  // 6) Assign
   if (assigneeIds.length && assignerId) {
     await prisma.fileAssignment.createMany({
       data: assigneeIds.map((userId) => ({
@@ -274,7 +266,6 @@ export async function POST(req: Request) {
         : "No assignerId found";
   }
 
-  // 7) Dedupe per assignee
   let deletedOldRecords = 0;
 
   if (assigneeIds.length) {
@@ -288,7 +279,6 @@ export async function POST(req: Request) {
     }
   }
 
-  // 8) Audit
   await logAudit({
     action: "FILE_UPLOADED",
     target: "File",
