@@ -226,7 +226,7 @@ export async function POST(req: Request) {
   }
 
   // 4) Scoped storage path ανά assignee
-  const keyPath = `uploads/${assigneeScope}/${safeName}`;
+  const keyPath = `uploads/${assigneeScope}__${safeName}`;
 
   try {
     await supabaseRemove([keyPath]);

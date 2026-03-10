@@ -228,7 +228,7 @@ export async function POST(req: Request) {
     assigneeScope = safePart(uploadedByEmail.toLowerCase());
   }
 
-  const keyPath = `uploads/${assigneeScope}/${safeName}`;
+  const keyPath = `uploads/${assigneeScope}__${safeName}`;
 
   try {
     await supabaseRemove([keyPath]);
