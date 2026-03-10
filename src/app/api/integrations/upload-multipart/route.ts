@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireApiKey } from "@/lib/apiKeyAuth";
-import { supabasePutBuffer, supabaseRemove } from "@/lib/storage-supabase";
+import {
+  supabasePutBuffer,
+  supabaseRemove,
+  supabaseObjectExists,
+} from "@/lib/storage-supabase";
 import { logAudit } from "@/lib/audit";
 import { extractEmailsFromText, resolveAssigneeIdsByEmails } from "@/lib/assignmentRules";
 
@@ -24,55 +28,27 @@ async function getAssignerId(uploadedById?: string | null) {
   return admin?.id ?? null;
 }
 
-function transliterateGreek(input: string) {
-  const map: Record<string, string> = {
-    Α: "A", Β: "V", Γ: "G", Δ: "D", Ε: "E", Ζ: "Z", Η: "I", Θ: "TH",
-    Ι: "I", Κ: "K", Λ: "L", Μ: "M", Ν: "N", Ξ: "X", Ο: "O", Π: "P",
-    Ρ: "R", Σ: "S", Τ: "T", Υ: "Y", Φ: "F", Χ: "CH", Ψ: "PS", Ω: "O",
-    α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th",
-    ι: "i", κ: "k", λ: "l", μ: "m", ν: "n", ξ: "x", ο: "o", π: "p",
-    ρ: "r", σ: "s", ς: "s", τ: "t", υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o",
-    Ά: "A", Έ: "E", Ή: "I", Ί: "I", Ό: "O", Ύ: "Y", Ώ: "O",
-    ά: "a", έ: "e", ή: "i", ί: "i", ό: "o", ύ: "y", ώ: "o",
-    Ϊ: "I", Ϋ: "Y", ϊ: "i", ϋ: "y", ΐ: "i", ΰ: "y",
-  };
-
-  return Array.from(input || "")
-    .map((ch) => map[ch] ?? ch)
-    .join("");
-}
-
-function safeStoragePart(v: string) {
-  return transliterateGreek(String(v || ""))
+function safePart(v: string) {
+  return String(v || "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, "_")
-    .replace(/[^a-zA-Z0-9.\-@_()]/g, "_")
+    .replace(/[^a-zA-Z0-9.\-@_()]+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
 }
 
 function normalizeFilenameForDedup(name: string) {
-  const n = String(name || "").trim();
+  const n = (name || "").trim();
   if (!n) return "";
 
   const dot = n.lastIndexOf(".");
-  const ext = dot > 0 ? n.slice(dot).toLowerCase() : "";
-  let base = dot > 0 ? n.slice(0, dot) : n;
+  const base = dot > 0 ? n.slice(0, dot) : n;
+  const ext = dot > 0 ? n.slice(dot) : "";
 
-  base = transliterateGreek(base)
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+  const cleanedBase = base.replace(/([_-])?(0?[1-9]|1[0-2])([_-])\d{4}$/i, "");
 
-  base = base.replace(/([_\-\s])?(0?[1-9]|1[0-2])([_\-\s])\d{4}$/i, "");
-
-  base = base
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
-
-  return `${base}${ext}`;
+  return (cleanedBase + ext).toLowerCase();
 }
 
 function extractStorageKeyFromDownloadUrl(url?: string | null) {
@@ -100,7 +76,6 @@ async function dedupeForAssignee(params: {
   const existingAssignments = await prisma.fileAssignment.findMany({
     where: { userId: assigneeId },
     select: {
-      id: true,
       fileId: true,
       file: {
         select: {
@@ -170,9 +145,9 @@ export async function GET(req: Request) {
         uploadedByEmail: "string (optional)",
       },
       notes: [
-        "Το storage key γράφεται μόνο με ασφαλείς ASCII χαρακτήρες.",
-        "Το originalName στη βάση κρατά το πραγματικό filename (και ελληνικά).",
-        "Το replace γίνεται μόνο για παλαιότερα monthly versions του ίδιου assignee.",
+        "Το storage path είναι scoped ανά assignee μέσα στο filename.",
+        "Πριν γραφτεί DB record γίνεται verify ότι το object υπάρχει όντως στο storage.",
+        "Αν το upload δεν επιβεβαιωθεί, επιστρέφει 500 και ΔΕΝ δημιουργείται phantom DB record.",
       ],
       time: new Date().toISOString(),
     },
@@ -212,12 +187,13 @@ export async function POST(req: Request) {
   }
 
   const originalNameRaw = (file as any).name || `${title}.xlsx`;
-  const originalNameForDb = String(originalNameRaw).trim();
+  const safeName = safePart(originalNameRaw);
 
   const contentTypeRaw = (file.type || "").toLowerCase();
+  const safeNameLower = safeName.toLowerCase();
   const contentType =
     contentTypeRaw ||
-    (originalNameForDb.toLowerCase().endsWith(".pdf")
+    (safeNameLower.endsWith(".pdf")
       ? "application/pdf"
       : "application/octet-stream");
 
@@ -237,7 +213,7 @@ export async function POST(req: Request) {
 
   const candidates = Array.from(
     new Set([
-      ...extractEmailsFromText(`${title} ${originalNameForDb}`),
+      ...extractEmailsFromText(`${title} ${safeName}`),
       ...(uploadedByEmail ? [uploadedByEmail] : []),
     ])
   );
@@ -251,15 +227,12 @@ export async function POST(req: Request) {
   let assigneeScope = "unassigned";
 
   if (candidates.length > 0) {
-    assigneeScope = candidates[0].toLowerCase();
+    assigneeScope = safePart(candidates[0].toLowerCase());
   } else if (uploadedByEmail) {
-    assigneeScope = uploadedByEmail.toLowerCase();
+    assigneeScope = safePart(uploadedByEmail.toLowerCase());
   }
 
-  const safeScopeForStorage = safeStoragePart(assigneeScope || "unassigned");
-  const safeNameForStorage = safeStoragePart(originalNameForDb || "upload.xlsx");
-
-  const keyPath = `uploads/${safeScopeForStorage}__${safeNameForStorage}`;
+  const keyPath = `uploads/${assigneeScope}__${safeName}`;
 
   try {
     await supabaseRemove([keyPath]);
@@ -267,13 +240,100 @@ export async function POST(req: Request) {
     // ignore
   }
 
-  const put = await supabasePutBuffer(keyPath, buf, contentType);
+  // 1) upload to storage
+  try {
+    await supabasePutBuffer(keyPath, buf, contentType);
+  } catch (e: any) {
+    await logAudit({
+      action: "FILE_UPLOADED",
+      target: "File",
+      targetId: null,
+      meta: {
+        via: "integration_multipart_ingest",
+        stage: "upload_failed",
+        keyPath,
+        title,
+        originalName: safeName,
+        uploadedByEmail: uploadedByEmail ?? null,
+        error: e?.message || "upload_failed",
+      },
+    }).catch(() => {});
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "storage_upload_failed",
+        detail: e?.message || "Upload failed",
+        key: keyPath,
+      },
+      { status: 500 }
+    );
+  }
+
+  // 2) verify object really exists BEFORE db write
+  let uploadVerified = false;
+  try {
+    uploadVerified = await supabaseObjectExists(keyPath);
+  } catch (e: any) {
+    await logAudit({
+      action: "FILE_UPLOADED",
+      target: "File",
+      targetId: null,
+      meta: {
+        via: "integration_multipart_ingest",
+        stage: "verify_failed",
+        keyPath,
+        title,
+        originalName: safeName,
+        uploadedByEmail: uploadedByEmail ?? null,
+        error: e?.message || "verify_failed",
+      },
+    }).catch(() => {});
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "storage_verify_failed",
+        detail: e?.message || "Verification failed",
+        key: keyPath,
+      },
+      { status: 500 }
+    );
+  }
+
+  if (!uploadVerified) {
+    await logAudit({
+      action: "FILE_UPLOADED",
+      target: "File",
+      targetId: null,
+      meta: {
+        via: "integration_multipart_ingest",
+        stage: "verify_missing_after_upload",
+        keyPath,
+        title,
+        originalName: safeName,
+        uploadedByEmail: uploadedByEmail ?? null,
+      },
+    }).catch(() => {});
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "storage_object_missing_after_upload",
+        detail: "File was not found in storage after upload",
+        key: keyPath,
+      },
+      { status: 500 }
+    );
+  }
+
+  // 3) create db record only after verified upload
   const publicUrl = `/api/files/download/${keyPath}`;
 
   const record = await prisma.file.create({
     data: {
       title,
-      originalName: originalNameForDb,
+      originalName: safeName,
       url: publicUrl,
       mime: contentType,
       size: buf.byteLength,
@@ -288,6 +348,7 @@ export async function POST(req: Request) {
     },
   });
 
+  // 4) assignments
   if (assigneeIds.length && assignerId) {
     await prisma.fileAssignment.createMany({
       data: assigneeIds.map((userId) => ({
@@ -299,11 +360,13 @@ export async function POST(req: Request) {
     });
     assignmentCreated = true;
   } else {
-    warning = assigneeIds.length === 0
-      ? "No assignee resolved from filename/title/uploadedByEmail"
-      : "No assignerId found";
+    warning =
+      assigneeIds.length === 0
+        ? "No assignee resolved from filename/title/uploadedByEmail"
+        : "No assignerId found";
   }
 
+  // 5) dedupe
   let deletedOldRecords = 0;
 
   if (assigneeIds.length) {
@@ -317,12 +380,14 @@ export async function POST(req: Request) {
     }
   }
 
+  // 6) audit
   await logAudit({
     action: "FILE_UPLOADED",
     target: "File",
     targetId: record.id,
     meta: {
       via: "integration_multipart_ingest",
+      stage: "completed",
       mime: contentType,
       size: buf.byteLength,
       emails: candidates,
@@ -331,14 +396,13 @@ export async function POST(req: Request) {
       assignmentCreated,
       assignerId,
       storageKey: keyPath,
+      uploadVerified,
       replaced: true,
       deletedOldRecords,
       fileId: record.id,
       title,
-      originalName: originalNameForDb,
+      originalName: safeName,
       assigneeScope,
-      safeScopeForStorage,
-      safeNameForStorage,
     },
   });
 
@@ -348,8 +412,8 @@ export async function POST(req: Request) {
       file: record,
       assignedCount: assigneeIds.length,
       assignmentCreated,
+      uploadVerified,
       key: keyPath,
-      signedUrl: put.signedUrl,
       replaced: true,
       deletedOldRecords,
       warning,
