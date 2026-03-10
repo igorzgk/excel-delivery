@@ -71,7 +71,7 @@ async function dedupeForAssignee(params: {
   const { assigneeId, keepFileId, keepOriginalName } = params;
 
   const dedupeKey = normalizeFilenameForDedup(keepOriginalName);
-  if (!dedupeKey) return { deletedOldRecords: 0 };
+  if (!dedupeKey) return { deletedOldRecords: 0, duplicateCandidates: 0 };
 
   const existingAssignments = await prisma.fileAssignment.findMany({
     where: { userId: assigneeId },
@@ -125,7 +125,45 @@ async function dedupeForAssignee(params: {
     }
   }
 
-  return { deletedOldRecords };
+  return {
+    deletedOldRecords,
+    duplicateCandidates: duplicates.length,
+  };
+}
+
+function buildDebugMeta(params: {
+  stage: string;
+  title?: string | null;
+  safeName?: string | null;
+  keyPath?: string | null;
+  uploadedByEmail?: string | null;
+  uploadedById?: string | null;
+  assignerId?: string | null;
+  candidates?: string[];
+  assigneeIds?: string[];
+  contentType?: string | null;
+  size?: number | null;
+  warning?: string | null;
+  error?: string | null;
+  extra?: Record<string, any>;
+}) {
+  return {
+    via: "integration_multipart_ingest",
+    stage: params.stage,
+    title: params.title ?? null,
+    originalName: params.safeName ?? null,
+    storageKey: params.keyPath ?? null,
+    uploadedByEmail: params.uploadedByEmail ?? null,
+    uploadedById: params.uploadedById ?? null,
+    assignerId: params.assignerId ?? null,
+    candidates: params.candidates ?? [],
+    assigneeIds: params.assigneeIds ?? [],
+    mime: params.contentType ?? null,
+    size: params.size ?? null,
+    warning: params.warning ?? null,
+    error: params.error ?? null,
+    ...(params.extra || {}),
+  };
 }
 
 export async function GET(req: Request) {
@@ -145,9 +183,9 @@ export async function GET(req: Request) {
         uploadedByEmail: "string (optional)",
       },
       notes: [
-        "Το storage path είναι scoped ανά assignee μέσα στο filename.",
-        "Πριν γραφτεί DB record γίνεται verify ότι το object υπάρχει όντως στο storage.",
-        "Αν το upload δεν επιβεβαιωθεί, επιστρέφει 500 και ΔΕΝ δημιουργείται phantom DB record.",
+        "multipart/form-data required",
+        "Το DB record γράφεται μόνο αν το storage upload επιβεβαιωθεί",
+        "Σε failure επιστρέφεται verbose JSON με stage/debug info",
       ],
       time: new Date().toISOString(),
     },
@@ -162,7 +200,15 @@ export async function POST(req: Request) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   if (!ct.includes("multipart/form-data")) {
     return NextResponse.json(
-      { ok: false, error: "unsupported_media_type", hint: "Use multipart/form-data" },
+      {
+        ok: false,
+        error: "unsupported_media_type",
+        hint: "Use multipart/form-data",
+        debug: {
+          stage: "content_type_check",
+          receivedContentType: ct || null,
+        },
+      },
       { status: 415, headers: { "Cache-Control": "no-store" } }
     );
   }
@@ -170,8 +216,18 @@ export async function POST(req: Request) {
   let form: FormData;
   try {
     form = await req.formData();
-  } catch {
-    return NextResponse.json({ ok: false, error: "invalid_multipart" }, { status: 400 });
+  } catch (e: any) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "invalid_multipart",
+        debug: {
+          stage: "formdata_parse",
+          detail: e?.message || "formData parse failed",
+        },
+      },
+      { status: 400 }
+    );
   }
 
   const title = String(form.get("title") || "").trim();
@@ -181,7 +237,17 @@ export async function POST(req: Request) {
 
   if (!title || !file) {
     return NextResponse.json(
-      { ok: false, error: "missing_fields", detail: "title and file are required" },
+      {
+        ok: false,
+        error: "missing_fields",
+        detail: "title and file are required",
+        debug: {
+          stage: "validate_required_fields",
+          hasTitle: !!title,
+          hasFile: !!file,
+          uploadedByEmail: uploadedByEmail ?? null,
+        },
+      },
       { status: 400, headers: { "Cache-Control": "no-store" } }
     );
   }
@@ -197,8 +263,27 @@ export async function POST(req: Request) {
       ? "application/pdf"
       : "application/octet-stream");
 
-  const ab = await file.arrayBuffer();
-  const buf = Buffer.from(ab);
+  let buf: Buffer;
+  try {
+    const ab = await file.arrayBuffer();
+    buf = Buffer.from(ab);
+  } catch (e: any) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "file_read_failed",
+        debug: {
+          stage: "file_to_buffer",
+          title,
+          originalNameRaw,
+          safeName,
+          uploadedByEmail: uploadedByEmail ?? null,
+          detail: e?.message || "arrayBuffer failed",
+        },
+      },
+      { status: 500 }
+    );
+  }
 
   let uploadedById: string | undefined;
   if (uploadedByEmail) {
@@ -240,7 +325,6 @@ export async function POST(req: Request) {
     // ignore
   }
 
-  // 1) upload to storage
   try {
     await supabasePutBuffer(keyPath, buf, contentType);
   } catch (e: any) {
@@ -248,15 +332,20 @@ export async function POST(req: Request) {
       action: "FILE_UPLOADED",
       target: "File",
       targetId: null,
-      meta: {
-        via: "integration_multipart_ingest",
-        stage: "upload_failed",
-        keyPath,
+      meta: buildDebugMeta({
+        stage: "storage_upload_failed",
         title,
-        originalName: safeName,
-        uploadedByEmail: uploadedByEmail ?? null,
+        safeName,
+        keyPath,
+        uploadedByEmail,
+        uploadedById,
+        assignerId,
+        candidates,
+        assigneeIds,
+        contentType,
+        size: buf.byteLength,
         error: e?.message || "upload_failed",
-      },
+      }),
     }).catch(() => {});
 
     return NextResponse.json(
@@ -264,13 +353,25 @@ export async function POST(req: Request) {
         ok: false,
         error: "storage_upload_failed",
         detail: e?.message || "Upload failed",
-        key: keyPath,
+        debug: {
+          stage: "storage_upload_failed",
+          title,
+          originalNameRaw,
+          safeName,
+          keyPath,
+          uploadedByEmail: uploadedByEmail ?? null,
+          uploadedById: uploadedById ?? null,
+          assignerId: assignerId ?? null,
+          candidates,
+          assigneeIds,
+          contentType,
+          size: buf.byteLength,
+        },
       },
       { status: 500 }
     );
   }
 
-  // 2) verify object really exists BEFORE db write
   let uploadVerified = false;
   try {
     uploadVerified = await supabaseObjectExists(keyPath);
@@ -279,15 +380,20 @@ export async function POST(req: Request) {
       action: "FILE_UPLOADED",
       target: "File",
       targetId: null,
-      meta: {
-        via: "integration_multipart_ingest",
-        stage: "verify_failed",
-        keyPath,
+      meta: buildDebugMeta({
+        stage: "storage_verify_failed",
         title,
-        originalName: safeName,
-        uploadedByEmail: uploadedByEmail ?? null,
+        safeName,
+        keyPath,
+        uploadedByEmail,
+        uploadedById,
+        assignerId,
+        candidates,
+        assigneeIds,
+        contentType,
+        size: buf.byteLength,
         error: e?.message || "verify_failed",
-      },
+      }),
     }).catch(() => {});
 
     return NextResponse.json(
@@ -295,7 +401,20 @@ export async function POST(req: Request) {
         ok: false,
         error: "storage_verify_failed",
         detail: e?.message || "Verification failed",
-        key: keyPath,
+        debug: {
+          stage: "storage_verify_failed",
+          title,
+          originalNameRaw,
+          safeName,
+          keyPath,
+          uploadedByEmail: uploadedByEmail ?? null,
+          uploadedById: uploadedById ?? null,
+          assignerId: assignerId ?? null,
+          candidates,
+          assigneeIds,
+          contentType,
+          size: buf.byteLength,
+        },
       },
       { status: 500 }
     );
@@ -306,14 +425,19 @@ export async function POST(req: Request) {
       action: "FILE_UPLOADED",
       target: "File",
       targetId: null,
-      meta: {
-        via: "integration_multipart_ingest",
-        stage: "verify_missing_after_upload",
-        keyPath,
+      meta: buildDebugMeta({
+        stage: "storage_object_missing_after_upload",
         title,
-        originalName: safeName,
-        uploadedByEmail: uploadedByEmail ?? null,
-      },
+        safeName,
+        keyPath,
+        uploadedByEmail,
+        uploadedById,
+        assignerId,
+        candidates,
+        assigneeIds,
+        contentType,
+        size: buf.byteLength,
+      }),
     }).catch(() => {});
 
     return NextResponse.json(
@@ -321,44 +445,112 @@ export async function POST(req: Request) {
         ok: false,
         error: "storage_object_missing_after_upload",
         detail: "File was not found in storage after upload",
-        key: keyPath,
+        debug: {
+          stage: "storage_object_missing_after_upload",
+          title,
+          originalNameRaw,
+          safeName,
+          keyPath,
+          uploadedByEmail: uploadedByEmail ?? null,
+          uploadedById: uploadedById ?? null,
+          assignerId: assignerId ?? null,
+          candidates,
+          assigneeIds,
+          contentType,
+          size: buf.byteLength,
+        },
       },
       { status: 500 }
     );
   }
 
-  // 3) create db record only after verified upload
   const publicUrl = `/api/files/download/${keyPath}`;
 
-  const record = await prisma.file.create({
-    data: {
-      title,
-      originalName: safeName,
-      url: publicUrl,
-      mime: contentType,
-      size: buf.byteLength,
-      uploadedById,
-    },
-    select: {
-      id: true,
-      title: true,
-      originalName: true,
-      url: true,
-      createdAt: true,
-    },
-  });
+  let record: {
+    id: string;
+    title: string;
+    originalName: string | null;
+    url: string | null;
+    createdAt: Date;
+  };
 
-  // 4) assignments
-  if (assigneeIds.length && assignerId) {
-    await prisma.fileAssignment.createMany({
-      data: assigneeIds.map((userId) => ({
-        fileId: record.id,
-        userId,
-        assignedById: assignerId,
-      })),
-      skipDuplicates: true,
+  try {
+    record = await prisma.file.create({
+      data: {
+        title,
+        originalName: safeName,
+        url: publicUrl,
+        mime: contentType,
+        size: buf.byteLength,
+        uploadedById,
+      },
+      select: {
+        id: true,
+        title: true,
+        originalName: true,
+        url: true,
+        createdAt: true,
+      },
     });
-    assignmentCreated = true;
+  } catch (e: any) {
+    await logAudit({
+      action: "FILE_UPLOADED",
+      target: "File",
+      targetId: null,
+      meta: buildDebugMeta({
+        stage: "db_create_failed",
+        title,
+        safeName,
+        keyPath,
+        uploadedByEmail,
+        uploadedById,
+        assignerId,
+        candidates,
+        assigneeIds,
+        contentType,
+        size: buf.byteLength,
+        error: e?.message || "db_create_failed",
+      }),
+    }).catch(() => {});
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "db_create_failed",
+        detail: e?.message || "Database create failed",
+        debug: {
+          stage: "db_create_failed",
+          title,
+          originalNameRaw,
+          safeName,
+          keyPath,
+          uploadedByEmail: uploadedByEmail ?? null,
+          uploadedById: uploadedById ?? null,
+          assignerId: assignerId ?? null,
+          candidates,
+          assigneeIds,
+          contentType,
+          size: buf.byteLength,
+        },
+      },
+      { status: 500 }
+    );
+  }
+
+  if (assigneeIds.length && assignerId) {
+    try {
+      await prisma.fileAssignment.createMany({
+        data: assigneeIds.map((userId) => ({
+          fileId: record.id,
+          userId,
+          assignedById: assignerId,
+        })),
+        skipDuplicates: true,
+      });
+      assignmentCreated = true;
+    } catch (e: any) {
+      warning = `assignment_failed: ${e?.message || "unknown error"}`;
+    }
   } else {
     warning =
       assigneeIds.length === 0
@@ -366,8 +558,8 @@ export async function POST(req: Request) {
         : "No assignerId found";
   }
 
-  // 5) dedupe
   let deletedOldRecords = 0;
+  let duplicateCandidates = 0;
 
   if (assigneeIds.length) {
     for (const assigneeId of assigneeIds) {
@@ -377,33 +569,37 @@ export async function POST(req: Request) {
         keepOriginalName: record.originalName || "",
       });
       deletedOldRecords += dedupe.deletedOldRecords;
+      duplicateCandidates += dedupe.duplicateCandidates;
     }
   }
 
-  // 6) audit
   await logAudit({
     action: "FILE_UPLOADED",
     target: "File",
     targetId: record.id,
-    meta: {
-      via: "integration_multipart_ingest",
+    meta: buildDebugMeta({
       stage: "completed",
-      mime: contentType,
-      size: buf.byteLength,
-      emails: candidates,
-      warning,
-      assigned: assigneeIds.length,
-      assignmentCreated,
-      assignerId,
-      storageKey: keyPath,
-      uploadVerified,
-      replaced: true,
-      deletedOldRecords,
-      fileId: record.id,
       title,
-      originalName: safeName,
-      assigneeScope,
-    },
+      safeName,
+      keyPath,
+      uploadedByEmail,
+      uploadedById,
+      assignerId,
+      candidates,
+      assigneeIds,
+      contentType,
+      size: buf.byteLength,
+      warning,
+      extra: {
+        uploadVerified,
+        assignmentCreated,
+        deletedOldRecords,
+        duplicateCandidates,
+        fileId: record.id,
+        publicUrl,
+        originalNameRaw,
+      },
+    }),
   });
 
   return NextResponse.json(
@@ -416,7 +612,22 @@ export async function POST(req: Request) {
       key: keyPath,
       replaced: true,
       deletedOldRecords,
+      duplicateCandidates,
       warning,
+      debug: {
+        stage: "completed",
+        title,
+        originalNameRaw,
+        safeName,
+        keyPath,
+        uploadedByEmail: uploadedByEmail ?? null,
+        uploadedById: uploadedById ?? null,
+        assignerId: assignerId ?? null,
+        candidates,
+        assigneeIds,
+        contentType,
+        size: buf.byteLength,
+      },
     },
     { status: 201, headers: { "Cache-Control": "no-store" } }
   );
