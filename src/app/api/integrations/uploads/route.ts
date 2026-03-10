@@ -29,7 +29,8 @@ const SchemaDoc = {
   },
   notes: [
     "Auto-assign: ανιχνεύουμε emails μέσα σε title/originalName/url.",
-    "Το storage path είναι scoped ανά assignee μέσα στο filename ώστε να μη συγκρούονται διαφορετικοί χρήστες με ίδιο filename.",
+    "Το storage key γράφεται μόνο με ασφαλείς ASCII χαρακτήρες.",
+    "Το originalName στη βάση κρατά το πραγματικό filename (και ελληνικά).",
     "Το replace γίνεται μόνο για παλιότερα monthly versions του ίδιου assignee.",
     "Επιστρέφουμε πάντα JSON.",
   ],
@@ -52,13 +53,35 @@ async function getAssignerId(uploadedById?: string | null) {
   return admin?.id ?? null;
 }
 
-function safePart(v: string) {
-  return String(v || "")
-    .normalize("NFC")
+function transliterateGreek(input: string) {
+  const map: Record<string, string> = {
+    Α: "A", Β: "V", Γ: "G", Δ: "D", Ε: "E", Ζ: "Z", Η: "I", Θ: "TH",
+    Ι: "I", Κ: "K", Λ: "L", Μ: "M", Ν: "N", Ξ: "X", Ο: "O", Π: "P",
+    Ρ: "R", Σ: "S", Τ: "T", Υ: "Y", Φ: "F", Χ: "CH", Ψ: "PS", Ω: "O",
+
+    α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th",
+    ι: "i", κ: "k", λ: "l", μ: "m", ν: "n", ξ: "x", ο: "o", π: "p",
+    ρ: "r", σ: "s", ς: "s", τ: "t", υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o",
+
+    Ά: "A", Έ: "E", Ή: "I", Ί: "I", Ό: "O", Ύ: "Y", Ώ: "O",
+    ά: "a", έ: "e", ή: "i", ί: "i", ό: "o", ύ: "y", ώ: "o",
+
+    Ϊ: "I", Ϋ: "Y", ϊ: "i", ϋ: "y", ΐ: "i", ΰ: "y",
+  };
+
+  return Array.from(input || "")
+    .map((ch) => map[ch] ?? ch)
+    .join("");
+}
+
+function safeStoragePart(v: string) {
+  return transliterateGreek(String(v || ""))
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, "_")
-    .replace(/[^a-zA-Z0-9Α-Ωα-ωΆΈΉΊΌΎΏάέήίόύώϊϋΐΰ.\-@_()]/g, "_")
+    .replace(/[^a-zA-Z0-9.\-@_()]/g, "_")
     .replace(/_+/g, "_")
-    .trim();
+    .replace(/^_+|_+$/g, "");
 }
 
 function normalizeFilenameForDedup(name: string) {
@@ -200,12 +223,12 @@ export async function POST(req: Request) {
 
   const assignerId = await getAssignerId(uploadedById);
 
-  const fallbackName = data.originalName || data.title || "upload.xlsx";
-  const safeName = safePart(fallbackName);
+  const originalNameForDb = String(data.originalName || data.title || "upload.xlsx").trim();
+  const titleForDb = String(data.title || originalNameForDb).trim();
 
   const candidates = Array.from(
     new Set([
-      ...extractEmailsFromText(`${safeName} ${data.title || ""} ${data.url}`),
+      ...extractEmailsFromText(`${originalNameForDb} ${titleForDb} ${data.url}`),
       ...(data.uploadedByEmail ? [data.uploadedByEmail] : []),
     ])
   );
@@ -219,13 +242,15 @@ export async function POST(req: Request) {
   let assigneeScope = "unassigned";
 
   if (candidates.length > 0) {
-    assigneeScope = safePart(candidates[0].toLowerCase());
+    assigneeScope = candidates[0].toLowerCase();
   } else if (data.uploadedByEmail) {
-    assigneeScope = safePart(data.uploadedByEmail.toLowerCase());
+    assigneeScope = data.uploadedByEmail.toLowerCase();
   }
 
-  // ✅ no subfolder, but still unique per assignee
-  const keyPath = `uploads/${assigneeScope}__${safeName}`;
+  const safeScopeForStorage = safeStoragePart(assigneeScope || "unassigned");
+  const safeNameForStorage = safeStoragePart(originalNameForDb || "upload.xlsx");
+
+  const keyPath = `uploads/${safeScopeForStorage}__${safeNameForStorage}`;
 
   try {
     await supabaseRemove([keyPath]);
@@ -238,8 +263,8 @@ export async function POST(req: Request) {
 
   const record = await prisma.file.create({
     data: {
-      title: data.title || safeName,
-      originalName: data.originalName || safeName,
+      title: titleForDb,
+      originalName: originalNameForDb,
       url: publicUrl,
       mime: contentType,
       size: buf.byteLength,
@@ -306,6 +331,8 @@ export async function POST(req: Request) {
       title: record.title,
       originalName: record.originalName,
       assigneeScope,
+      safeScopeForStorage,
+      safeNameForStorage,
     },
   });
 

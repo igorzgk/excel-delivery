@@ -24,13 +24,35 @@ async function getAssignerId(uploadedById?: string | null) {
   return admin?.id ?? null;
 }
 
-function safePart(v: string) {
-  return String(v || "")
-    .normalize("NFC")
+function transliterateGreek(input: string) {
+  const map: Record<string, string> = {
+    Α: "A", Β: "V", Γ: "G", Δ: "D", Ε: "E", Ζ: "Z", Η: "I", Θ: "TH",
+    Ι: "I", Κ: "K", Λ: "L", Μ: "M", Ν: "N", Ξ: "X", Ο: "O", Π: "P",
+    Ρ: "R", Σ: "S", Τ: "T", Υ: "Y", Φ: "F", Χ: "CH", Ψ: "PS", Ω: "O",
+
+    α: "a", β: "v", γ: "g", δ: "d", ε: "e", ζ: "z", η: "i", θ: "th",
+    ι: "i", κ: "k", λ: "l", μ: "m", ν: "n", ξ: "x", ο: "o", π: "p",
+    ρ: "r", σ: "s", ς: "s", τ: "t", υ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o",
+
+    Ά: "A", Έ: "E", Ή: "I", Ί: "I", Ό: "O", Ύ: "Y", Ώ: "O",
+    ά: "a", έ: "e", ή: "i", ί: "i", ό: "o", ύ: "y", ώ: "o",
+
+    Ϊ: "I", Ϋ: "Y", ϊ: "i", ϋ: "y", ΐ: "i", ΰ: "y",
+  };
+
+  return Array.from(input || "")
+    .map((ch) => map[ch] ?? ch)
+    .join("");
+}
+
+function safeStoragePart(v: string) {
+  return transliterateGreek(String(v || ""))
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, "_")
-    .replace(/[^a-zA-Z0-9Α-Ωα-ωΆΈΉΊΌΎΏάέήίόύώϊϋΐΰ.\-@_()]/g, "_")
+    .replace(/[^a-zA-Z0-9.\-@_()]/g, "_")
     .replace(/_+/g, "_")
-    .trim();
+    .replace(/^_+|_+$/g, "");
 }
 
 function normalizeFilenameForDedup(name: string) {
@@ -141,7 +163,8 @@ export async function GET(req: Request) {
         uploadedByEmail: "string (optional)",
       },
       notes: [
-        "Το storage path είναι scoped ανά assignee email μέσα στο filename ώστε να μη συγκρούονται διαφορετικοί χρήστες με ίδιο filename.",
+        "Το storage key γράφεται μόνο με ασφαλείς ASCII χαρακτήρες.",
+        "Το originalName στη βάση κρατά το πραγματικό filename (και ελληνικά).",
         "Το replace γίνεται μόνο για παλαιότερα monthly versions του ίδιου assignee.",
       ],
       time: new Date().toISOString(),
@@ -182,13 +205,12 @@ export async function POST(req: Request) {
   }
 
   const originalNameRaw = (file as any).name || `${title}.xlsx`;
-  const safeName = safePart(originalNameRaw);
+  const originalNameForDb = String(originalNameRaw).trim();
 
   const contentTypeRaw = (file.type || "").toLowerCase();
-  const safeNameLower = safeName.toLowerCase();
   const contentType =
     contentTypeRaw ||
-    (safeNameLower.endsWith(".pdf")
+    (originalNameForDb.toLowerCase().endsWith(".pdf")
       ? "application/pdf"
       : "application/octet-stream");
 
@@ -208,7 +230,7 @@ export async function POST(req: Request) {
 
   const candidates = Array.from(
     new Set([
-      ...extractEmailsFromText(`${title} ${safeName}`),
+      ...extractEmailsFromText(`${title} ${originalNameForDb}`),
       ...(uploadedByEmail ? [uploadedByEmail] : []),
     ])
   );
@@ -222,13 +244,15 @@ export async function POST(req: Request) {
   let assigneeScope = "unassigned";
 
   if (candidates.length > 0) {
-    assigneeScope = safePart(candidates[0].toLowerCase());
+    assigneeScope = candidates[0].toLowerCase();
   } else if (uploadedByEmail) {
-    assigneeScope = safePart(uploadedByEmail.toLowerCase());
+    assigneeScope = uploadedByEmail.toLowerCase();
   }
 
-  // ✅ no subfolder, but still unique per assignee
-  const keyPath = `uploads/${assigneeScope}__${safeName}`;
+  const safeScopeForStorage = safeStoragePart(assigneeScope || "unassigned");
+  const safeNameForStorage = safeStoragePart(originalNameForDb || "upload.xlsx");
+
+  const keyPath = `uploads/${safeScopeForStorage}__${safeNameForStorage}`;
 
   try {
     await supabaseRemove([keyPath]);
@@ -242,7 +266,7 @@ export async function POST(req: Request) {
   const record = await prisma.file.create({
     data: {
       title,
-      originalName: safeName,
+      originalName: originalNameForDb,
       url: publicUrl,
       mime: contentType,
       size: buf.byteLength,
@@ -304,8 +328,10 @@ export async function POST(req: Request) {
       deletedOldRecords,
       fileId: record.id,
       title,
-      originalName: safeName,
+      originalName: originalNameForDb,
       assigneeScope,
+      safeScopeForStorage,
+      safeNameForStorage,
     },
   });
 
