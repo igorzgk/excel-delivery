@@ -27,6 +27,9 @@ export default function AdminFilesPage() {
   // --- duplicate cleanup state ---
   const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
 
+  // --- missing storage check state ---
+  const [checkingMissing, setCheckingMissing] = useState(false);
+
   async function load() {
     setLoading(true);
     const f = await fetch("/api/files?scope=all", { cache: "no-store" });
@@ -110,6 +113,38 @@ export default function AdminFilesPage() {
     }
   }
 
+  async function checkMissingStorage() {
+    setCheckingMissing(true);
+    try {
+      const res = await fetch("/api/admin/files/check-missing-storage", {
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.detail || json?.error || "Αποτυχία ελέγχου storage");
+      }
+
+      console.log("missing storage report:", json);
+
+      if (!json.missingCount) {
+        alert(
+          `Ο έλεγχος ολοκληρώθηκε.\nΔεν βρέθηκαν missing αρχεία.\nΣύνολο checked: ${json.totalChecked}`
+        );
+        return;
+      }
+
+      alert(
+        `Ο έλεγχος ολοκληρώθηκε.\nΣύνολο checked: ${json.totalChecked}\nMissing αρχεία: ${json.missingCount}\n\nΆνοιξε Console (F12) για αναλυτική λίστα.`
+      );
+    } catch (err: any) {
+      alert(err?.message || "Σφάλμα κατά τον έλεγχο storage");
+    } finally {
+      setCheckingMissing(false);
+    }
+  }
+
   const activeUsers = users.filter((u) => u.status === "ACTIVE");
 
   return (
@@ -117,13 +152,25 @@ export default function AdminFilesPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">Όλα τα αρχεία</h2>
 
-        <button
-          onClick={cleanupDuplicates}
-          disabled={cleaningDuplicates}
-          className="rounded border px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
-        >
-          {cleaningDuplicates ? "Έλεγχος duplicates…" : "Έλεγχος duplicates"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={checkMissingStorage}
+            disabled={checkingMissing}
+            className="rounded border px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
+          >
+            {checkingMissing ? "Έλεγχος storage…" : "Έλεγχος missing storage"}
+          </button>
+
+          <button
+            type="button"
+            onClick={cleanupDuplicates}
+            disabled={cleaningDuplicates}
+            className="rounded border px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
+          >
+            {cleaningDuplicates ? "Έλεγχος duplicates…" : "Έλεγχος duplicates"}
+          </button>
+        </div>
       </div>
 
       {/* ===== MOBILE: Manual add card (LOCAL FILE) ===== */}
@@ -395,6 +442,7 @@ export default function AdminFilesPage() {
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
 }
+
 function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <td className={`px-3 py-3 ${className}`}>{children}</td>;
 }
