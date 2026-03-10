@@ -7,6 +7,7 @@ type FileRow = {
   title: string;
   createdAt: string;
   url?: string | null;
+  originalName?: string | null;
   assignments?: { user: { id: string; email: string; name?: string | null } }[];
 };
 
@@ -23,6 +24,9 @@ export default function AdminFilesPage() {
   const [newFile, setNewFile] = useState<File | null>(null);
   const [savingNew, setSavingNew] = useState(false);
 
+  // --- duplicate cleanup state ---
+  const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
+
   async function load() {
     setLoading(true);
     const f = await fetch("/api/files?scope=all", { cache: "no-store" });
@@ -31,6 +35,7 @@ export default function AdminFilesPage() {
     if (u.ok) setUsers((await u.json()).users);
     setLoading(false);
   }
+
   useEffect(() => {
     load();
   }, []);
@@ -76,11 +81,50 @@ export default function AdminFilesPage() {
     }
   }
 
+  async function cleanupDuplicates() {
+    if (!confirm("Να γίνει έλεγχος duplicates και διαγραφή του παλαιότερου duplicate αρχείου;")) {
+      return;
+    }
+
+    setCleaningDuplicates(true);
+    try {
+      const res = await fetch("/api/admin/files/cleanup-duplicates", {
+        method: "POST",
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Αποτυχία καθαρισμού duplicates");
+      }
+
+      alert(
+        `Ο έλεγχος ολοκληρώθηκε.\nΒρέθηκαν groups: ${json.groupsFound ?? 0}\nΔιαγράφηκαν αρχεία: ${json.deletedFiles ?? 0}`
+      );
+
+      await load();
+    } catch (err: any) {
+      alert(err?.message || "Σφάλμα κατά τον έλεγχο duplicates");
+    } finally {
+      setCleaningDuplicates(false);
+    }
+  }
+
   const activeUsers = users.filter((u) => u.status === "ACTIVE");
 
   return (
     <div className="grid gap-4 text-[inherit]">
-      <h2 className="text-xl font-semibold">Όλα τα αρχεία</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold">Όλα τα αρχεία</h2>
+
+        <button
+          onClick={cleanupDuplicates}
+          disabled={cleaningDuplicates}
+          className="rounded border px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
+        >
+          {cleaningDuplicates ? "Έλεγχος duplicates…" : "Έλεγχος duplicates"}
+        </button>
+      </div>
 
       {/* ===== MOBILE: Manual add card (LOCAL FILE) ===== */}
       <section className="sm:hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-3">
