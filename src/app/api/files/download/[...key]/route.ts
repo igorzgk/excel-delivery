@@ -27,18 +27,26 @@ function transliterateGreek(input: string) {
     .join("");
 }
 
-function safeAsciiFilename(name: string) {
-  return transliterateGreek(String(name || ""))
+function normalizeName(input: string) {
+  return transliterateGreek(String(input || ""))
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
     .replace(/\s+/g, "_")
-    .replace(/[^a-zA-Z0-9._@()-]+/g, "_")
+    .replace(/[^a-z0-9._@-]+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
 }
 
+function safeAsciiFilename(name: string) {
+  return normalizeName(name);
+}
+
 function safeLegacyFilename(name: string) {
-  return String(name || "").replace(/[^\w.\-@]+/g, "_");
+  return String(name || "")
+    .replace(/[^\w.\-@]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function dedupe<T>(arr: T[]) {
@@ -47,22 +55,20 @@ function dedupe<T>(arr: T[]) {
 
 function splitRequestedPath(requestedKeyPath: string) {
   const prefix = "uploads/";
-  let rest = requestedKeyPath.startsWith(prefix)
+  const rest = requestedKeyPath.startsWith(prefix)
     ? requestedKeyPath.slice(prefix.length)
     : requestedKeyPath;
 
-  const idx = rest.indexOf("__");
+  const scopedIdx = rest.indexOf("__");
 
-  if (idx >= 0) {
+  if (scopedIdx >= 0) {
     return {
-      hasScopedPrefix: true,
-      scope: rest.slice(0, idx),
-      fileName: rest.slice(idx + 2),
+      scope: rest.slice(0, scopedIdx),
+      fileName: rest.slice(scopedIdx + 2),
     };
   }
 
   return {
-    hasScopedPrefix: false,
     scope: null as string | null,
     fileName: rest,
   };
@@ -75,7 +81,7 @@ function buildCandidateKeys(requestedKeyPath: string) {
   const asciiFileName = safeAsciiFilename(decodedFileName);
   const legacyFileName = safeLegacyFilename(decodedFileName);
 
-  const candidates = [
+  const out = [
     requestedKeyPath,
     `uploads/${decodedFileName}`,
     `uploads/${asciiFileName}`,
@@ -83,14 +89,88 @@ function buildCandidateKeys(requestedKeyPath: string) {
   ];
 
   if (scope) {
-    candidates.push(
+    out.push(
       `uploads/${scope}__${decodedFileName}`,
       `uploads/${scope}__${asciiFileName}`,
       `uploads/${scope}__${legacyFileName}`
     );
   }
 
-  return dedupe(candidates.filter(Boolean));
+  return dedupe(out.filter(Boolean));
+}
+
+function filenameFromKey(keyPath: string) {
+  const parts = String(keyPath || "").split("/");
+  return parts[parts.length - 1] || keyPath;
+}
+
+async function trySign(
+  supabase: ReturnType<typeof createClient>,
+  keyPath: string,
+  expiresSec: number
+) {
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(keyPath, expiresSec);
+
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
+}
+
+async function findByListingUploads(
+  supabase: ReturnType<typeof createClient>,
+  requestedKeyPath: string
+) {
+  const { fileName } = splitRequestedPath(requestedKeyPath);
+
+  const targetRaw = decodeURIComponent(fileName);
+  const targetNorm = normalizeName(targetRaw);
+  const targetLegacy = safeLegacyFilename(targetRaw).toLowerCase();
+
+  const { data, error } = await supabase.storage.from(BUCKET).list("uploads", {
+    limit: 1000,
+    offset: 0,
+    sortBy: { column: "name", order: "asc" },
+  });
+
+  if (error || !data) {
+    return {
+      matchedKey: null as string | null,
+      listedCount: 0,
+    };
+  }
+
+  let exactNormMatch: string | null = null;
+  let containsNormMatch: string | null = null;
+  let legacyMatch: string | null = null;
+
+  for (const item of data) {
+    if (!item?.name) continue;
+
+    const objectName = item.name; // e.g. "MARIA_KORAKAKI_Health_....xlsx"
+    const objectKey = `uploads/${objectName}`;
+
+    const objectNorm = normalizeName(objectName);
+    const objectLegacy = safeLegacyFilename(objectName).toLowerCase();
+
+    if (objectNorm === targetNorm) {
+      exactNormMatch = objectKey;
+      break;
+    }
+
+    if (!containsNormMatch && objectNorm.includes(targetNorm)) {
+      containsNormMatch = objectKey;
+    }
+
+    if (!legacyMatch && objectLegacy === targetLegacy) {
+      legacyMatch = objectKey;
+    }
+  }
+
+  return {
+    matchedKey: exactNormMatch || legacyMatch || containsNormMatch || null,
+    listedCount: data.length,
+  };
 }
 
 export async function GET(req: Request, ctx: { params: { key: string[] } }) {
@@ -109,11 +189,8 @@ export async function GET(req: Request, ctx: { params: { key: string[] } }) {
     const triedKeys = buildCandidateKeys(requestedKeyPath);
 
     for (const keyPath of triedKeys) {
-      const { data, error } = await supabase.storage
-        .from(BUCKET)
-        .createSignedUrl(keyPath, expiresSec);
-
-      if (!error && data?.signedUrl) {
+      const signedUrl = await trySign(supabase, keyPath, expiresSec);
+      if (signedUrl) {
         const me = await currentUser().catch(() => null);
 
         await logAudit({
@@ -126,10 +203,39 @@ export async function GET(req: Request, ctx: { params: { key: string[] } }) {
             requestedKeyPath,
             expires: expiresSec,
             bucket: BUCKET,
+            resolvedVia: "direct_key",
           },
         }).catch(() => {});
 
-        return NextResponse.redirect(data.signedUrl, { status: 302 });
+        return NextResponse.redirect(signedUrl, { status: 302 });
+      }
+    }
+
+    // Fallback: search inside uploads/ by normalized filename
+    const listed = await findByListingUploads(supabase, requestedKeyPath);
+
+    if (listed.matchedKey) {
+      const signedUrl = await trySign(supabase, listed.matchedKey, expiresSec);
+
+      if (signedUrl) {
+        const me = await currentUser().catch(() => null);
+
+        await logAudit({
+          action: "DOWNLOAD_GRANTED",
+          target: "File",
+          targetId: listed.matchedKey,
+          actorId: (me as any)?.id ?? null,
+          meta: {
+            key: listed.matchedKey,
+            requestedKeyPath,
+            expires: expiresSec,
+            bucket: BUCKET,
+            resolvedVia: "uploads_listing_fallback",
+            listedCount: listed.listedCount,
+          },
+        }).catch(() => {});
+
+        return NextResponse.redirect(signedUrl, { status: 302 });
       }
     }
 
@@ -140,6 +246,9 @@ export async function GET(req: Request, ctx: { params: { key: string[] } }) {
         bucket: BUCKET,
         requestedKeyPath,
         triedKeys,
+        listingFallbackTried: true,
+        listingMatchedKey: listed.matchedKey,
+        listedCount: listed.listedCount,
       },
       { status: 500 }
     );
