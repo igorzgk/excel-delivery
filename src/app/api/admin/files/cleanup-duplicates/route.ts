@@ -34,10 +34,6 @@ function normalizeText(input: string) {
     .replace(/^_+|_+$/g, "");
 }
 
-function normalizeExactFileKey(name: string) {
-  return normalizeText(name);
-}
-
 type FileRow = {
   id: string;
   title: string;
@@ -69,24 +65,50 @@ export async function POST() {
       },
     });
 
-    // group key = assigned user + exact normalized filename/title
     const groups = new Map<string, FileRow[]>();
+    const debugPreview: Array<{
+      id: string;
+      title: string;
+      originalName: string | null;
+      titleKey: string;
+      originalNameKey: string;
+      assignedUserIds: string[];
+    }> = [];
 
     for (const file of files) {
-      const source = file.originalName || file.title || "";
-      const exactKey = normalizeExactFileKey(source);
-      if (!exactKey) continue;
+      const titleKey = normalizeText(file.title || "");
+      const originalNameKey = normalizeText(file.originalName || "");
 
       const assignedUserIds =
         file.assignments.length > 0
           ? [...new Set(file.assignments.map((a) => a.userId))].sort()
           : ["__unassigned__"];
 
+      debugPreview.push({
+        id: file.id,
+        title: file.title,
+        originalName: file.originalName,
+        titleKey,
+        originalNameKey,
+        assignedUserIds,
+      });
+
       for (const userId of assignedUserIds) {
-        const groupKey = `${userId}::${exactKey}`;
-        const arr = groups.get(groupKey) || [];
-        arr.push(file);
-        groups.set(groupKey, arr);
+        // group by originalName if exists
+        if (originalNameKey) {
+          const g1 = `${userId}::originalName::${originalNameKey}`;
+          const arr1 = groups.get(g1) || [];
+          arr1.push(file);
+          groups.set(g1, arr1);
+        }
+
+        // group by title too
+        if (titleKey) {
+          const g2 = `${userId}::title::${titleKey}`;
+          const arr2 = groups.get(g2) || [];
+          arr2.push(file);
+          groups.set(g2, arr2);
+        }
       }
     }
 
@@ -99,7 +121,6 @@ export async function POST() {
 
       groupsFound += 1;
 
-      // newest first already from query, but sort again for safety
       const sorted = [...arr].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
@@ -137,6 +158,7 @@ export async function POST() {
       groupsFound,
       deletedFiles,
       totalFilesChecked: files.length,
+      debugPreview: debugPreview.slice(0, 30),
     });
   } catch (err: any) {
     console.error("cleanup-duplicates failed:", err);
