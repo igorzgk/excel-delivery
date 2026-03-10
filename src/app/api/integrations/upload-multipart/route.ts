@@ -25,7 +25,12 @@ async function getAssignerId(uploadedById?: string | null) {
 }
 
 function safePart(v: string) {
-  return String(v || "").replace(/[^\w.\-@]+/g, "_");
+  return String(v || "")
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{N}.\-@_() ]+/gu, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .trim();
 }
 
 function normalizeFilenameForDedup(name: string) {
