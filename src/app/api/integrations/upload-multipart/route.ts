@@ -67,8 +67,9 @@ async function dedupeForAssignee(params: {
   assigneeId: string;
   keepFileId: string;
   keepOriginalName: string;
+  keepStorageKey: string | null;
 }) {
-  const { assigneeId, keepFileId, keepOriginalName } = params;
+  const { assigneeId, keepFileId, keepOriginalName, keepStorageKey } = params;
 
   const dedupeKey = normalizeFilenameForDedup(keepOriginalName);
   if (!dedupeKey) return { deletedOldRecords: 0, duplicateCandidates: 0 };
@@ -96,6 +97,8 @@ async function dedupeForAssignee(params: {
   let deletedOldRecords = 0;
 
   for (const dup of duplicates) {
+    const dupStorageKey = extractStorageKeyFromDownloadUrl(dup.file.url);
+
     await prisma.fileAssignment.deleteMany({
       where: {
         fileId: dup.fileId,
@@ -108,10 +111,17 @@ async function dedupeForAssignee(params: {
     });
 
     if (remainingAssignments === 0) {
-      const storageKey = extractStorageKeyFromDownloadUrl(dup.file.url);
-      if (storageKey) {
+      // IMPORTANT:
+      // If old row and new row point to the SAME storage object,
+      // DO NOT remove from storage, because that would delete the fresh upload too.
+      const shouldRemoveStorage =
+        !!dupStorageKey &&
+        !!keepStorageKey &&
+        dupStorageKey !== keepStorageKey;
+
+      if (shouldRemoveStorage) {
         try {
-          await supabaseRemove([storageKey]);
+          await supabaseRemove([dupStorageKey]);
         } catch {
           // ignore storage delete errors
         }
@@ -185,7 +195,7 @@ export async function GET(req: Request) {
       notes: [
         "multipart/form-data required",
         "Το DB record γράφεται μόνο αν το storage upload επιβεβαιωθεί",
-        "Σε failure επιστρέφεται verbose JSON με stage/debug info",
+        "Αν υπάρξει re-send του ίδιου filename, δεν διαγράφεται το κοινό storage key",
       ],
       time: new Date().toISOString(),
     },
@@ -567,6 +577,7 @@ export async function POST(req: Request) {
         assigneeId,
         keepFileId: record.id,
         keepOriginalName: record.originalName || "",
+        keepStorageKey: keyPath,
       });
       deletedOldRecords += dedupe.deletedOldRecords;
       duplicateCandidates += dedupe.duplicateCandidates;
