@@ -28,8 +28,86 @@ async function getAssignerId(uploadedById?: string | null) {
   return admin?.id ?? null;
 }
 
+function transliterateGreek(input: string) {
+  const map: Record<string, string> = {
+    Α: "A",
+    Β: "V",
+    Γ: "G",
+    Δ: "D",
+    Ε: "E",
+    Ζ: "Z",
+    Η: "I",
+    Θ: "TH",
+    Ι: "I",
+    Κ: "K",
+    Λ: "L",
+    Μ: "M",
+    Ν: "N",
+    Ξ: "X",
+    Ο: "O",
+    Π: "P",
+    Ρ: "R",
+    Σ: "S",
+    Τ: "T",
+    Υ: "Y",
+    Φ: "F",
+    Χ: "CH",
+    Ψ: "PS",
+    Ω: "O",
+    α: "a",
+    β: "v",
+    γ: "g",
+    δ: "d",
+    ε: "e",
+    ζ: "z",
+    η: "i",
+    θ: "th",
+    ι: "i",
+    κ: "k",
+    λ: "l",
+    μ: "m",
+    ν: "n",
+    ξ: "x",
+    ο: "o",
+    π: "p",
+    ρ: "r",
+    σ: "s",
+    ς: "s",
+    τ: "t",
+    υ: "y",
+    φ: "f",
+    χ: "ch",
+    ψ: "ps",
+    ω: "o",
+    Ά: "A",
+    Έ: "E",
+    Ή: "I",
+    Ί: "I",
+    Ό: "O",
+    Ύ: "Y",
+    Ώ: "O",
+    ά: "a",
+    έ: "e",
+    ή: "i",
+    ί: "i",
+    ό: "o",
+    ύ: "y",
+    ώ: "o",
+    Ϊ: "I",
+    Ϋ: "Y",
+    ϊ: "i",
+    ϋ: "y",
+    ΐ: "i",
+    ΰ: "y",
+  };
+
+  return Array.from(input || "")
+    .map((ch) => map[ch] ?? ch)
+    .join("");
+}
+
 function safePart(v: string) {
-  return String(v || "")
+  return transliterateGreek(String(v || ""))
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, "_")
@@ -111,9 +189,6 @@ async function dedupeForAssignee(params: {
     });
 
     if (remainingAssignments === 0) {
-      // IMPORTANT:
-      // If old row and new row point to the SAME storage object,
-      // DO NOT remove from storage, because that would delete the fresh upload too.
       const shouldRemoveStorage =
         !!dupStorageKey &&
         !!keepStorageKey &&
@@ -196,6 +271,7 @@ export async function GET(req: Request) {
         "multipart/form-data required",
         "Το DB record γράφεται μόνο αν το storage upload επιβεβαιωθεί",
         "Αν υπάρξει re-send του ίδιου filename, δεν διαγράφεται το κοινό storage key",
+        "Τα ελληνικά γίνονται transliteration ώστε το storage key να παραμένει μοναδικό και σταθερό",
       ],
       time: new Date().toISOString(),
     },
