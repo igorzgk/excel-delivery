@@ -578,7 +578,7 @@ export default function AdminUserProfilePage() {
             </label>
 
             <label className="block">
-              <span className="text-sm">Οδός</span>
+              <span className="text-sm">Οδός, περιοχή, Τ.Κ.</span>
               <input
                 className="w-full border rounded p-2 text-sm"
                 placeholder="π.χ. Πατησίων 12"

@@ -1,8 +1,7 @@
-// src/components/FilesBoard.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Folder, FileText, Plus, Pencil, Trash2 } from "lucide-react";
+import { Folder, FileText, Plus, Pencil, Trash2, Upload } from "lucide-react";
 
 type FileItem = {
   id: string;
@@ -35,9 +34,14 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
   const [files, setFiles] = useState<FileItem[]>(initialFiles ?? []);
 
   const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [folderFilter, setFolderFilter] = useState<string>("ALL"); // ALL | NONE | folderId
+  const [folderFilter, setFolderFilter] = useState<string>("ALL");
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  // user upload state
+  const [newTitle, setNewTitle] = useState("");
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -61,6 +65,14 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
     return pdfs.filter((p) => p.pdfFolderId === folderFilter);
   }, [pdfs, folderFilter]);
 
+  async function refreshFiles() {
+    const res = await fetch("/api/files", { cache: "no-store" });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setFiles(j.files || []);
+    }
+  }
+
   async function loadFolders() {
     setLoadingFolders(true);
     try {
@@ -75,6 +87,42 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
   useEffect(() => {
     loadFolders();
   }, []);
+
+  async function uploadMyFile() {
+    if (!newTitle.trim() || !newFile) {
+      alert("Συμπληρώστε τίτλο και επιλέξτε αρχείο.");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("title", newTitle.trim());
+      fd.append("file", newFile);
+
+      const res = await fetch("/api/files", {
+        method: "POST",
+        body: fd,
+      });
+
+      const txt = await res.text().catch(() => "");
+      if (!res.ok) {
+        throw new Error(txt || "Αποτυχία upload");
+      }
+
+      setNewTitle("");
+      setNewFile(null);
+
+      const fileInput = document.getElementById("user-file-upload-input") as HTMLInputElement | null;
+      if (fileInput) fileInput.value = "";
+
+      await refreshFiles();
+    } catch (e: any) {
+      alert(e?.message || "Αποτυχία upload");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function createFolder() {
     const name = prompt("Όνομα φακέλου (PDF):")?.trim();
@@ -144,6 +192,41 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
 
   return (
     <div className="grid gap-4">
+      {/* upload box */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h2 className="font-semibold">Προσθήκη αρχείου</h2>
+        <p className="text-xs text-gray-500 mt-1">
+          Το αρχείο θα συνδεθεί μόνο με τον λογαριασμό σας.
+        </p>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-[1.2fr_1fr_auto]">
+          <input
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+            placeholder="Τίτλος αρχείου"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+          />
+
+          <input
+            id="user-file-upload-input"
+            type="file"
+            className="w-full rounded-xl border px-3 py-2 text-sm bg-white"
+            onChange={(e) => setNewFile(e.currentTarget.files?.[0] ?? null)}
+          />
+
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={uploadMyFile}
+            className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
+            style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}
+          >
+            <Upload size={16} />
+            {uploading ? "Upload…" : "Προσθήκη"}
+          </button>
+        </div>
+      </section>
+
       {/* toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <input
@@ -167,7 +250,6 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
             <p className="mt-3 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
           ) : (
             <>
-              {/* ✅ MOBILE CARDS */}
               <div className="mt-3 grid gap-3 sm:hidden">
                 {others.map((f) => {
                   const dt = new Date(f.createdAt);
@@ -197,7 +279,6 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                 })}
               </div>
 
-              {/* ✅ DESKTOP TABLE */}
               <div className="mt-3 overflow-x-auto hidden sm:block">
                 <table className="w-full min-w-[720px] text-sm">
                   <thead className="bg-gray-50 text-gray-700">
@@ -274,7 +355,6 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
             </div>
           </div>
 
-          {/* folders list */}
           <div className="mt-3 rounded-xl border bg-gray-50 p-2 max-h-[220px] overflow-auto">
             {loadingFolders ? (
               <div className="text-sm text-gray-500 px-2 py-2">Φόρτωση φακέλων…</div>

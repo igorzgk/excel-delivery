@@ -1,7 +1,7 @@
 // src/app/api/files/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { currentUser, requireRole } from "@/lib/auth-helpers";
+import { currentUser } from "@/lib/auth-helpers";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
@@ -83,21 +83,26 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const guard = await requireRole("ADMIN");
-  if (!guard.ok) {
-    return NextResponse.json({ error: "unauthorized" }, { status: guard.status });
+  const me = await currentUser();
+  if (!me) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
+
+  const isAdmin = (me as any).role === "ADMIN";
 
   try {
     const form = await req.formData();
 
     const title = String(form.get("title") || "").trim();
     const file = form.get("file") as File | null;
-    const assignTo = String(form.get("assignTo") || "").trim();
+    const assignToRaw = String(form.get("assignTo") || "").trim();
 
     if (!title || !file) {
       return NextResponse.json({ error: "missing_fields" }, { status: 400 });
     }
+
+    // non-admin users can only upload to themselves
+    const assignTo = isAdmin ? assignToRaw : (me as any).id;
 
     const originalName = safeFilename(file.name || "file");
     const lower = originalName.toLowerCase();
@@ -108,7 +113,7 @@ export async function POST(req: Request) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Keep admin manual uploads simple and flat
+    // Keep uploads simple and flat
     const ext = lower.includes(".") ? lower.split(".").pop() : "";
     const key = `${crypto.randomUUID()}${ext ? `.${ext}` : ""}`;
 
@@ -133,11 +138,6 @@ export async function POST(req: Request) {
 
     const url = `/api/files/download/${encodeURIComponent(key)}`;
 
-    const me = await currentUser();
-    if (!me) {
-      return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-    }
-
     const created = await prisma.file.create({
       data: {
         title,
@@ -150,6 +150,8 @@ export async function POST(req: Request) {
       select: { id: true },
     });
 
+    // admin: optional assignment to chosen user
+    // user: always assign to self
     if (assignTo) {
       await prisma.fileAssignment.create({
         data: {

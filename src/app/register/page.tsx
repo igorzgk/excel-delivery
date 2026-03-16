@@ -303,7 +303,7 @@ export default function RegisterPage() {
 
           {/* 1b) Οδός */}
           <label className="block">
-            <span className="text-sm">Οδός (π.χ. Πατησίων 12)</span>
+            <span className="text-sm">Οδός, περιοχή, Τ.Κ. (π.χ. Πατησίων 12, Αθήνα, 11256)</span>
             <input
               className="w-full border rounded p-2"
               value={profile.addressStreet}
