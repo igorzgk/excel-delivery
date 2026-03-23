@@ -67,7 +67,9 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
   async function refreshFiles() {
     const res = await fetch("/api/files", { cache: "no-store" });
     const j = await res.json().catch(() => ({}));
-    if (res.ok) setFiles(j.files || []);
+    if (res.ok) {
+      setFiles(j.files || []);
+    }
   }
 
   async function deleteFile(id: string) {
@@ -114,7 +116,10 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
         body: fd,
       });
 
-      if (!res.ok) throw new Error("Αποτυχία upload");
+      const txt = await res.text().catch(() => "");
+      if (!res.ok) {
+        throw new Error(txt || "Αποτυχία upload");
+      }
 
       setNewTitle("");
       setNewFile(null);
@@ -143,7 +148,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert("Αποτυχία δημιουργίας φακέλου.");
+        alert(j?.error === "folder_exists" ? "Ο φάκελος υπάρχει ήδη." : "Αποτυχία δημιουργίας φακέλου.");
         return;
       }
       await loadFolders();
@@ -162,15 +167,21 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    if (!res.ok) return alert("Αποτυχία μετονομασίας.");
+    if (!res.ok) {
+      alert("Αποτυχία μετονομασίας.");
+      return;
+    }
     await loadFolders();
   }
 
   async function deleteFolder(id: string) {
-    if (!confirm("Διαγραφή φακέλου;")) return;
+    if (!confirm("Διαγραφή φακέλου; (τα PDF δεν θα διαγραφούν, απλά θα βγουν από τον φάκελο)")) return;
 
     const res = await fetch(`/api/pdf-folders/${id}`, { method: "DELETE" });
-    if (!res.ok) return alert("Αποτυχία διαγραφής φακέλου.");
+    if (!res.ok) {
+      alert("Αποτυχία διαγραφής φακέλου.");
+      return;
+    }
 
     setFiles((prev) => prev.map((f) => (f.pdfFolderId === id ? { ...f, pdfFolderId: null } : f)));
     setFolderFilter("ALL");
@@ -183,28 +194,117 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pdfFolderId }),
     });
-    if (!res.ok) return alert("Αποτυχία μετακίνησης PDF.");
+    if (!res.ok) {
+      alert("Αποτυχία μετακίνησης PDF.");
+      return;
+    }
     setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, pdfFolderId } : f)));
   }
 
   return (
     <div className="grid gap-4">
-      {/* SAME UI — ONLY DELETE BUTTONS ADDED BELOW */}
+      {/* upload box */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h2 className="font-semibold">Προσθήκη αρχείου</h2>
+        <p className="text-xs text-gray-500 mt-1">
+          Το αρχείο θα συνδεθεί μόνο με τον λογαριασμό σας.
+        </p>
 
-      {/* LEFT TABLE DELETE */}
-      {/* add inside Td (desktop table) */}
-      {/* replace action cell */}
-      {/* 👇 */}
-      {/* inside table */}
-      {/* replace this part only */}
+        <div className="mt-3 grid gap-3 md:grid-cols-[1.2fr_1fr_auto]">
+          <input
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+            placeholder="Τίτλος αρχείου"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+          />
 
-      {/* FIND THIS: */}
-      {/* <Td className="text-right whitespace-nowrap"> */}
+          <input
+            id="user-file-upload-input"
+            type="file"
+            className="w-full rounded-xl border px-3 py-2 text-sm bg-white"
+            onChange={(e) => setNewFile(e.currentTarget.files?.[0] ?? null)}
+          />
 
-      {/* REPLACE WITH: */}
-      {/* 👇 */}
-      {/* (already included in code context) */}
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={uploadMyFile}
+            className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
+            style={{ backgroundColor: "var(--brand,#25C3F4)", color: "#061630" }}
+          >
+            <Upload size={16} />
+            {uploading ? "Upload…" : "Προσθήκη"}
+          </button>
+        </div>
+      </section>
 
+      {/* toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Αναζήτηση αρχείων…"
+          className="w-full sm:max-w-[520px] rounded-xl border px-3 py-2 text-sm"
+        />
+        <div className="shrink-0 text-sm text-gray-500">{filtered.length} αρχείο(α)</div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr]">
+        {/* LEFT */}
+        <section className="rounded-2xl border bg-white p-4">
+          <h2 className="font-semibold">Αρχεία ({others.length})</h2>
+
+          <div className="mt-3 grid gap-3 sm:hidden">
+            {others.map((f) => {
+              const dt = new Date(f.createdAt);
+              return (
+                <div key={f.id} className="rounded-xl border p-3">
+                  <div className="font-medium">{f.title}</div>
+                  <div className="text-xs text-gray-600">{formatSize(f.size)}</div>
+                  <div className="flex gap-2 mt-2">
+                    <a href={f.url || "#"}>Λήψη</a>
+                    <button onClick={() => deleteFile(f.id)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <table className="w-full mt-3 text-sm hidden sm:block">
+            <tbody>
+              {others.map((f) => (
+                <tr key={f.id}>
+                  <td>{f.title}</td>
+                  <td className="text-right">
+                    <button onClick={() => deleteFile(f.id)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        {/* RIGHT */}
+        <section className="rounded-2xl border bg-white p-4">
+          {pdfsFilteredByFolder.map((f) => (
+            <div key={f.id} className="flex justify-between">
+              <div>{f.title}</div>
+              <button onClick={() => deleteFile(f.id)}>
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </section>
+      </div>
     </div>
   );
+}
+
+function formatSize(bytes: number | null | undefined) {
+  if (!bytes) return "—";
+  return bytes + "B";
 }
