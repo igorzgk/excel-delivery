@@ -17,6 +17,7 @@ async function fetchMyFiles() {
     const detail = await res.text().catch(() => "");
     throw new Error(`Failed to load files (${res.status}): ${detail}`);
   }
+
   const data = await res.json();
   return data.files as any[];
 }
@@ -25,10 +26,12 @@ export default async function UserFilesPage() {
   const files = await fetchMyFiles();
 
   return (
-    <div className="mx-auto max-width:1460px space-y-6 p-6">
+    <div className="mx-auto max-w-[1460px] space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold">Τα Αρχεία μου</h1>
-        <p className="text-sm text-gray-500">Αρχεία που ανεβάσατε ή σας ανατέθηκαν.</p>
+        <p className="text-sm text-gray-500">
+          Αρχεία που ανεβάσατε ή σας ανατέθηκαν.
+        </p>
       </header>
 
       <FilesBoard initialFiles={files} />
