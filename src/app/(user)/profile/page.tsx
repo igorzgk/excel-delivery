@@ -52,7 +52,7 @@ type PublicHoliday =
 type ProfilePayload = {
   businessName: string;
   businessTypes: BusinessType[];
-
+  addressStreet: string; // ✅ NEW
   fridgeCount: number;
   freezerCount: number;
   hotCabinetCount: number;
@@ -144,6 +144,7 @@ export default function UserProfilePage() {
         if (!p) {
           setProfile({
             businessName: "",
+            addressStreet: "", // ✅ NEW
             businessTypes: [],
             fridgeCount: 0,
             freezerCount: 0,
@@ -158,6 +159,7 @@ export default function UserProfilePage() {
         } else {
           setProfile({
             businessName: p.businessName ?? "",
+            addressStreet: p.addressStreet ?? "", // ✅ NEW
             businessTypes: (p.businessTypes ?? []) as BusinessType[],
             fridgeCount: p.fridgeCount ?? 0,
             freezerCount: p.freezerCount ?? 0,
@@ -167,10 +169,7 @@ export default function UserProfilePage() {
             supervisorInitials: p.supervisorInitials ?? "",
             closedWeekdays: (p.closedWeekdays ?? []) as Weekday[],
             closedHolidays: (p.closedHolidays ?? []) as PublicHoliday[],
-            augustRange: {
-              from: p.augustRange?.from || "",
-              to: p.augustRange?.to || "",
-            },
+            augustRange: { from: p.augustRange?.from || "", to: p.augustRange?.to || "" },
           });
         }
       } catch (err: any) {
@@ -271,6 +270,16 @@ export default function UserProfilePage() {
               <span className="text-sm">Επωνυμία επιχείρησης</span>
               <input className="w-full border rounded p-2 text-sm" value={profile.businessName}
                 onChange={(e) => update("businessName", e.target.value)} />
+            </label>
+
+            <label className="block">
+              <span className="text-sm">Οδός, περιοχή, Τ.Κ.</span>
+              <input
+                className="w-full border rounded p-2 text-sm"
+                placeholder="π.χ. Πατησίων 12"
+                value={profile.addressStreet}
+                onChange={(e) => update("addressStreet", e.target.value)}
+              />
             </label>
 
             <label className="block">
