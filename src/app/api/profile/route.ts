@@ -1,4 +1,5 @@
 // src/app/api/profile/route.ts
+
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -7,6 +8,10 @@ import { z } from "zod";
 
 const ProfileSchema = z.object({
   businessName: z.string().min(1),
+
+  // ✅ FIX: ADD THIS
+  addressStreet: z.string().optional().nullable(),
+
   businessTypes: z.array(z.string()).min(1),
 
   fridgeCount: z.number().int().nonnegative().optional().default(0),
@@ -71,6 +76,10 @@ export async function GET() {
       profile: p
         ? {
             businessName: p.businessName,
+
+            // ✅ FIX: RETURN IT
+            addressStreet: p.addressStreet,
+
             businessTypes: p.businessTypes,
             fridgeCount: p.fridgeCount,
             freezerCount: p.freezerCount,
@@ -102,6 +111,7 @@ export async function PUT(req: Request) {
 
   const body = await req.json();
   const parsed = ProfileSchema.safeParse(body);
+
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
@@ -112,6 +122,7 @@ export async function PUT(req: Request) {
     where: { email: session.user.email },
     select: { id: true },
   });
+
   if (!user) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
@@ -126,6 +137,10 @@ export async function PUT(req: Request) {
     create: {
       userId: user.id,
       businessName: data.businessName,
+
+      // ✅ FIX: SAVE IT
+      addressStreet: data.addressStreet ?? null,
+
       businessTypes: data.businessTypes as any,
       fridgeCount: data.fridgeCount ?? 0,
       freezerCount: data.freezerCount ?? 0,
@@ -140,6 +155,10 @@ export async function PUT(req: Request) {
     },
     update: {
       businessName: data.businessName,
+
+      // ✅ FIX: SAVE IT
+      addressStreet: data.addressStreet ?? null,
+
       businessTypes: data.businessTypes as any,
       fridgeCount: data.fridgeCount ?? 0,
       freezerCount: data.freezerCount ?? 0,
