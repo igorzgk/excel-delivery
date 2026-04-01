@@ -116,17 +116,14 @@ function safePart(v: string) {
     .replace(/^_+|_+$/g, "");
 }
 
+/**
+ * Duplicate only when the FULL sanitized filename is identical.
+ * So:
+ * - Temperature_2-2026.xlsx !== Temperature_3-2026.xlsx
+ * - exact same name === duplicate
+ */
 function normalizeFilenameForDedup(name: string) {
-  const n = (name || "").trim();
-  if (!n) return "";
-
-  const dot = n.lastIndexOf(".");
-  const base = dot > 0 ? n.slice(0, dot) : n;
-  const ext = dot > 0 ? n.slice(dot) : "";
-
-  const cleanedBase = base.replace(/([_-])?(0?[1-9]|1[0-2])([_-])\d{4}$/i, "");
-
-  return (cleanedBase + ext).toLowerCase();
+  return safePart(name || "").toLowerCase();
 }
 
 function extractStorageKeyFromDownloadUrl(url?: string | null) {
@@ -161,6 +158,7 @@ async function dedupeForAssignee(params: {
           id: true,
           originalName: true,
           url: true,
+          createdAt: true,
         },
       },
     },
@@ -270,8 +268,9 @@ export async function GET(req: Request) {
       notes: [
         "multipart/form-data required",
         "Το DB record γράφεται μόνο αν το storage upload επιβεβαιωθεί",
-        "Αν υπάρξει re-send του ίδιου filename, δεν διαγράφεται το κοινό storage key",
-        "Τα ελληνικά γίνονται transliteration ώστε το storage key να παραμένει μοναδικό και σταθερό",
+        "Duplicate θεωρείται μόνο το ακριβώς ίδιο filename",
+        "Διαφορετικός μήνας = διαφορετικό αρχείο",
+        "Τα ελληνικά γίνονται transliteration ώστε το storage key να παραμένει σταθερό",
       ],
       time: new Date().toISOString(),
     },
