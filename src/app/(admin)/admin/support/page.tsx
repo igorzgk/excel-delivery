@@ -21,34 +21,6 @@ function toInt(v: string | undefined, fallback: number) {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
-function buildWhere(sp: SearchParams) {
-  const where: any = {
-    action: "SUPPORT_TICKET",
-    NOT: [{ meta: { path: ["deleted"], equals: true } }],
-  };
-
-  if (sp.q) {
-    const q = sp.q.trim();
-    if (q) {
-      where.OR = [
-        { meta: { path: ["subject"], string_contains: q, mode: "insensitive" } },
-        { meta: { path: ["message"], string_contains: q, mode: "insensitive" } },
-        { meta: { path: ["userEmail"], string_contains: q, mode: "insensitive" } },
-        { meta: { path: ["userName"], string_contains: q, mode: "insensitive" } },
-      ];
-    }
-  }
-
-  if (sp.priority) {
-    where.AND = [
-      ...(where.AND ?? []),
-      { meta: { path: ["priority"], equals: sp.priority } },
-    ];
-  }
-
-  return where;
-}
-
 function linkWith(sp: Record<string, string | undefined>) {
   const params = new URLSearchParams();
   if (sp.q) params.set("q", sp.q);
@@ -56,6 +28,32 @@ function linkWith(sp: Record<string, string | undefined>) {
   if (sp.sort) params.set("sort", sp.sort);
   if (sp.page) params.set("page", sp.page);
   return `/admin/support?${params.toString()}`;
+}
+
+function matchesFilters(meta: any, sp: SearchParams) {
+  if (meta?.deleted === true) return false;
+
+  const q = (sp.q || "").trim().toLowerCase();
+  const priority = sp.priority || "";
+
+  if (priority) {
+    if (String(meta?.priority || "normal") !== priority) return false;
+  }
+
+  if (q) {
+    const haystack = [
+      String(meta?.subject || ""),
+      String(meta?.message || ""),
+      String(meta?.userEmail || ""),
+      String(meta?.userName || ""),
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    if (!haystack.includes(q)) return false;
+  }
+
+  return true;
 }
 
 async function markSupportDone(formData: FormData) {
@@ -129,31 +127,28 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
   if (!me) redirect("/login?next=/admin/support");
   if (me.role !== "ADMIN") redirect("/dashboard");
 
-  const page = toInt(searchParams.page, 1);
-  const take = PAGE_SIZE;
-  const skip = (page - 1) * take;
+  const requestedPage = toInt(searchParams.page, 1);
   const sort = searchParams.sort === "oldest" ? "asc" : "desc";
-  const where = buildWhere(searchParams);
 
-  let total = 0;
-  let rows: { id: string; createdAt: Date; meta: unknown }[] = [];
+  let rawRows: { id: string; createdAt: Date; meta: unknown }[] = [];
   try {
-    [total, rows] = await Promise.all([
-      prisma.auditLog.count({ where }),
-      prisma.auditLog.findMany({
-        where,
-        orderBy: { createdAt: sort },
-        take,
-        skip,
-        select: { id: true, createdAt: true, meta: true },
-      }),
-    ]);
+    rawRows = await prisma.auditLog.findMany({
+      where: { action: "SUPPORT_TICKET" },
+      orderBy: { createdAt: sort },
+      select: { id: true, createdAt: true, meta: true },
+    });
   } catch {
-    total = 0;
-    rows = [];
+    rawRows = [];
   }
 
-  const pages = Math.max(1, Math.ceil(total / take));
+  const filteredRows = rawRows.filter((r) => matchesFilters((r as any).meta ?? {}, searchParams));
+
+  const total = filteredRows.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const page = Math.min(requestedPage, pages);
+  const skip = (page - 1) * PAGE_SIZE;
+  const rows = filteredRows.slice(skip, skip + PAGE_SIZE);
+
   const q = searchParams.q ?? "";
   const priority = (searchParams.priority ?? "") as "" | "low" | "normal" | "high";
   const sortVal = searchParams.sort === "oldest" ? "oldest" : "newest";
