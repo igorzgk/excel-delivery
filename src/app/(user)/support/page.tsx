@@ -136,8 +136,8 @@ export default function SupportPage() {
       <section className="rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] shadow-sm p-4">
         <h2 className="font-semibold mb-3">Επικοινωνία</h2>
         <p className="text-sm">
-          Τηλέφωνο: <a className="underline" href="tel:+302100000000">+30 210 000 0000</a><br />
-          Email: <a className="underline" href="mailto:support@hygiene-plus.gr">support@hygiene-plus.gr</a>
+          Τηλέφωνο: <a className="underline" href="tel:+306942811202">+306942811202</a><br />
+          Email: <a className="underline" href="mailto:info@hplus.gr">info@hplus.gr</a>
         </p>
       </section>
     </div>
