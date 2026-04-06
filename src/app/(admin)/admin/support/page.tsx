@@ -1,6 +1,6 @@
-// src/app/(admin)/admin/support/page.tsx
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import { currentUser } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 
@@ -22,7 +22,11 @@ function toInt(v: string | undefined, fallback: number) {
 }
 
 function buildWhere(sp: SearchParams) {
-  const where: any = { action: "SUPPORT_TICKET" };
+  const where: any = {
+    action: "SUPPORT_TICKET",
+    NOT: [{ meta: { path: ["deleted"], equals: true } }],
+  };
+
   if (sp.q) {
     const q = sp.q.trim();
     if (q) {
@@ -34,12 +38,14 @@ function buildWhere(sp: SearchParams) {
       ];
     }
   }
+
   if (sp.priority) {
     where.AND = [
       ...(where.AND ?? []),
       { meta: { path: ["priority"], equals: sp.priority } },
     ];
   }
+
   return where;
 }
 
@@ -50,6 +56,72 @@ function linkWith(sp: Record<string, string | undefined>) {
   if (sp.sort) params.set("sort", sp.sort);
   if (sp.page) params.set("page", sp.page);
   return `/admin/support?${params.toString()}`;
+}
+
+async function markSupportDone(formData: FormData) {
+  "use server";
+
+  const me = await currentUser();
+  if (!me || me.role !== "ADMIN") redirect("/dashboard");
+
+  const id = String(formData.get("id") || "");
+  if (!id) return;
+
+  const row = await prisma.auditLog.findUnique({
+    where: { id },
+    select: { id: true, meta: true },
+  });
+
+  if (!row) return;
+
+  const meta =
+    row.meta && typeof row.meta === "object" && !Array.isArray(row.meta)
+      ? { ...(row.meta as Record<string, unknown>) }
+      : {};
+
+  meta.done = true;
+  meta.doneAt = new Date().toISOString();
+  meta.doneBy = me.email ?? me.id;
+
+  await prisma.auditLog.update({
+    where: { id },
+    data: { meta },
+  });
+
+  revalidatePath("/admin/support");
+}
+
+async function deleteSupportCase(formData: FormData) {
+  "use server";
+
+  const me = await currentUser();
+  if (!me || me.role !== "ADMIN") redirect("/dashboard");
+
+  const id = String(formData.get("id") || "");
+  if (!id) return;
+
+  const row = await prisma.auditLog.findUnique({
+    where: { id },
+    select: { id: true, meta: true },
+  });
+
+  if (!row) return;
+
+  const meta =
+    row.meta && typeof row.meta === "object" && !Array.isArray(row.meta)
+      ? { ...(row.meta as Record<string, unknown>) }
+      : {};
+
+  meta.deleted = true;
+  meta.deletedAt = new Date().toISOString();
+  meta.deletedBy = me.email ?? me.id;
+
+  await prisma.auditLog.update({
+    where: { id },
+    data: { meta },
+  });
+
+  revalidatePath("/admin/support");
 }
 
 export default async function AdminSupportPage({ searchParams }: { searchParams: SearchParams }) {
@@ -91,7 +163,6 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
       <h1 className="text-2xl font-semibold">Αιτήματα Υποστήριξης</h1>
       <div className="text-sm text-muted-foreground">{total} σύνολο</div>
 
-      {/* Toolbar */}
       <form
         action={linkWith({ q, priority, sort: sortVal, page: "1" })}
         className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center"
@@ -123,7 +194,6 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
           <option value="oldest">Παλαιότερα πρώτα</option>
         </select>
 
-        {/* Brand-colored button (no black pill) */}
         <button
           type="submit"
           className="rounded-xl px-4 py-2 text-sm font-semibold text-black sm:justify-self-end"
@@ -133,7 +203,7 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
         </button>
       </form>
 
-      {/* Mobile: 2-row cards */}
+      {/* Mobile */}
       <section className="grid gap-3 sm:hidden">
         {rows.map((r) => {
           const meta: any = (r as any).meta ?? {};
@@ -143,36 +213,66 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
           const pri = String(meta.priority ?? "normal") as "low" | "normal" | "high";
           const userEmail = String(meta.userEmail ?? "");
           const userName = String(meta.userName ?? "");
+          const done = Boolean(meta.done);
           const dt = new Date(r.createdAt);
 
           return (
             <div key={r.id} className="rounded-2xl border bg-card p-3 shadow-sm">
-              {/* Row 1: date/time left, priority badge right */}
               <div className="flex items-start justify-between gap-3">
                 <div className="text-xs text-slate-600 leading-5">
                   {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
                 </div>
-                <span
-                  className={[
-                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                    pri === "high"
-                      ? "bg-amber-100 text-amber-800"
-                      : pri === "low"
-                      ? "bg-slate-100 text-slate-700"
-                      : "bg-slate-100 text-slate-700",
-                  ].join(" ")}
-                >
-                  {pri === "high" ? "Υψηλή" : pri === "low" ? "Χαμηλή" : "Κανονική"}
-                </span>
+                <div className="flex items-center gap-2">
+                  {done && (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                      Ολοκληρώθηκε
+                    </span>
+                  )}
+                  <span
+                    className={[
+                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                      pri === "high"
+                        ? "bg-amber-100 text-amber-800"
+                        : pri === "low"
+                        ? "bg-slate-100 text-slate-700"
+                        : "bg-slate-100 text-slate-700",
+                    ].join(" ")}
+                  >
+                    {pri === "high" ? "Υψηλή" : pri === "low" ? "Χαμηλή" : "Κανονική"}
+                  </span>
+                </div>
               </div>
 
-              {/* Row 2: subject, from, preview */}
               <div className="mt-2 space-y-1">
                 <div className="font-medium break-words">{subject || <span className="text-slate-400">—</span>}</div>
                 <div className="text-xs text-slate-700 break-words">
                   {userName || "Άγνωστο"}{userEmail ? ` · ${userEmail}` : ""}
                 </div>
                 <div className="text-sm text-slate-600 break-words">{preview || "—"}</div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {!done && (
+                  <form action={markSupportDone}>
+                    <input type="hidden" name="id" value={r.id} />
+                    <button
+                      type="submit"
+                      className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                      Ολοκληρώθηκε
+                    </button>
+                  </form>
+                )}
+
+                <form action={deleteSupportCase}>
+                  <input type="hidden" name="id" value={r.id} />
+                  <button
+                    type="submit"
+                    className="rounded-xl border px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    Διαγραφή
+                  </button>
+                </form>
               </div>
             </div>
           );
@@ -182,16 +282,18 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
         )}
       </section>
 
-      {/* Desktop / Tablet: table with stable widths */}
+      {/* Desktop / Tablet */}
       <section className="hidden sm:block rounded-2xl border bg-card p-4">
         <div className="overflow-hidden">
           <table className="w-full table-fixed text-sm">
             <colgroup>
-              <col className="w-[18%]" /> {/* Ημερ./Ώρα */}
-              <col />                     {/* Θέμα */}
-              <col className="w-[24%]" /> {/* Από */}
-              <col className="w-[12%]" /> {/* Προτεραιότητα */}
-              <col className="w-[28%]" /> {/* Προεπισκόπηση */}
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
+              <col className="w-[18%]" />
+              <col className="w-[10%]" />
+              <col className="w-[20%]" />
+              <col className="w-[8%]" />
+              <col className="w-[12%]" />
             </colgroup>
             <thead className="bg-gray-50 text-gray-700">
               <tr className="text-left">
@@ -200,6 +302,8 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
                 <th className="px-4 py-3 font-semibold">Από</th>
                 <th className="px-4 py-3 font-semibold">Προτεραιότητα</th>
                 <th className="px-4 py-3 font-semibold">Προεπισκόπηση</th>
+                <th className="px-4 py-3 font-semibold">Κατάσταση</th>
+                <th className="px-4 py-3 font-semibold">Ενέργειες</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -211,6 +315,7 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
                 const pri = String(meta.priority ?? "normal");
                 const userEmail = String(meta.userEmail ?? "");
                 const userName = String(meta.userName ?? "");
+                const done = Boolean(meta.done);
                 const created = new Date(r.createdAt).toLocaleString();
 
                 return (
@@ -240,12 +345,48 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-700 break-words">{preview || "—"}</td>
+                    <td className="px-4 py-3">
+                      {done ? (
+                        <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                          Ολοκληρώθηκε
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                          Ανοιχτό
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!done && (
+                          <form action={markSupportDone}>
+                            <input type="hidden" name="id" value={r.id} />
+                            <button
+                              type="submit"
+                              className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
+                            >
+                              Ολοκληρώθηκε
+                            </button>
+                          </form>
+                        )}
+
+                        <form action={deleteSupportCase}>
+                          <input type="hidden" name="id" value={r.id} />
+                          <button
+                            type="submit"
+                            className="rounded-xl border px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                          >
+                            Διαγραφή
+                          </button>
+                        </form>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
                     Δεν βρέθηκαν αιτήματα.
                   </td>
                 </tr>
@@ -254,7 +395,6 @@ export default async function AdminSupportPage({ searchParams }: { searchParams:
           </table>
         </div>
 
-        {/* Pagination */}
         <div className="mt-4 flex items-center justify-between">
           <div className="text-sm text-gray-600">Σελίδα {page} από {pages}</div>
           <div className="flex items-center gap-2">
