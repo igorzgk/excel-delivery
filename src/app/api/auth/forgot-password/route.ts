@@ -16,7 +16,6 @@ function sha256(input: string) {
 }
 
 export async function POST(req: Request) {
-  // Πάντα απαντάμε "ok" για να μην γίνεται email enumeration
   const genericOk = NextResponse.json(
     { ok: true, message: "Αν υπάρχει λογαριασμός, θα λάβετε email με οδηγίες." },
     { headers: { "Cache-Control": "no-store" } }
@@ -29,26 +28,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: data.email.toLowerCase() },
+  const normalizedEmail = data.email.trim().toLowerCase();
+
+  const user = await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: normalizedEmail,
+        mode: "insensitive",
+      },
+    },
     select: { id: true, email: true, status: true },
   });
 
   if (!user) return genericOk;
 
-  // (προαιρετικό) αν θες να επιτρέπεται και σε PENDING:
-  // εδώ το αφήνω να δουλεύει για όλους
-  // αν θες ΜΟΝΟ active:
-  // if (user.status !== "ACTIVE") return genericOk;
-
-  // Φτιάχνουμε raw token (θα σταλεί στο email) και αποθηκεύουμε ΜΟΝΟ hash
   const rawToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = sha256(rawToken);
 
   const ttl = Number(process.env.RESET_TOKEN_TTL_MINUTES || 30);
   const expiresAt = new Date(Date.now() + ttl * 60 * 1000);
 
-  // (Optional) καθάρισε παλιά tokens του user (να μένει 1 ενεργό)
   await prisma.passwordResetToken.deleteMany({
     where: { userId: user.id, usedAt: null },
   });
@@ -86,7 +85,6 @@ export async function POST(req: Request) {
       `,
     });
   } catch (e) {
-    // δεν αποκαλύπτουμε error στον χρήστη
     console.error("forgot-password mail error", e);
   }
 

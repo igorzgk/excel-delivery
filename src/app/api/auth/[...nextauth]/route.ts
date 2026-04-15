@@ -16,11 +16,21 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = credentials?.email?.toLowerCase().trim();
+        const rawEmail = credentials?.email || "";
+        const email = rawEmail.trim().toLowerCase();
         const password = credentials?.password || "";
+
         if (!email || !password) return null;
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await prisma.user.findFirst({
+          where: {
+            email: {
+              equals: email,
+              mode: "insensitive",
+            },
+          },
+        });
+
         if (!user) return null;
 
         const ok = await bcrypt.compare(password, user.passwordHash);
@@ -29,7 +39,12 @@ export const authOptions: NextAuthOptions = {
         if (user.status === "PENDING") throw new Error("AccountPending");
         if (user.status === "SUSPENDED") throw new Error("AccountSuspended");
 
-        return { id: user.id, name: user.name, email: user.email, role: user.role };
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        };
       },
     }),
   ],
