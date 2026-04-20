@@ -29,6 +29,10 @@ function isPdfFile(f: FileItem) {
   return false;
 }
 
+function filenameWithoutExtension(name: string) {
+  return name.replace(/\.[^/.]+$/, "");
+}
+
 export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] }) {
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<FileItem[]>(initialFiles ?? []);
@@ -231,7 +235,14 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
             id="user-file-upload-input"
             type="file"
             className="w-full rounded-xl border px-3 py-2 text-sm bg-white"
-            onChange={(e) => setNewFile(e.currentTarget.files?.[0] ?? null)}
+            onChange={(e) => {
+              const pickedFile = e.currentTarget.files?.[0] ?? null;
+              setNewFile(pickedFile);
+
+              if (pickedFile) {
+                setNewTitle(filenameWithoutExtension(pickedFile.name));
+              }
+            }}
           />
 
           <button
