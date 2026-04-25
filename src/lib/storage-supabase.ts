@@ -50,13 +50,19 @@ export async function supabasePutBuffer(
   return { ok: true, signedUrl: null as string | null };
 }
 
-export async function supabaseCreateSignedUrl(path: string, expiresSec = 3600) {
+export async function supabaseCreateSignedUrl(
+  path: string,
+  expiresSec = 3600,
+  options?: { download?: boolean }
+) {
   const supabase = getAdminClient();
   const bucket = getBucket();
 
   const { data, error } = await supabase.storage
     .from(bucket)
-    .createSignedUrl(path, expiresSec);
+    .createSignedUrl(path, expiresSec, {
+      download: options?.download ?? false,
+    });
 
   if (error || !data?.signedUrl) {
     throw new Error(error?.message || "createSignedUrl failed");

@@ -16,7 +16,12 @@ export async function GET(req: Request, ctx: { params: { key: string[] } }) {
     const expiresSec =
       Number(new URL(req.url).searchParams.get("expires")) || 60 * 60;
 
-    const signed = await supabaseCreateSignedUrl(keyPath, expiresSec);
+    const url = new URL(req.url);
+    const forceDownload = url.searchParams.get("download") === "1";
+
+    const signed = await supabaseCreateSignedUrl(keyPath, expiresSec, {
+      download: forceDownload,
+    });
 
     const me = await currentUser().catch(() => null);
 

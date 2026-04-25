@@ -511,7 +511,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
 
                           {/* Download */}
                           <a
-                            href={f.url}
+                            href={`${f.url}?download=1`}
                             target="_blank"
                             rel="noreferrer"
                             download
