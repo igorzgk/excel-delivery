@@ -497,15 +497,30 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                       </select>
 
                       {f.url ? (
-                        <a
-                          href={f.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-black"
-                          style={{ backgroundColor: "var(--brand, #25C3F4)" }}
-                        >
-                          Λήψη
-                        </a>
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                          {/* Preview */}
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 w-full sm:w-auto"
+                            title="Προβολή"
+                          >
+                            Προβολή
+                          </a>
+
+                          {/* Download */}
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            download
+                            className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-black w-full sm:w-auto"
+                            style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                          >
+                            Λήψη
+                          </a>
+                        </div>
                       ) : (
                         <span className="text-gray-500">—</span>
                       )}
