@@ -325,7 +325,6 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                   <thead className="bg-gray-50 text-gray-700">
                     <tr className="text-left">
                       <Th>Τίτλος</Th>
-                      <Th>Ανέβηκε</Th>
                       <Th>Μέγεθος</Th>
                       <Th className="text-right">Ενέργεια</Th>
                     </tr>
@@ -336,9 +335,6 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
                       return (
                         <tr key={f.id} className="align-top">
                           <Td className="break-words">{f.title || "—"}</Td>
-                          <Td className="whitespace-nowrap">
-                            {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
-                          </Td>
                           <Td className="whitespace-nowrap">{formatSize(f.size)}</Td>
                           <Td className="text-right whitespace-nowrap">
                             <div className="inline-flex items-center gap-2">
