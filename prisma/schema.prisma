@@ -82,6 +82,7 @@ enum PublicHoliday {
   OCT_28 // 28/10
   CHRISTMAS // 25/12
   BOXING_DAY // 26/12
+  MAY_1 // 01/05 Εργατική Πρωτομαγιά
 }
 
 model User {
