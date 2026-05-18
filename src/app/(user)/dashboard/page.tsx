@@ -105,9 +105,7 @@ export default function UserDashboard() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-medium break-words">{f.title}</div>
-                      <div className="text-xs text-gray-600">
-                        {dt.toLocaleDateString()} {dt.toLocaleTimeString()}
-                      </div>
+                    
                     </div>
                     <a
                       href={f.url}
@@ -137,14 +135,12 @@ export default function UserDashboard() {
           ) : (
             <table className="min-w-[720px] w-full text-sm">
               <colgroup>
-                <col className="w-[55%]" />
+                <col className="w-[75%]" />
                 <col className="w-[25%]" />
-                <col className="w-[20%]" />
               </colgroup>
               <thead>
                 <tr className="text-left text-[color:var(--muted)] border-b border-[color:var(--border)]">
                   <th className="py-2 pr-3">Τίτλος</th>
-                  <th className="py-2 pr-3">Ανέβηκε</th>
                   <th className="py-2 pr-3 text-right">Ενέργειες</th>
                 </tr>
               </thead>
@@ -159,9 +155,6 @@ export default function UserDashboard() {
                       <div className="text-xs text-[color:var(--muted)] break-words">
                         {f.originalName}
                       </div>
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {new Date(f.createdAt).toLocaleString()}
                     </td>
                     <td className="py-2 pr-3 text-right">
                       <a

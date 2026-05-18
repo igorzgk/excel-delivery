@@ -53,7 +53,8 @@ type PublicHoliday =
   | "AUG_15"
   | "OCT_28"
   | "CHRISTMAS"
-  | "BOXING_DAY";
+  | "BOXING_DAY"
+  | "MAY_1";
 
 type ProfilePayload = {
   businessName: string;
@@ -122,6 +123,7 @@ const HOLIDAY_OPTIONS: { value: PublicHoliday; label: string }[] = [
   { value: "OCT_28", label: "28/10 (Εθνική εορτή)" },
   { value: "CHRISTMAS", label: "25/12 (Χριστούγεννα)" },
   { value: "BOXING_DAY", label: "26/12 (Επίσημη αργία)" },
+  { value: "MAY_1", label: "01/05 (Εργατική Πρωτομαγιά)" },
 ];
 
 export default function RegisterPage() {
