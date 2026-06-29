@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-
 type Stats = { users: number; pending: number; files: number };
 type AuditRow = {
   id: string;
@@ -98,9 +97,8 @@ export default function AdminDashboard() {
             <table className="w-full table-fixed text-sm text-[inherit]">
               <thead className="bg-gray-50 text-gray-700">
                 <tr className="text-left">
-                  <Th className="w-[40%]">Ενέργεια</Th>
-                  <Th className="w-[35%]">Χρήστης</Th>
-                  <Th className="w-[25%] hidden sm:table-cell">Ώρα</Th>
+                  <Th className="w-[55%]">Ενέργεια</Th>
+                  <Th className="w-[45%]">Χρήστης</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -124,11 +122,6 @@ export default function AdminDashboard() {
                       {r.actor?.email && (
                         <div className="text-xs text-gray-500">{r.actor.email}</div>
                       )}
-                    </Td>
-
-                    {/* Ώρα (κρυφό στο κινητό) */}
-                    <Td className="hidden sm:table-cell whitespace-nowrap">
-                      {new Date(r.createdAt).toLocaleString()}
                     </Td>
                   </tr>
                 ))}
@@ -157,11 +150,10 @@ function Card({
   return (
     <section
       className="rounded-2xl border border-[var(--border,#E5E7EB)] bg-[var(--card,#fff)] shadow-sm p-4"
-      style={{ color: "var(--app-fg,#0A0F2C)" }} // force dark text inside the card
+      style={{ color: "var(--app-fg,#0A0F2C)" }}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          {/* muted (NOT white) */}
           <h3 className="text-xs font-medium" style={{ color: "var(--app-muted,#6B7280)" }}>
             {title}
           </h3>
@@ -195,6 +187,7 @@ function LinkBtn({ href, children }: { href: string; children: React.ReactNode }
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
 }
+
 function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <td className={`px-3 py-3 ${className}`}>{children}</td>;
 }
