@@ -1009,68 +1009,73 @@ export default function AdminUserProfilePage() {
                     </div>
 
                     {/* pdf list */}
-                    {pdfsFilteredByFolder.length === 0 ? (
-                      <p className="mt-4 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
-                    ) : (
-                      <div className="mt-4 grid gap-2">
-                        {pdfsFilteredByFolder.map((f) => {
-                          const dt = new Date(f.createdAt);
-                          return (
-                            <div key={f.id} className="rounded-xl border p-3 flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <FileText size={16} className="shrink-0" />
-                                  <div className="font-medium break-words">{f.title || f.originalName || "PDF"}</div>
-                                </div>
-                                <div className="text-xs text-gray-600 mt-1">
-                                  {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
-                                </div>
-                              </div>
+                      {pdfsFilteredByFolder.length === 0 ? (
+                        <p className="mt-4 text-sm text-gray-500">Δεν βρέθηκαν αρχεία.</p>
+                      ) : (
+                        <div className="mt-4 grid gap-2">
+                          {pdfsFilteredByFolder.map((f) => {
+                            const dt = new Date(f.createdAt);
+                            return (
+                              <div key={f.id} className="rounded-xl border p-3">
+                                <div className="min-w-0">
+                                  <div className="flex items-start gap-2">
+                                    <FileText size={16} className="shrink-0 mt-0.5" />
+                                    <div className="font-medium break-words min-w-0">
+                                      {f.title || f.originalName || "PDF"}
+                                    </div>
+                                  </div>
 
-                              <div className="flex items-center gap-2 shrink-0">
-                                <select
-                                  className="rounded-lg border px-2 py-1 text-xs max-w-[200px]"
-                                  value={f.pdfFolderId ?? ""}
-                                  onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
-                                >
-                                  <option value="">(Χωρίς)</option>
-                                  {folders.map((fo) => (
-                                    <option key={fo.id} value={fo.id}>
-                                      {fo.name}
-                                    </option>
-                                  ))}
-                                </select>
+                                  <div className="text-xs text-gray-600 mt-1 pl-6">
+                                    {dt.toLocaleDateString()} {dt.toLocaleTimeString()} · {formatSize(f.size)}
+                                  </div>
+                                </div>
 
-                                {f.url ? (
-                                  <a
-                                    href={f.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-block rounded-lg px-3 py-2 text-sm font-semibold text-black"
-                                    style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                                <div className="mt-3 flex flex-col gap-2">
+                                  <select
+                                    className="rounded-lg border px-2 py-2 text-sm w-full"
+                                    value={f.pdfFolderId ?? ""}
+                                    onChange={(e) => movePdf(f.id, e.target.value ? e.target.value : null)}
                                   >
-                                    Λήψη
-                                  </a>
-                                ) : (
-                                  <span className="text-gray-500">—</span>
-                                )}
+                                    <option value="">(Χωρίς)</option>
+                                    {folders.map((fo) => (
+                                      <option key={fo.id} value={fo.id}>
+                                        {fo.name}
+                                      </option>
+                                    ))}
+                                  </select>
 
-                                <button
-                                  type="button"
-                                  onClick={() => deleteFile(f.id)}
-                                  disabled={deletingId === f.id}
-                                  className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-60 hover:bg-black/5"
-                                  title="Διαγραφή"
-                                >
-                                  <Trash2 size={16} />
-                                  {deletingId === f.id ? "…" : "Διαγραφή"}
-                                </button>
+                                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                                    {f.url ? (
+                                      <a
+                                        href={f.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-black"
+                                        style={{ backgroundColor: "var(--brand, #25C3F4)" }}
+                                      >
+                                        Λήψη
+                                      </a>
+                                    ) : (
+                                      <span className="text-gray-500">—</span>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteFile(f.id)}
+                                      disabled={deletingId === f.id}
+                                      className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-60 hover:bg-black/5"
+                                      title="Διαγραφή"
+                                    >
+                                      <Trash2 size={16} />
+                                      {deletingId === f.id ? "…" : "Διαγραφή"}
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      )}
                   </section>
                 </div>
 
