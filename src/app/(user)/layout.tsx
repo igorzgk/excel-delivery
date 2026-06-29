@@ -10,7 +10,7 @@ export default async function UserLayout({
 }) {
   const user = await currentUser();
   if (!user) {
-    redirect("/login?next=/files");
+    redirect("/login?next=/dashboard");
   }
 
   return <AppShell>{children}</AppShell>;
