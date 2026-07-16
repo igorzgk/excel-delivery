@@ -40,6 +40,9 @@ export default function AdminFilesPage() {
   const [savingNew, setSavingNew] = useState(false);
 
   // Search files.
+  // fileSearchInput = what the administrator is currently typing.
+  // fileSearch = the search that has actually been applied.
+  const [fileSearchInput, setFileSearchInput] = useState("");
   const [fileSearch, setFileSearch] = useState("");
 
   // Per-file assignment selections.
@@ -137,6 +140,15 @@ export default function AdminFilesPage() {
       );
     });
   }, [files, fileSearch]);
+
+  function applyFileSearch() {
+    setFileSearch(fileSearchInput.trim());
+  }
+
+  function clearFileSearch() {
+    setFileSearchInput("");
+    setFileSearch("");
+  }
 
   function toggleId(
     current: string[],
@@ -664,20 +676,45 @@ export default function AdminFilesPage() {
 
       {/* File search */}
       <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium">
-            Αναζήτηση αρχείου
-          </span>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyFileSearch();
+          }}
+        >
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">
+              Αναζήτηση αρχείου
+            </span>
 
-          <input
-            value={fileSearch}
-            onChange={(event) =>
-              setFileSearch(event.target.value)
-            }
-            placeholder="Τίτλος, όνομα αρχείου, email ή όνομα χρήστη…"
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          />
-        </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={fileSearchInput}
+                onChange={(event) =>
+                  setFileSearchInput(event.target.value)
+                }
+                placeholder="Τίτλος, όνομα αρχείου, email ή όνομα χρήστη…"
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+
+              <button
+                type="submit"
+                className="shrink-0 rounded-xl bg-[color:var(--brand,#25C3F4)] px-4 py-2 text-sm font-medium text-black hover:opacity-90"
+              >
+                Αναζήτηση
+              </button>
+
+              <button
+                type="button"
+                onClick={clearFileSearch}
+                disabled={!fileSearchInput && !fileSearch}
+                className="shrink-0 rounded-xl border px-4 py-2 text-sm hover:bg-black/5 disabled:opacity-50"
+              >
+                Καθαρισμός
+              </button>
+            </div>
+          </label>
+        </form>
 
         <div className="mt-2 text-xs text-gray-500">
           {filteredFiles.length} από {files.length} αρχεία
