@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+type AssignedUser = {
+  id: string;
+  email: string;
+  name?: string | null;
+};
 
 type FileRow = {
   id: string;
@@ -8,109 +14,443 @@ type FileRow = {
   createdAt: string;
   url?: string | null;
   originalName?: string | null;
-  assignments?: { user: { id: string; email: string; name?: string | null } }[];
+  assignments?: {
+    user: AssignedUser;
+  }[];
 };
 
-type UserRow = { id: string; email: string; name: string | null; status?: string };
+type UserRow = {
+  id: string;
+  email: string;
+  name: string | null;
+  status?: string;
+  role?: string;
+};
 
 export default function AdminFilesPage() {
   const [files, setFiles] = useState<FileRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // --- manual add state (LOCAL FILE) ---
+  // Manual upload.
   const [newTitle, setNewTitle] = useState("");
-  const [newAssignee, setNewAssignee] = useState("");
   const [newFile, setNewFile] = useState<File | null>(null);
+  const [newSelectedUserIds, setNewSelectedUserIds] = useState<string[]>([]);
+  const [newUserSearch, setNewUserSearch] = useState("");
   const [savingNew, setSavingNew] = useState(false);
 
-  // --- duplicate cleanup state ---
+  // Search files.
+  const [fileSearch, setFileSearch] = useState("");
+
+  // Per-file assignment selections.
+  const [assignmentSelections, setAssignmentSelections] = useState<
+    Record<string, string[]>
+  >({});
+
+  // Per-file deletion/unassignment selections.
+  const [removalSelections, setRemovalSelections] = useState<
+    Record<string, string[]>
+  >({});
+
+  const [workingFileId, setWorkingFileId] = useState<string | null>(null);
+
+  // Existing cleanup functions.
   const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
-
-  // --- missing storage check state ---
   const [checkingMissing, setCheckingMissing] = useState(false);
-
-  // --- missing storage cleanup state ---
   const [cleaningMissing, setCleaningMissing] = useState(false);
 
   async function load() {
     setLoading(true);
-    const f = await fetch("/api/files?scope=all", { cache: "no-store" });
-    if (f.ok) setFiles((await f.json()).files);
-    const u = await fetch("/api/admin/users", { cache: "no-store" });
-    if (u.ok) setUsers((await u.json()).users);
-    setLoading(false);
+
+    try {
+      const [filesResponse, usersResponse] = await Promise.all([
+        fetch("/api/files?scope=all", {
+          cache: "no-store",
+        }),
+        fetch("/api/admin/users", {
+          cache: "no-store",
+        }),
+      ]);
+
+      if (filesResponse.ok) {
+        const json = await filesResponse.json();
+        setFiles(json.files || []);
+      }
+
+      if (usersResponse.ok) {
+        const json = await usersResponse.json();
+        setUsers(json.users || []);
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     load();
   }, []);
 
-  async function assign(fileId: string, userId: string) {
-    if (!userId) return;
-    const res = await fetch("/api/assignments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileId, userId }),
+  const activeUsers = useMemo(
+    () =>
+      users.filter(
+        (user) =>
+          user.status === "ACTIVE" &&
+          user.role !== "ADMIN"
+      ),
+    [users]
+  );
+
+  const filteredUploadUsers = useMemo(() => {
+    const query = newUserSearch.trim().toLowerCase();
+
+    if (!query) return activeUsers;
+
+    return activeUsers.filter((user) => {
+      const email = user.email.toLowerCase();
+      const name = (user.name || "").toLowerCase();
+
+      return email.includes(query) || name.includes(query);
     });
-    if (!res.ok) alert("Αποτυχία ανάθεσης");
-    else load();
+  }, [activeUsers, newUserSearch]);
+
+  const filteredFiles = useMemo(() => {
+    const query = fileSearch.trim().toLowerCase();
+
+    if (!query) return files;
+
+    return files.filter((file) => {
+      const title = (file.title || "").toLowerCase();
+      const originalName = (file.originalName || "").toLowerCase();
+
+      const assignedText = (file.assignments || [])
+        .map(
+          (assignment) =>
+            `${assignment.user.email} ${assignment.user.name || ""}`
+        )
+        .join(" ")
+        .toLowerCase();
+
+      return (
+        title.includes(query) ||
+        originalName.includes(query) ||
+        assignedText.includes(query)
+      );
+    });
+  }, [files, fileSearch]);
+
+  function toggleId(
+    current: string[],
+    id: string
+  ): string[] {
+    return current.includes(id)
+      ? current.filter((item) => item !== id)
+      : [...current, id];
+  }
+
+  function toggleAllUploadUsers() {
+    const allIds = activeUsers.map((user) => user.id);
+
+    const allSelected =
+      allIds.length > 0 &&
+      allIds.every((id) => newSelectedUserIds.includes(id));
+
+    setNewSelectedUserIds(
+      allSelected ? [] : allIds
+    );
   }
 
   async function createManual() {
     if (!newTitle.trim() || !newFile) {
-      alert("Συμπληρώστε Τίτλο και επιλέξτε αρχείο.");
+      alert("Συμπληρώστε τίτλο και επιλέξτε αρχείο.");
       return;
     }
+
     setSavingNew(true);
+
     try {
-      const fd = new FormData();
-      fd.append("title", newTitle.trim());
-      fd.append("file", newFile);
-      if (newAssignee) fd.append("assignTo", newAssignee);
+      const formData = new FormData();
 
-      const res = await fetch("/api/files", { method: "POST", body: fd });
+      formData.append("title", newTitle.trim());
+      formData.append("file", newFile);
 
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || "Αποτυχία δημιουργίας αρχείου");
+      if (newSelectedUserIds.length > 0) {
+        formData.append(
+          "assignTo",
+          JSON.stringify(newSelectedUserIds)
+        );
+      }
+
+      const response = await fetch("/api/files", {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          json?.detail ||
+            json?.error ||
+            "Αποτυχία δημιουργίας αρχείου"
+        );
       }
 
       setNewTitle("");
-      setNewAssignee("");
       setNewFile(null);
+      setNewSelectedUserIds([]);
+      setNewUserSearch("");
+
+      const input = document.getElementById(
+        "admin-manual-file-input"
+      ) as HTMLInputElement | null;
+
+      if (input) input.value = "";
+
       await load();
-    } catch (err: any) {
-      alert(err?.message || "Σφάλμα");
+    } catch (error: any) {
+      alert(error?.message || "Σφάλμα");
     } finally {
       setSavingNew(false);
     }
   }
 
+  async function assignSelected(fileId: string) {
+    const userIds = assignmentSelections[fileId] || [];
+
+    if (userIds.length === 0) {
+      alert("Επιλέξτε τουλάχιστον έναν χρήστη.");
+      return;
+    }
+
+    setWorkingFileId(fileId);
+
+    try {
+      const response = await fetch("/api/assignments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fileId,
+          userIds,
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          json?.detail ||
+            json?.error ||
+            "Αποτυχία ανάθεσης"
+        );
+      }
+
+      setAssignmentSelections((previous) => ({
+        ...previous,
+        [fileId]: [],
+      }));
+
+      await load();
+    } catch (error: any) {
+      alert(error?.message || "Αποτυχία ανάθεσης");
+    } finally {
+      setWorkingFileId(null);
+    }
+  }
+
+  async function assignToAll(fileId: string) {
+    if (
+      !confirm(
+        "Να ανατεθεί το αρχείο σε όλους τους ενεργούς χρήστες;"
+      )
+    ) {
+      return;
+    }
+
+    setWorkingFileId(fileId);
+
+    try {
+      const response = await fetch("/api/assignments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fileId,
+          all: true,
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          json?.detail ||
+            json?.error ||
+            "Αποτυχία ανάθεσης"
+        );
+      }
+
+      await load();
+    } catch (error: any) {
+      alert(error?.message || "Αποτυχία ανάθεσης");
+    } finally {
+      setWorkingFileId(null);
+    }
+  }
+
+  async function removeSelectedAssignments(fileId: string) {
+    const userIds = removalSelections[fileId] || [];
+
+    if (userIds.length === 0) {
+      alert(
+        "Επιλέξτε τουλάχιστον έναν χρήστη από τον οποίο θα αφαιρεθεί το αρχείο."
+      );
+      return;
+    }
+
+    if (
+      !confirm(
+        `Να αφαιρεθεί το αρχείο από ${userIds.length} χρήστη/χρήστες;`
+      )
+    ) {
+      return;
+    }
+
+    setWorkingFileId(fileId);
+
+    try {
+      const response = await fetch(
+        `/api/admin/files/${fileId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            userIds,
+            deleteEntireFile: false,
+          }),
+        }
+      );
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          json?.detail ||
+            json?.error ||
+            "Αποτυχία αφαίρεσης αναθέσεων"
+        );
+      }
+
+      setRemovalSelections((previous) => ({
+        ...previous,
+        [fileId]: [],
+      }));
+
+      await load();
+    } catch (error: any) {
+      alert(
+        error?.message ||
+          "Αποτυχία αφαίρεσης αναθέσεων"
+      );
+    } finally {
+      setWorkingFileId(null);
+    }
+  }
+
+  async function deleteEntireFile(fileId: string) {
+    if (
+      !confirm(
+        "Να διαγραφεί οριστικά το αρχείο;\n\nΘα αφαιρεθεί από όλους τους χρήστες, από τη βάση και από το Supabase Storage."
+      )
+    ) {
+      return;
+    }
+
+    setWorkingFileId(fileId);
+
+    try {
+      const response = await fetch(
+        `/api/admin/files/${fileId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            deleteEntireFile: true,
+          }),
+        }
+      );
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          json?.detail ||
+            json?.error ||
+            "Αποτυχία διαγραφής αρχείου"
+        );
+      }
+
+      setFiles((previous) =>
+        previous.filter((file) => file.id !== fileId)
+      );
+    } catch (error: any) {
+      alert(
+        error?.message ||
+          "Αποτυχία διαγραφής αρχείου"
+      );
+    } finally {
+      setWorkingFileId(null);
+    }
+  }
+
   async function cleanupDuplicates() {
-    if (!confirm("Να γίνει έλεγχος duplicates και διαγραφή του παλαιότερου duplicate αρχείου;")) {
+    if (
+      !confirm(
+        "Να γίνει έλεγχος duplicates και διαγραφή του παλαιότερου duplicate αρχείου;"
+      )
+    ) {
       return;
     }
 
     setCleaningDuplicates(true);
+
     try {
-      const res = await fetch("/api/admin/files/cleanup-duplicates", {
-        method: "POST",
-      });
+      const response = await fetch(
+        "/api/admin/files/cleanup-duplicates",
+        {
+          method: "POST",
+        }
+      );
 
-      const json = await res.json().catch(() => ({}));
+      const json = await response.json().catch(() => ({}));
 
-      if (!res.ok) {
-        throw new Error(json?.error || "Αποτυχία καθαρισμού duplicates");
+      if (!response.ok) {
+        throw new Error(
+          json?.error ||
+            "Αποτυχία καθαρισμού duplicates"
+        );
       }
 
       alert(
-        `Ο έλεγχος ολοκληρώθηκε.\nΒρέθηκαν groups: ${json.groupsFound ?? 0}\nΔιαγράφηκαν αρχεία: ${json.deletedFiles ?? 0}`
+        `Ο έλεγχος ολοκληρώθηκε.\nΒρέθηκαν groups: ${
+          json.groupsFound ?? 0
+        }\nΔιαγράφηκαν αρχεία: ${
+          json.deletedFiles ?? 0
+        }`
       );
 
       await load();
-    } catch (err: any) {
-      alert(err?.message || "Σφάλμα κατά τον έλεγχο duplicates");
+    } catch (error: any) {
+      alert(
+        error?.message ||
+          "Σφάλμα κατά τον έλεγχο duplicates"
+      );
     } finally {
       setCleaningDuplicates(false);
     }
@@ -118,31 +458,41 @@ export default function AdminFilesPage() {
 
   async function checkMissingStorage() {
     setCheckingMissing(true);
+
     try {
-      const res = await fetch("/api/admin/files/check-missing-storage", {
-        cache: "no-store",
-      });
+      const response = await fetch(
+        "/api/admin/files/check-missing-storage",
+        {
+          cache: "no-store",
+        }
+      );
 
-      const json = await res.json().catch(() => ({}));
+      const json = await response.json().catch(() => ({}));
 
-      if (!res.ok) {
-        throw new Error(json?.detail || json?.error || "Αποτυχία ελέγχου storage");
+      if (!response.ok) {
+        throw new Error(
+          json?.detail ||
+            json?.error ||
+            "Αποτυχία ελέγχου storage"
+        );
       }
 
-      console.log("missing storage report:", json);
+      console.log("Missing storage report:", json);
 
       if (!json.missingCount) {
         alert(
           `Ο έλεγχος ολοκληρώθηκε.\nΔεν βρέθηκαν missing αρχεία.\nΣύνολο checked: ${json.totalChecked}`
         );
-        return;
+      } else {
+        alert(
+          `Ο έλεγχος ολοκληρώθηκε.\nΣύνολο checked: ${json.totalChecked}\nMissing αρχεία: ${json.missingCount}\n\nΆνοιξε Console για αναλυτική λίστα.`
+        );
       }
-
+    } catch (error: any) {
       alert(
-        `Ο έλεγχος ολοκληρώθηκε.\nΣύνολο checked: ${json.totalChecked}\nMissing αρχεία: ${json.missingCount}\n\nΆνοιξε Console (F12) για αναλυτική λίστα.`
+        error?.message ||
+          "Σφάλμα κατά τον έλεγχο storage"
       );
-    } catch (err: any) {
-      alert(err?.message || "Σφάλμα κατά τον έλεγχο storage");
     } finally {
       setCheckingMissing(false);
     }
@@ -151,44 +501,59 @@ export default function AdminFilesPage() {
   async function cleanupMissingStorage() {
     if (
       !confirm(
-        "Να διαγραφούν από τη βάση όλα τα αρχεία που λείπουν από το Supabase Storage;\n\nΘα διαγραφούν και τα assignments τους."
+        "Να διαγραφούν από τη βάση όλα τα αρχεία που λείπουν από το Supabase Storage;\n\nΘα διαγραφούν και οι αναθέσεις τους."
       )
     ) {
       return;
     }
 
     setCleaningMissing(true);
+
     try {
-      const res = await fetch("/api/admin/files/cleanup-missing-storage", {
-        method: "POST",
-      });
+      const response = await fetch(
+        "/api/admin/files/cleanup-missing-storage",
+        {
+          method: "POST",
+        }
+      );
 
-      const json = await res.json().catch(() => ({}));
+      const json = await response.json().catch(() => ({}));
 
-      if (!res.ok) {
-        throw new Error(json?.detail || json?.error || "Αποτυχία cleanup missing files");
+      if (!response.ok) {
+        throw new Error(
+          json?.detail ||
+            json?.error ||
+            "Αποτυχία cleanup missing files"
+        );
       }
 
-      console.log("cleanup missing storage result:", json);
-
       alert(
-        `Ο καθαρισμός ολοκληρώθηκε.\nMissing found: ${json.missingFound ?? 0}\nDeleted files: ${json.deletedFiles ?? 0}\nDeleted assignments: ${json.deletedAssignments ?? 0}`
+        `Ο καθαρισμός ολοκληρώθηκε.\nMissing found: ${
+          json.missingFound ?? 0
+        }\nDeleted files: ${
+          json.deletedFiles ?? 0
+        }\nDeleted assignments: ${
+          json.deletedAssignments ?? 0
+        }`
       );
 
       await load();
-    } catch (err: any) {
-      alert(err?.message || "Σφάλμα κατά τον καθαρισμό broken files");
+    } catch (error: any) {
+      alert(
+        error?.message ||
+          "Σφάλμα κατά τον καθαρισμό broken files"
+      );
     } finally {
       setCleaningMissing(false);
     }
   }
 
-  const activeUsers = users.filter((u) => u.status === "ACTIVE");
-
   return (
     <div className="grid gap-4 text-[inherit]">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">Όλα τα αρχεία</h2>
+        <h2 className="text-xl font-semibold">
+          Όλα τα αρχεία
+        </h2>
 
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -197,7 +562,9 @@ export default function AdminFilesPage() {
             disabled={checkingMissing}
             className="rounded border px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
           >
-            {checkingMissing ? "Έλεγχος storage…" : "Έλεγχος missing storage"}
+            {checkingMissing
+              ? "Έλεγχος storage…"
+              : "Έλεγχος missing storage"}
           </button>
 
           <button
@@ -206,7 +573,9 @@ export default function AdminFilesPage() {
             disabled={cleaningMissing}
             className="rounded border px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
           >
-            {cleaningMissing ? "Καθαρισμός broken…" : "Καθαρισμός broken files"}
+            {cleaningMissing
+              ? "Καθαρισμός broken…"
+              : "Καθαρισμός broken files"}
           </button>
 
           <button
@@ -215,281 +584,398 @@ export default function AdminFilesPage() {
             disabled={cleaningDuplicates}
             className="rounded border px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
           >
-            {cleaningDuplicates ? "Έλεγχος duplicates…" : "Έλεγχος duplicates"}
+            {cleaningDuplicates
+              ? "Έλεγχος duplicates…"
+              : "Έλεγχος duplicates"}
           </button>
         </div>
       </div>
 
-      {/* ===== MOBILE: Manual add card (LOCAL FILE) ===== */}
-      <section className="sm:hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-3">
-        <h3 className="mb-2 font-medium">Προσθήκη αρχείου (χειροκίνητα)</h3>
-        <div className="grid gap-2">
+      {/* Manual upload */}
+      <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
+        <h3 className="font-medium">
+          Προσθήκη αρχείου χειροκίνητα
+        </h3>
+
+        <div className="mt-3 grid gap-3">
           <input
-            className="w-full border rounded px-2 py-1"
+            className="w-full rounded border px-3 py-2 text-sm"
             placeholder="Τίτλος"
             value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
+            onChange={(event) =>
+              setNewTitle(event.target.value)
+            }
           />
 
           <input
+            id="admin-manual-file-input"
             type="file"
-            className="w-full border rounded px-2 py-1 bg-white"
-            onChange={(e) => setNewFile(e.currentTarget.files?.[0] ?? null)}
+            className="w-full rounded border bg-white px-3 py-2 text-sm"
+            onChange={(event) => {
+              const selectedFile =
+                event.currentTarget.files?.[0] || null;
+
+              setNewFile(selectedFile);
+
+              if (selectedFile && !newTitle.trim()) {
+                setNewTitle(
+                  selectedFile.name.replace(/\.[^/.]+$/, "")
+                );
+              }
+            }}
           />
 
-          <select
-            className="w-full border rounded px-2 py-1 bg-white/90"
-            value={newAssignee}
-            onChange={(e) => setNewAssignee(e.target.value)}
-          >
-            <option value="">— Προαιρετική ανάθεση —</option>
-            {activeUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.email}
-                {u.name ? ` (${u.name})` : ""}
-              </option>
-            ))}
-          </select>
+          <UserChecklist
+            users={filteredUploadUsers}
+            selectedIds={newSelectedUserIds}
+            onToggle={(userId) =>
+              setNewSelectedUserIds((previous) =>
+                toggleId(previous, userId)
+              )
+            }
+            search={newUserSearch}
+            onSearch={setNewUserSearch}
+            showAll
+            allChecked={
+              activeUsers.length > 0 &&
+              activeUsers.every((user) =>
+                newSelectedUserIds.includes(user.id)
+              )
+            }
+            onToggleAll={toggleAllUploadUsers}
+          />
 
           <button
+            type="button"
             disabled={savingNew}
             onClick={createManual}
-            className="rounded bg-[color:var(--brand,#25C3F4)] text-black px-3 py-2 font-medium hover:opacity-90 disabled:opacity-60"
+            className="rounded bg-[color:var(--brand,#25C3F4)] px-4 py-2 font-medium text-black hover:opacity-90 disabled:opacity-60"
           >
-            {savingNew ? "Αποθήκευση…" : "Προσθήκη"}
+            {savingNew
+              ? "Αποθήκευση…"
+              : `Προσθήκη${
+                  newSelectedUserIds.length
+                    ? ` και ανάθεση σε ${newSelectedUserIds.length}`
+                    : ""
+                }`}
           </button>
         </div>
       </section>
 
-      {loading ? (
-        <div className="text-sm text-[color:var(--muted)]">Φόρτωση…</div>
-      ) : (
-        <>
-          {/* ===== DESKTOP/TABLET: Manual add mini-table (LOCAL FILE) ===== */}
-          <section className="hidden sm:block rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
-            <h3 className="mb-3 font-medium">Προσθήκη αρχείου (χειροκίνητα)</h3>
-            <div className="overflow-x-auto">
-              <table className="min-w-[900px] w-full table-fixed text-sm">
-                <colgroup>
-                  <col className="w-[30%]" />
-                  <col className="w-[32%]" />
-                  <col className="w-[26%]" />
-                  <col className="w-[12%]" />
-                </colgroup>
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr className="text-left">
-                    <Th>Τίτλος</Th>
-                    <Th>Αρχείο</Th>
-                    <Th>Ανάθεση σε</Th>
-                    <Th className="text-right">Ενέργειες</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <Td>
-                      <input
-                        className="w-full border rounded px-2 py-1"
-                        placeholder="Τίτλος"
-                        value={newTitle}
-                        onChange={(e) => setNewTitle(e.target.value)}
-                      />
-                    </Td>
-                    <Td>
-                      <input
-                        type="file"
-                        className="w-full border rounded px-2 py-1 bg-white"
-                        onChange={(e) => setNewFile(e.currentTarget.files?.[0] ?? null)}
-                      />
-                    </Td>
-                    <Td>
-                      <select
-                        className="w-full border rounded px-2 py-1 bg-white/90"
-                        value={newAssignee}
-                        onChange={(e) => setNewAssignee(e.target.value)}
-                      >
-                        <option value="">— Καμία —</option>
-                        {activeUsers.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.email}
-                            {u.name ? ` (${u.name})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </Td>
-                    <Td className="text-right">
-                      <button
-                        disabled={savingNew}
-                        onClick={createManual}
-                        className="inline-flex items-center rounded bg-[color:var(--brand,#25C3F4)] px-3 py-2 font-medium text-black hover:opacity-90 disabled:opacity-60"
-                      >
-                        {savingNew ? "Αποθήκευση…" : "Προσθήκη"}
-                      </button>
-                    </Td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
+      {/* File search */}
+      <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium">
+            Αναζήτηση αρχείου
+          </span>
 
-          {/* ===== MOBILE LIST ===== */}
-          <section className="sm:hidden grid gap-3">
-            {files.map((f) => {
-              const assigned = (f.assignments || []).map((a) => a.user.email).join(", ");
-              return (
-                <div
-                  key={f.id}
-                  className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-medium break-words">{f.title}</div>
-                      <div className="text-xs text-gray-600">{new Date(f.createdAt).toLocaleString()}</div>
+          <input
+            value={fileSearch}
+            onChange={(event) =>
+              setFileSearch(event.target.value)
+            }
+            placeholder="Τίτλος, όνομα αρχείου, email ή όνομα χρήστη…"
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+          />
+        </label>
+
+        <div className="mt-2 text-xs text-gray-500">
+          {filteredFiles.length} από {files.length} αρχεία
+        </div>
+      </section>
+
+      {loading ? (
+        <div className="text-sm text-[color:var(--muted)]">
+          Φόρτωση…
+        </div>
+      ) : filteredFiles.length === 0 ? (
+        <div className="rounded-2xl border p-4 text-sm text-gray-500">
+          Δεν βρέθηκαν αρχεία.
+        </div>
+      ) : (
+        <section className="grid gap-4">
+          {filteredFiles.map((file) => {
+            const assignedUsers = (
+              file.assignments || []
+            ).map((assignment) => assignment.user);
+
+            const assignedUserIds =
+              assignedUsers.map((user) => user.id);
+
+            const assignableUsers =
+              activeUsers.filter(
+                (user) =>
+                  !assignedUserIds.includes(user.id)
+              );
+
+            const assigning =
+              assignmentSelections[file.id] || [];
+
+            const removing =
+              removalSelections[file.id] || [];
+
+            const isWorking =
+              workingFileId === file.id;
+
+            return (
+              <article
+                key={file.id}
+                className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4"
+              >
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <h3 className="font-semibold break-words">
+                      {file.title}
+                    </h3>
+
+                    {file.originalName && (
+                      <div className="mt-1 text-xs text-gray-500 break-words">
+                        {file.originalName}
+                      </div>
+                    )}
+
+                    <div className="mt-1 text-xs text-gray-500">
+                      {new Date(
+                        file.createdAt
+                      ).toLocaleString()}
                     </div>
-                    {f.url ? (
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {file.url && (
                       <a
-                        href={f.url}
+                        href={file.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="shrink-0 rounded border px-3 py-1 hover:bg-black/5"
+                        className="rounded border px-3 py-2 text-sm hover:bg-black/5"
                       >
                         Λήψη
                       </a>
-                    ) : null}
-                  </div>
+                    )}
 
-                  <div className="mt-3 grid gap-2">
-                    <div className="text-sm break-words">
-                      <span className="text-gray-600">Ανατεθειμένο σε:</span>{" "}
-                      {assigned || <span className="text-[color:var(--muted)]">Δεν έχει ανατεθεί</span>}
-                    </div>
-
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const userId = (new FormData(e.currentTarget).get("userId") as string) || "";
-                        assign(f.id, userId);
-                      }}
-                      className="flex flex-wrap gap-2"
+                    <button
+                      type="button"
+                      disabled={isWorking}
+                      onClick={() =>
+                        deleteEntireFile(file.id)
+                      }
+                      className="rounded border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-60"
                     >
-                      <select
-                        name="userId"
-                        className="flex-1 min-w-[220px] border rounded px-2 py-2 text-[inherit] bg-white/90"
-                      >
-                        <option value="">Επιλογή χρήστη…</option>
-                        {activeUsers.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.email}
-                            {u.name ? ` (${u.name})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <button className="rounded bg-[color:var(--brand)] text-black px-3 py-2 hover:opacity-90">
-                        Ανάθεση
-                      </button>
-                    </form>
+                      {isWorking
+                        ? "Επεξεργασία…"
+                        : "Οριστική διαγραφή"}
+                    </button>
                   </div>
                 </div>
-              );
-            })}
-          </section>
 
-          {/* ===== DESKTOP/TABLET TABLE ===== */}
-          <section className="hidden sm:block rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
-            <div className="overflow-x-auto">
-              <table className="min-w-[1100px] w-full table-fixed text-sm text-[inherit]">
-                <colgroup>
-                  <col className="w-[34%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[20%]" />
-                  <col className="w-[20%]" />
-                  <col className="w-[8%]" />
-                </colgroup>
+                <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                  {/* Assign users */}
+                  <section className="rounded-xl border p-3">
+                    <h4 className="text-sm font-semibold">
+                      Πρόσθετη ανάθεση
+                    </h4>
 
-                <thead className="bg-gray-50 text-gray-700">
-                  <tr className="text-left">
-                    <Th>Τίτλος</Th>
-                    <Th>Ημερομηνία δημιουργίας</Th>
-                    <Th>Ανατεθειμένο σε</Th>
-                    <Th>Ανάθεση</Th>
-                    <Th className="text-right">Ενέργειες</Th>
-                  </tr>
-                </thead>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Επιλέξτε έναν ή περισσότερους
+                      χρήστες που δεν έχουν ήδη το
+                      αρχείο.
+                    </p>
 
-                <tbody className="divide-y divide-gray-100">
-                  {files.map((f) => {
-                    const assigned = (f.assignments || []).map((a) => a.user.email).join(", ");
-                    return (
-                      <tr key={f.id} className="align-top">
-                        <Td className="whitespace-normal break-words">{f.title}</Td>
-                        <Td className="whitespace-nowrap">{new Date(f.createdAt).toLocaleString()}</Td>
+                    <div className="mt-3">
+                      <UserChecklist
+                        users={assignableUsers}
+                        selectedIds={assigning}
+                        onToggle={(userId) =>
+                          setAssignmentSelections(
+                            (previous) => ({
+                              ...previous,
+                              [file.id]: toggleId(
+                                previous[file.id] || [],
+                                userId
+                              ),
+                            })
+                          )
+                        }
+                      />
+                    </div>
 
-                        <Td className="whitespace-normal break-words">
-                          {assigned ? assigned : <span className="text-[color:var(--muted)]">Δεν έχει ανατεθεί</span>}
-                        </Td>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={
+                          isWorking ||
+                          assigning.length === 0
+                        }
+                        onClick={() =>
+                          assignSelected(file.id)
+                        }
+                        className="rounded bg-[color:var(--brand,#25C3F4)] px-3 py-2 text-sm font-medium text-black disabled:opacity-50"
+                      >
+                        Ανάθεση επιλεγμένων
+                      </button>
 
-                        <Td>
-                          <form
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              const userId = (new FormData(e.currentTarget).get("userId") as string) || "";
-                              assign(f.id, userId);
-                            }}
-                            className="flex flex-wrap items-center justify-start gap-2"
-                          >
-                            <select
-                              name="userId"
-                              className="w-full min-w-[260px] md:w-auto border rounded px-2 py-2 text-[inherit] bg-white/90"
-                            >
-                              <option value="">Επιλογή χρήστη…</option>
-                              {activeUsers.map((u) => (
-                                <option key={u.id} value={u.id}>
-                                  {u.email}
-                                  {u.name ? ` (${u.name})` : ""}
-                                </option>
-                              ))}
-                            </select>
+                      <button
+                        type="button"
+                        disabled={isWorking}
+                        onClick={() =>
+                          assignToAll(file.id)
+                        }
+                        className="rounded border px-3 py-2 text-sm hover:bg-black/5 disabled:opacity-50"
+                      >
+                        Ανάθεση σε όλους
+                      </button>
+                    </div>
+                  </section>
 
-                            <button
-                              type="submit"
-                              className="shrink-0 rounded bg-[color:var(--brand)] text-black px-3 py-2 hover:opacity-90"
-                            >
-                              Ανάθεση
-                            </button>
-                          </form>
-                        </Td>
+                  {/* Remove assignments */}
+                  <section className="rounded-xl border p-3">
+                    <h4 className="text-sm font-semibold">
+                      Ανατεθειμένο σε
+                    </h4>
 
-                        <Td className="text-right whitespace-nowrap">
-                          {f.url ? (
-                            <a
-                              href={f.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-block rounded border px-3 py-2 hover:bg-black/5"
-                            >
-                              Λήψη
-                            </a>
-                          ) : (
-                            <span className="text-[color:var(--muted)]">Δεν υπάρχει URL</span>
-                          )}
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Επιλέξτε τους χρήστες από τους
+                      οποίους θέλετε να αφαιρεθεί το
+                      αρχείο.
+                    </p>
+
+                    <div className="mt-3">
+                      <UserChecklist
+                        users={assignedUsers}
+                        selectedIds={removing}
+                        onToggle={(userId) =>
+                          setRemovalSelections(
+                            (previous) => ({
+                              ...previous,
+                              [file.id]: toggleId(
+                                previous[file.id] || [],
+                                userId
+                              ),
+                            })
+                          )
+                        }
+                        emptyMessage="Το αρχείο δεν έχει ανατεθεί σε κάποιον χρήστη."
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={
+                        isWorking ||
+                        removing.length === 0
+                      }
+                      onClick={() =>
+                        removeSelectedAssignments(
+                          file.id
+                        )
+                      }
+                      className="mt-3 rounded border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Αφαίρεση από επιλεγμένους
+                    </button>
+                  </section>
+                </div>
+              </article>
+            );
+          })}
+        </section>
       )}
     </div>
   );
 }
 
-/* helpers */
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-3 py-3 font-semibold ${className}`}>{children}</th>;
-}
+function UserChecklist({
+  users,
+  selectedIds,
+  onToggle,
+  search,
+  onSearch,
+  showAll = false,
+  allChecked = false,
+  onToggleAll,
+  emptyMessage = "Δεν υπάρχουν διαθέσιμοι χρήστες.",
+}: {
+  users: AssignedUser[];
+  selectedIds: string[];
+  onToggle: (userId: string) => void;
+  search?: string;
+  onSearch?: (value: string) => void;
+  showAll?: boolean;
+  allChecked?: boolean;
+  onToggleAll?: () => void;
+  emptyMessage?: string;
+}) {
+  return (
+    <div className="rounded-xl border bg-gray-50 p-2">
+      {onSearch && (
+        <input
+          value={search || ""}
+          onChange={(event) =>
+            onSearch(event.target.value)
+          }
+          placeholder="Αναζήτηση χρήστη…"
+          className="mb-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+        />
+      )}
 
-function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-3 ${className}`}>{children}</td>;
+      <div className="max-h-56 overflow-y-auto">
+        {showAll && onToggleAll && (
+          <>
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-2 hover:bg-white">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={onToggleAll}
+                className="mt-0.5"
+              />
+
+              <span className="text-sm font-semibold">
+                Όλοι οι ενεργοί χρήστες
+              </span>
+            </label>
+
+            <div className="my-1 h-px bg-gray-200" />
+          </>
+        )}
+
+        {users.length === 0 ? (
+          <div className="px-2 py-3 text-sm text-gray-500">
+            {emptyMessage}
+          </div>
+        ) : (
+          <div className="grid gap-1">
+            {users.map((user) => (
+              <label
+                key={user.id}
+                className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-2 hover:bg-white"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(
+                    user.id
+                  )}
+                  onChange={() =>
+                    onToggle(user.id)
+                  }
+                  className="mt-0.5"
+                />
+
+                <span className="min-w-0 text-sm">
+                  <span className="block break-words">
+                    {user.email}
+                  </span>
+
+                  {user.name && (
+                    <span className="block text-xs text-gray-500 break-words">
+                      {user.name}
+                    </span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
