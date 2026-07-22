@@ -28,17 +28,6 @@ type UserRow = {
   role?: string;
 };
 
-type FolderRow = {
-  id: string;
-  name: string;
-  ownerId?: string | null;
-};
-
-type FolderProgress = {
-  current: number;
-  total: number;
-  message: string;
-};
 
 export default function AdminFilesPage() {
   const [files, setFiles] = useState<FileRow[]>([]);
@@ -51,17 +40,6 @@ export default function AdminFilesPage() {
   const [newSelectedUserIds, setNewSelectedUserIds] = useState<string[]>([]);
   const [newUserSearch, setNewUserSearch] = useState("");
   const [savingNew, setSavingNew] = useState(false);
-
-  // Bulk PDF folder management.
-  const [folderName, setFolderName] = useState("");
-  const [folderSelectedUserIds, setFolderSelectedUserIds] = useState<string[]>(
-    []
-  );
-  const [folderUserSearch, setFolderUserSearch] = useState("");
-  const [creatingFolders, setCreatingFolders] = useState(false);
-  const [deletingFolders, setDeletingFolders] = useState(false);
-  const [folderProgress, setFolderProgress] =
-    useState<FolderProgress | null>(null);
 
   // Search files.
   // fileSearchInput = what the administrator is currently typing.
@@ -138,18 +116,6 @@ export default function AdminFilesPage() {
     });
   }, [activeUsers, newUserSearch]);
 
-  const filteredFolderUsers = useMemo(() => {
-    const query = folderUserSearch.trim().toLowerCase();
-
-    if (!query) return activeUsers;
-
-    return activeUsers.filter((user) => {
-      const email = user.email.toLowerCase();
-      const name = (user.name || "").toLowerCase();
-
-      return email.includes(query) || name.includes(query);
-    });
-  }, [activeUsers, folderUserSearch]);
 
   const filteredFiles = useMemo(() => {
     const query = fileSearch.trim().toLowerCase();
@@ -199,215 +165,6 @@ export default function AdminFilesPage() {
       allIds.every((id) => newSelectedUserIds.includes(id));
 
     setNewSelectedUserIds(allSelected ? [] : allIds);
-  }
-
-  function toggleAllFolderUsers() {
-    const allIds = activeUsers.map((user) => user.id);
-
-    const allSelected =
-      allIds.length > 0 &&
-      allIds.every((id) => folderSelectedUserIds.includes(id));
-
-    setFolderSelectedUserIds(allSelected ? [] : allIds);
-  }
-
-  async function createFoldersForSelectedUsers() {
-    const name = folderName.trim();
-
-    if (!name) {
-      alert("Συμπληρώστε όνομα φακέλου.");
-      return;
-    }
-
-    if (folderSelectedUserIds.length === 0) {
-      alert("Επιλέξτε τουλάχιστον έναν χρήστη.");
-      return;
-    }
-
-    const selectedUsers = activeUsers.filter((user) =>
-      folderSelectedUserIds.includes(user.id)
-    );
-
-    if (
-      !confirm(
-        `Να δημιουργηθεί ο φάκελος "${name}" σε ${selectedUsers.length} χρήστη/χρήστες;`
-      )
-    ) {
-      return;
-    }
-
-    setCreatingFolders(true);
-    setFolderProgress({
-      current: 0,
-      total: selectedUsers.length,
-      message: "Έναρξη δημιουργίας φακέλων…",
-    });
-
-    let created = 0;
-    let skipped = 0;
-    let failed = 0;
-
-    try {
-      for (let index = 0; index < selectedUsers.length; index++) {
-        const user = selectedUsers[index];
-
-        setFolderProgress({
-          current: index + 1,
-          total: selectedUsers.length,
-          message: `Δημιουργία για ${user.email}`,
-        });
-
-        try {
-          const response = await fetch("/api/pdf-folders", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              name,
-              userId: user.id,
-            }),
-          });
-
-          const json = await response.json().catch(() => ({}));
-
-          if (response.ok) {
-            created += 1;
-          } else if (
-            response.status === 409 ||
-            json?.error === "folder_exists"
-          ) {
-            skipped += 1;
-          } else {
-            failed += 1;
-          }
-        } catch {
-          failed += 1;
-        }
-      }
-
-      alert(
-        `Η διαδικασία ολοκληρώθηκε.\n\nΔημιουργήθηκαν: ${created}\nΥπήρχαν ήδη: ${skipped}\nΑποτυχίες: ${failed}`
-      );
-
-      setFolderName("");
-      setFolderSelectedUserIds([]);
-      setFolderUserSearch("");
-    } finally {
-      setCreatingFolders(false);
-      setFolderProgress(null);
-    }
-  }
-
-  async function deleteFoldersForSelectedUsers() {
-    const name = folderName.trim();
-
-    if (!name) {
-      alert("Συμπληρώστε το όνομα του φακέλου που θέλετε να διαγράψετε.");
-      return;
-    }
-
-    if (folderSelectedUserIds.length === 0) {
-      alert("Επιλέξτε τουλάχιστον έναν χρήστη.");
-      return;
-    }
-
-    const selectedUsers = activeUsers.filter((user) =>
-      folderSelectedUserIds.includes(user.id)
-    );
-
-    if (
-      !confirm(
-        `Να διαγραφεί ο φάκελος "${name}" από ${selectedUsers.length} χρήστη/χρήστες;\n\nΤα PDF δεν θα διαγραφούν. Θα αφαιρεθούν μόνο από τον φάκελο.`
-      )
-    ) {
-      return;
-    }
-
-    setDeletingFolders(true);
-    setFolderProgress({
-      current: 0,
-      total: selectedUsers.length,
-      message: "Έναρξη διαγραφής φακέλων…",
-    });
-
-    let deleted = 0;
-    let notFound = 0;
-    let failed = 0;
-
-    try {
-      for (let index = 0; index < selectedUsers.length; index++) {
-        const user = selectedUsers[index];
-
-        setFolderProgress({
-          current: index + 1,
-          total: selectedUsers.length,
-          message: `Έλεγχος φακέλων για ${user.email}`,
-        });
-
-        try {
-          const listResponse = await fetch(
-            `/api/pdf-folders?userId=${encodeURIComponent(user.id)}`,
-            {
-              cache: "no-store",
-            }
-          );
-
-          const listJson = await listResponse.json().catch(() => ({}));
-
-          if (!listResponse.ok) {
-            failed += 1;
-            continue;
-          }
-
-          const folders = (listJson.folders || []) as FolderRow[];
-
-          const matchingFolders = folders.filter(
-            (folder) =>
-              folder.name.trim().toLowerCase() === name.toLowerCase()
-          );
-
-          if (matchingFolders.length === 0) {
-            notFound += 1;
-            continue;
-          }
-
-          let userDeleteSucceeded = true;
-
-          for (const folder of matchingFolders) {
-            const deleteResponse = await fetch(
-              `/api/pdf-folders/${folder.id}`,
-              {
-                method: "DELETE",
-              }
-            );
-
-            if (!deleteResponse.ok) {
-              userDeleteSucceeded = false;
-            }
-          }
-
-          if (userDeleteSucceeded) {
-            deleted += 1;
-          } else {
-            failed += 1;
-          }
-        } catch {
-          failed += 1;
-        }
-      }
-
-      alert(
-        `Η διαδικασία ολοκληρώθηκε.\n\nΔιαγράφηκαν: ${deleted}\nΔεν βρέθηκαν: ${notFound}\nΑποτυχίες: ${failed}`
-      );
-
-      setFolderName("");
-      setFolderSelectedUserIds([]);
-      setFolderUserSearch("");
-    } finally {
-      setDeletingFolders(false);
-      setFolderProgress(null);
-    }
   }
 
   async function createManual() {
@@ -766,7 +523,6 @@ export default function AdminFilesPage() {
     }
   }
 
-  const folderActionRunning = creatingFolders || deletingFolders;
 
   return (
     <div className="grid gap-4 text-[inherit]">
@@ -875,118 +631,6 @@ export default function AdminFilesPage() {
                     : ""
                 }`}
           </button>
-        </div>
-      </section>
-
-      {/* Bulk PDF folder management */}
-      <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4">
-        <h3 className="font-medium">
-          Μαζική διαχείριση PDF φακέλων
-        </h3>
-
-        <p className="mt-1 text-xs text-gray-500">
-          Δημιουργήστε ή διαγράψτε φάκελο για επιλεγμένους ή
-          όλους τους ενεργούς χρήστες.
-        </p>
-
-        <div className="mt-3 grid gap-3">
-          <label className="block">
-            <span className="mb-1 block text-sm">
-              Όνομα φακέλου
-            </span>
-
-            <input
-              value={folderName}
-              disabled={folderActionRunning}
-              onChange={(event) =>
-                setFolderName(event.target.value)
-              }
-              placeholder="π.χ. ΑΡΧΕΙΟ ΚΑΘΑΡΙΣΜΟΥ & ΑΠΟΛΥΜΑΝΣΗΣ"
-              className="w-full rounded border px-3 py-2 text-sm disabled:opacity-60"
-            />
-          </label>
-
-          <UserChecklist
-            users={filteredFolderUsers}
-            selectedIds={folderSelectedUserIds}
-            onToggle={(userId) =>
-              setFolderSelectedUserIds((previous) =>
-                toggleId(previous, userId)
-              )
-            }
-            search={folderUserSearch}
-            onSearch={setFolderUserSearch}
-            showAll
-            allChecked={
-              activeUsers.length > 0 &&
-              activeUsers.every((user) =>
-                folderSelectedUserIds.includes(user.id)
-              )
-            }
-            onToggleAll={toggleAllFolderUsers}
-          />
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              type="button"
-              disabled={
-                folderActionRunning ||
-                !folderName.trim() ||
-                folderSelectedUserIds.length === 0
-              }
-              onClick={createFoldersForSelectedUsers}
-              className="rounded bg-[color:var(--brand,#25C3F4)] px-4 py-2 text-sm font-medium text-black hover:opacity-90 disabled:opacity-50"
-            >
-              {creatingFolders
-                ? "Δημιουργία φακέλων…"
-                : `Δημιουργία για επιλεγμένους (${folderSelectedUserIds.length})`}
-            </button>
-
-            <button
-              type="button"
-              disabled={
-                folderActionRunning ||
-                !folderName.trim() ||
-                folderSelectedUserIds.length === 0
-              }
-              onClick={deleteFoldersForSelectedUsers}
-              className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-            >
-              {deletingFolders
-                ? "Διαγραφή φακέλων…"
-                : `Διαγραφή από επιλεγμένους (${folderSelectedUserIds.length})`}
-            </button>
-          </div>
-
-          {folderProgress && (
-            <div className="rounded-xl border bg-gray-50 p-3">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="break-words">
-                  {folderProgress.message}
-                </span>
-
-                <span className="shrink-0 font-medium">
-                  {folderProgress.current}/{folderProgress.total}
-                </span>
-              </div>
-
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-200">
-                <div
-                  className="h-full rounded-full bg-[color:var(--brand,#25C3F4)] transition-all"
-                  style={{
-                    width:
-                      folderProgress.total > 0
-                        ? `${
-                            (folderProgress.current /
-                              folderProgress.total) *
-                            100
-                          }%`
-                        : "0%",
-                  }}
-                />
-              </div>
-            </div>
-          )}
         </div>
       </section>
 
