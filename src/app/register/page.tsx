@@ -66,7 +66,7 @@ type ProfilePayload = {
   hotCabinetCount: number;
   dryAgedChamberCount: number;
   iceCreamFreezerCount: number;
-
+  chocolateDisplayCount: number;
   supervisorInitials: string;
 
   closedWeekdays: Weekday[];
@@ -151,6 +151,7 @@ export default function RegisterPage() {
   supervisorInitials: "",
   closedWeekdays: [],
   closedHolidays: [],
+  chocolateDisplayCount: 0,
   augustRange: { from: "", to: "" },
 });
   const updateProfile = <K extends keyof ProfilePayload>(
@@ -376,6 +377,11 @@ export default function RegisterPage() {
                 label="Αριθμός καταψύκτη/έκθεσης παγωτών"
                 value={profile.iceCreamFreezerCount}
                 onChange={(v) => updateProfile("iceCreamFreezerCount", v)}
+              />
+              <NumberField
+                label="Αριθμός προθηκών έκθεσης προϊόντων σοκολατοποιίας"
+                value={profile.chocolateDisplayCount}
+                onChange={(v) => updateProfile("chocolateDisplayCount", v)}
               />
             </div>
           </div>

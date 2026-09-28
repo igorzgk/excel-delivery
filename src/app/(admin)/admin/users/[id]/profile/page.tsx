@@ -64,7 +64,7 @@ type ProfilePayload = {
   hotCabinetCount: number;
   dryAgedChamberCount: number;
   iceCreamFreezerCount: number;
-
+  chocolateDisplayCount: number;
   supervisorInitials: string;
 
   closedWeekdays: Weekday[];
@@ -232,6 +232,7 @@ export default function AdminUserProfilePage() {
             hotCabinetCount: 0,
             dryAgedChamberCount: 0,
             iceCreamFreezerCount: 0,
+            chocolateDisplayCount: 0,
             supervisorInitials: "",
             closedWeekdays: [],
             closedHolidays: [],
@@ -247,6 +248,7 @@ export default function AdminUserProfilePage() {
             hotCabinetCount: p.hotCabinetCount ?? 0,
             dryAgedChamberCount: p.dryAgedChamberCount ?? 0,
             iceCreamFreezerCount: p.iceCreamFreezerCount ?? 0,
+            chocolateDisplayCount: p.chocolateDisplayCount ?? 0,
             supervisorInitials: p.supervisorInitials ?? "",
             closedWeekdays: (p.closedWeekdays ?? []) as Weekday[],
             closedHolidays: (p.closedHolidays ?? []) as PublicHoliday[],
@@ -636,6 +638,11 @@ export default function AdminUserProfilePage() {
               label="Αριθμός καταψύκτη/έκθεσης παγωτών"
               value={profile.iceCreamFreezerCount}
               onChange={(v) => update("iceCreamFreezerCount", v)}
+            />
+            <NumberField
+              label="Αριθμός προθηκών έκθεσης προϊόντων σοκολατοποιίας"
+              value={profile.chocolateDisplayCount}
+              onChange={(v) => update("chocolateDisplayCount", v)}
             />
           </div>
         </div>

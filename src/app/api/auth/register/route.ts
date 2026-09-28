@@ -14,6 +14,7 @@ const ProfileSchema = z.object({
   hotCabinetCount: z.coerce.number().int().min(0).default(0),
   dryAgedChamberCount: z.coerce.number().int().min(0).default(0),
   iceCreamFreezerCount: z.coerce.number().int().min(0).default(0),
+  chocolateDisplayCount: z.coerce.number().int().min(0).default(0),
 
   supervisorInitials: z.string().optional().nullable(),
 
@@ -89,6 +90,7 @@ export async function POST(req: Request) {
           hotCabinetCount: profile.hotCabinetCount ?? 0,
           dryAgedChamberCount: profile.dryAgedChamberCount ?? 0,
           iceCreamFreezerCount: profile.iceCreamFreezerCount ?? 0,
+          chocolateDisplayCount: profile.chocolateDisplayCount ?? 0,
 
           supervisorInitials: profile.supervisorInitials || null,
 

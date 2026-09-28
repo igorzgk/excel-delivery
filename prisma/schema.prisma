@@ -127,6 +127,7 @@ model UserProfile {
   hotCabinetCount      Int @default(0) // Αριθμός θερμοθαλάμων / Bain Marie
   dryAgedChamberCount  Int @default(0) // Αριθμός θαλάμων Dry Aged
   iceCreamFreezerCount Int @default(0) // Αριθμός καταψύκτη/έκθεσης παγωτών
+  chocolateDisplayCount Int @default(0) // Αριθμός προθηκών έκθεσης προϊόντων σοκολατοποιίας
 
   // Αρχικά υπευθύνου
   supervisorInitials String?

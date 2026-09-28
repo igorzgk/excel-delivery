@@ -19,6 +19,7 @@ const ProfileSchema = z.object({
   hotCabinetCount: z.number().int().nonnegative().optional().default(0),
   dryAgedChamberCount: z.number().int().nonnegative().optional().default(0),
   iceCreamFreezerCount: z.number().int().nonnegative().optional().default(0),
+  chocolateDisplayCount: z.number().int().nonnegative().optional().default(0),
 
   supervisorInitials: z.string().max(20).optional().nullable(),
 
@@ -86,6 +87,7 @@ export async function GET() {
             hotCabinetCount: p.hotCabinetCount,
             dryAgedChamberCount: p.dryAgedChamberCount,
             iceCreamFreezerCount: p.iceCreamFreezerCount,
+            chocolateDisplayCount: p.chocolateDisplayCount,
             supervisorInitials: p.supervisorInitials,
             closedWeekdays: p.closedWeekdays,
             closedHolidays: p.closedHolidays,
@@ -147,6 +149,7 @@ export async function PUT(req: Request) {
       hotCabinetCount: data.hotCabinetCount ?? 0,
       dryAgedChamberCount: data.dryAgedChamberCount ?? 0,
       iceCreamFreezerCount: data.iceCreamFreezerCount ?? 0,
+      chocolateDisplayCount: data.chocolateDisplayCount ?? 0,
       supervisorInitials: data.supervisorInitials ?? null,
       closedWeekdays: (data.closedWeekdays ?? []) as any,
       closedHolidays: (data.closedHolidays ?? []) as any,
@@ -165,6 +168,7 @@ export async function PUT(req: Request) {
       hotCabinetCount: data.hotCabinetCount ?? 0,
       dryAgedChamberCount: data.dryAgedChamberCount ?? 0,
       iceCreamFreezerCount: data.iceCreamFreezerCount ?? 0,
+      chocolateDisplayCount: data.chocolateDisplayCount ?? 0,
       supervisorInitials: data.supervisorInitials ?? null,
       closedWeekdays: (data.closedWeekdays ?? []) as any,
       closedHolidays: (data.closedHolidays ?? []) as any,
