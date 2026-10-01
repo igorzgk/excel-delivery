@@ -58,11 +58,12 @@ export async function GET(req: Request) {
             hotCabinetCount: p.hotCabinetCount,
             dryAgedChamberCount: p.dryAgedChamberCount,
             iceCreamFreezerCount: p.iceCreamFreezerCount,
+            chocolateDisplayCount: p.chocolateDisplayCount,
 
             supervisorInitials: p.supervisorInitials,
 
-            closedWeekdays: p.closedWeekdays,   // Weekday[]
-            closedHolidays: p.closedHolidays,   // PublicHoliday[]
+            closedWeekdays: p.closedWeekdays, // Weekday[]
+            closedHolidays: p.closedHolidays, // PublicHoliday[]
 
             augustRange:
               p.augustClosedFrom && p.augustClosedTo
