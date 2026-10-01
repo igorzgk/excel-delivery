@@ -112,13 +112,13 @@ export default function Sidebar({
           <div className="font-semibold mb-1" style={{ color: "var(--sidebar-text,#ECF5F8)" }}>
             Επικοινωνία
           </div>
-          <div>
+          {/*<div>
             Τηλ: <a className="underline underline-offset-2" href="tel:+306942811202">+30 6942811202</a>
-          </div>
+          </div>*/}
           <div>
             Email:{" "}
-            <a className="underline underline-offset-2" href="mailto:info@hplus.gr">
-              info@hplus.gr
+            <a className="underline underline-offset-2" href="mailto:hplusadmin@gmail.com">
+              hplusadmin@gmail.com
             </a>
           </div>
           <div className="mt-2">v0.1</div>
