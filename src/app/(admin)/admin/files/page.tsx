@@ -28,6 +28,23 @@ type UserRow = {
   role?: string;
 };
 
+function filenameWithoutExtension(name: string) {
+  return name.replace(/\.[^/.]+$/, "");
+}
+
+function cleanUploadedFilename(name: string) {
+  const withoutExtension = filenameWithoutExtension(name);
+
+  // Remove email prefix from files downloaded by a user.
+  // Handles:
+  // email@example.com_filename.xlsx
+  // email@example.com__filename.xlsx
+  return withoutExtension.replace(
+    /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}__?/i,
+    ""
+  );
+}
+
 
 export default function AdminFilesPage() {
   const [files, setFiles] = useState<FileRow[]>([]);
@@ -590,9 +607,7 @@ export default function AdminFilesPage() {
               setNewFile(selectedFile);
 
               if (selectedFile && !newTitle.trim()) {
-                setNewTitle(
-                  selectedFile.name.replace(/\.[^/.]+$/, "")
-                );
+                setNewTitle(cleanUploadedFilename(selectedFile.name));
               }
             }}
           />
