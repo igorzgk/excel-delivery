@@ -30,6 +30,18 @@ function safeFilename(name: string) {
   return (name || "file").replace(/[^\w.\-() ]+/g, "_");
 }
 
+function removeUserEmailPrefix(filename: string, email?: string | null) {
+  if (!email) return filename;
+
+  const prefix = `${email}_`;
+
+  if (filename.toLowerCase().startsWith(prefix.toLowerCase())) {
+    return filename.slice(prefix.length);
+  }
+
+  return filename;
+}
+
 function parseSelectedUserIds(form: FormData): string[] {
   const values = form
     .getAll("assignTo")
@@ -182,7 +194,13 @@ export async function POST(req: Request) {
     const suppliedTitle = String(form.get("title") || "").trim();
 
     const rawOriginalName = file.name || "file";
-    const originalName = safeFilename(rawOriginalName);
+
+    const cleanedOriginalName = removeUserEmailPrefix(
+      rawOriginalName,
+      (me as any).email
+    );
+
+    const originalName = safeFilename(cleanedOriginalName);
 
     const title =
       suppliedTitle ||
