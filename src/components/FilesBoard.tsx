@@ -33,6 +33,19 @@ function filenameWithoutExtension(name: string) {
   return name.replace(/\.[^/.]+$/, "");
 }
 
+function cleanUploadedFilename(name: string) {
+  const withoutExtension = filenameWithoutExtension(name);
+
+  // Remove an email prefix added to downloaded files.
+  // Examples:
+  // user@gmail.com__filename.xlsx -> filename
+  // user@gmail.com_filename.xlsx  -> filename
+  return withoutExtension.replace(
+    /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}__?/i,
+    ""
+  );
+}
+
 export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] }) {
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<FileItem[]>(initialFiles ?? []);
@@ -240,7 +253,7 @@ export default function FilesBoard({ initialFiles }: { initialFiles: FileItem[] 
               setNewFile(pickedFile);
 
               if (pickedFile) {
-                setNewTitle(filenameWithoutExtension(pickedFile.name));
+                setNewTitle(cleanUploadedFilename(pickedFile.name));
               }
             }}
           />
