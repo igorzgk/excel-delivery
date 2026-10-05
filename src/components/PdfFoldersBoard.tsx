@@ -88,6 +88,10 @@ export default function PdfFoldersBoard({
   const [creatingFolder, setCreatingFolder] =
     useState(false);
 
+  // Move menu state
+  const [moveMenuFileId, setMoveMenuFileId] =
+    useState<string | null>(null);
+
   // Delete state
   const [deletingFileId, setDeletingFileId] =
     useState<string | null>(null);
@@ -536,11 +540,13 @@ export default function PdfFoldersBoard({
     folderId: string
   ) {
     setCurrentFolderId(folderId);
+    setMoveMenuFileId(null);
     setQuery("");
   }
 
   function goToRoot() {
     setCurrentFolderId(null);
+    setMoveMenuFileId(null);
     setQuery("");
   }
 
@@ -1021,69 +1027,143 @@ export default function PdfFoldersBoard({
                           </>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const options = [
-                              "0 - Χωρίς φάκελο",
-                              ...folders.map(
+                        {/* Move to folder dropdown */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setMoveMenuFileId(
                                 (
-                                  folder,
-                                  index
+                                  current
                                 ) =>
-                                  `${index + 1} - ${folder.name}`
-                              ),
-                            ];
-
-                            const choice =
-                              prompt(
-                                `Μετακίνηση αρχείου:\n\n${options.join(
-                                  "\n"
-                                )}\n\nΓράψτε τον αριθμό του φακέλου:`
-                              );
-
-                            if (
-                              choice === null
-                            ) {
-                              return;
+                                  current ===
+                                  file.id
+                                    ? null
+                                    : file.id
+                              )
                             }
+                            title="Μετακίνηση σε φάκελο"
+                            className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
+                          >
+                            <Folder
+                              size={15}
+                            />
+                          </button>
 
-                            const number =
-                              Number(
-                                choice
-                              );
+                          {moveMenuFileId ===
+                            file.id && (
+                            <div
+                              className="
+                                absolute
+                                left-1/2
+                                top-full
+                                z-50
+                                mt-2
+                                w-52
+                                -translate-x-1/2
+                                overflow-hidden
+                                rounded-lg
+                                border
+                                bg-white
+                                py-1
+                                text-left
+                                shadow-lg
+                              "
+                            >
+                              <div className="border-b px-3 py-2 text-xs font-semibold text-gray-500">
+                                Μετακίνηση σε
+                              </div>
 
-                            if (
-                              Number.isNaN(
-                                number
-                              ) ||
-                              number < 0 ||
-                              number >
-                                folders.length
-                            ) {
-                              alert(
-                                "Μη έγκυρη επιλογή."
-                              );
-                              return;
-                            }
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await movePdf(
+                                    file.id,
+                                    null
+                                  );
 
-                            movePdf(
-                              file.id,
-                              number === 0
-                                ? null
-                                : folders[
-                                    number -
-                                      1
-                                  ].id
-                            );
-                          }}
-                          title="Μετακίνηση σε φάκελο"
-                          className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
-                        >
-                          <Folder
-                            size={15}
-                          />
-                        </button>
+                                  setMoveMenuFileId(
+                                    null
+                                  );
+                                }}
+                                className={[
+                                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100",
+                                  !file.pdfFolderId
+                                    ? "bg-gray-50 font-medium"
+                                    : "",
+                                ].join(
+                                  " "
+                                )}
+                              >
+                                <Folder
+                                  size={
+                                    15
+                                  }
+                                  className="shrink-0 text-gray-400"
+                                />
+
+                                <span className="truncate">
+                                  Χωρίς
+                                  φάκελο
+                                </span>
+                              </button>
+
+                              {folders.length >
+                              0 ? (
+                                folders.map(
+                                  (
+                                    folder
+                                  ) => (
+                                    <button
+                                      key={
+                                        folder.id
+                                      }
+                                      type="button"
+                                      onClick={async () => {
+                                        await movePdf(
+                                          file.id,
+                                          folder.id
+                                        );
+
+                                        setMoveMenuFileId(
+                                          null
+                                        );
+                                      }}
+                                      className={[
+                                        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100",
+                                        file.pdfFolderId ===
+                                        folder.id
+                                          ? "bg-gray-50 font-medium"
+                                          : "",
+                                      ].join(
+                                        " "
+                                      )}
+                                    >
+                                      <Folder
+                                        size={
+                                          15
+                                        }
+                                        className="shrink-0 text-amber-500"
+                                      />
+
+                                      <span className="truncate">
+                                        {
+                                          folder.name
+                                        }
+                                      </span>
+                                    </button>
+                                  )
+                                )
+                              ) : (
+                                <div className="px-3 py-2 text-xs text-gray-500">
+                                  Δεν
+                                  υπάρχουν
+                                  φάκελοι.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
 
                         <button
                           type="button"
