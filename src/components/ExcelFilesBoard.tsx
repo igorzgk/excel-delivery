@@ -197,14 +197,14 @@ export default function ExcelFilesBoard({
   return (
     <div className="space-y-4">
       {/* Upload */}
-      <section className="rounded-xl border bg-white p-4">
+      <section className="rounded-xl border bg-white p-3 sm:p-4">
         <h2 className="font-semibold">
           Προσθήκη αρχείου Excel
         </h2>
 
         <div className="mt-3 grid gap-3 md:grid-cols-[1.2fr_1fr_auto]">
           <input
-            className="w-full rounded-lg border px-3 py-2 text-sm"
+            className="w-full min-w-0 rounded-lg border px-3 py-2 text-sm"
             placeholder="Τίτλος αρχείου"
             value={newTitle}
             onChange={(e) =>
@@ -216,7 +216,7 @@ export default function ExcelFilesBoard({
             id="excel-file-upload-input"
             type="file"
             accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+            className="w-full min-w-0 rounded-lg border bg-white px-3 py-2 text-sm"
             onChange={(e) => {
               const picked =
                 e.currentTarget.files?.[0] ??
@@ -238,7 +238,7 @@ export default function ExcelFilesBoard({
             type="button"
             disabled={uploading}
             onClick={uploadMyFile}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60 md:w-auto"
             style={{
               backgroundColor:
                 "var(--brand,#25C3F4)",
@@ -254,9 +254,10 @@ export default function ExcelFilesBoard({
         </div>
       </section>
 
-      {/* Explorer toolbar */}
+      {/* Explorer */}
       <section className="overflow-hidden rounded-xl border bg-white">
-        <div className="flex flex-col gap-3 border-b bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3 border-b bg-gray-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
           <input
             value={query}
             onChange={(e) =>
@@ -272,13 +273,25 @@ export default function ExcelFilesBoard({
         </div>
 
         {/* Windows-like icon view */}
-        <div className="min-h-[420px] p-5">
+        <div className="min-h-[420px] p-2 sm:p-4 lg:p-5">
           {filtered.length === 0 ? (
             <div className="py-16 text-center text-sm text-gray-500">
               Δεν βρέθηκαν αρχεία Excel.
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(145px,1fr))] gap-3">
+            <div
+              className="
+                grid
+                grid-cols-2
+                gap-x-2
+                gap-y-4
+                sm:grid-cols-3
+                md:grid-cols-4
+                lg:grid-cols-5
+                xl:grid-cols-6
+                2xl:grid-cols-7
+              "
+            >
               {filtered.map((file) => {
                 const title =
                   file.title ||
@@ -288,45 +301,97 @@ export default function ExcelFilesBoard({
                 return (
                   <div
                     key={file.id}
-                    className="group relative flex min-h-[155px] flex-col items-center rounded-lg border border-transparent p-3 text-center transition hover:border-blue-200 hover:bg-blue-50/70"
+                    className="
+                      group
+                      relative
+                      flex
+                      min-w-0
+                      flex-col
+                      items-center
+                      rounded-lg
+                      border
+                      border-transparent
+                      px-1
+                      py-3
+                      text-center
+                      transition
+                      hover:border-blue-200
+                      hover:bg-blue-50/70
+                      sm:px-2
+                    "
                   >
                     {file.url ? (
                       <a
                         href={file.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex flex-1 flex-col items-center"
+                        className="flex w-full min-w-0 flex-col items-center"
                         title={title}
                       >
-                        <div className="flex h-20 items-center justify-center">
+                        <div className="flex h-16 items-center justify-center sm:h-20">
                           <FileSpreadsheet
-                            size={64}
+                            size={56}
                             strokeWidth={1.4}
-                            className="text-emerald-600"
+                            className="text-emerald-600 sm:h-16 sm:w-16"
                           />
                         </div>
 
-                        <div className="mt-1 line-clamp-3 break-words text-sm font-medium text-gray-800">
+                        <div
+                          className="
+                            mt-1
+                            w-full
+                            overflow-hidden
+                            break-words
+                            text-xs
+                            font-medium
+                            leading-4
+                            text-gray-800
+                            sm:text-sm
+                            sm:leading-5
+                          "
+                          style={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: "vertical",
+                          }}
+                        >
                           {title}
                         </div>
                       </a>
                     ) : (
                       <>
-                        <div className="flex h-20 items-center justify-center">
+                        <div className="flex h-16 items-center justify-center sm:h-20">
                           <FileSpreadsheet
-                            size={64}
+                            size={56}
                             strokeWidth={1.4}
-                            className="text-emerald-600"
+                            className="text-emerald-600 sm:h-16 sm:w-16"
                           />
                         </div>
 
-                        <div className="mt-1 line-clamp-3 break-words text-sm font-medium">
+                        <div
+                          className="
+                            mt-1
+                            w-full
+                            overflow-hidden
+                            break-words
+                            text-xs
+                            font-medium
+                            leading-4
+                            sm:text-sm
+                            sm:leading-5
+                          "
+                          style={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: "vertical",
+                          }}
+                        >
                           {title}
                         </div>
                       </>
                     )}
 
-                    <div className="mt-2 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                    <div className="mt-2 flex items-center justify-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                       {file.url && (
                         <a
                           href={file.url}
