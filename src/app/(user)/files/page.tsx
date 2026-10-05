@@ -1,11 +1,14 @@
+// src/app/(user)/files/page.tsx
 import React from "react";
 import { cookies } from "next/headers";
-import FilesBoard from "@/components/FilesBoard";
+import ExcelFilesBoard from "@/components/ExcelFilesBoard";
 
 export const dynamic = "force-dynamic";
 
 async function fetchMyFiles() {
-  const base = process.env.NEXTAUTH_URL || "https://hygiene-plus.vercel.app";
+  const base =
+    process.env.NEXTAUTH_URL || "https://hygiene-plus.vercel.app";
+
   const cookie = cookies().toString();
 
   const res = await fetch(`${base}/api/files`, {
@@ -15,10 +18,13 @@ async function fetchMyFiles() {
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`Failed to load files (${res.status}): ${detail}`);
+    throw new Error(
+      `Failed to load files (${res.status}): ${detail}`
+    );
   }
 
   const data = await res.json();
+
   return data.files as any[];
 }
 
@@ -26,15 +32,18 @@ export default async function UserFilesPage() {
   const files = await fetchMyFiles();
 
   return (
-    <div className="mx-auto max-w-[1460px] space-y-6 p-6">
+    <div className="mx-auto max-w-[1460px] space-y-5 p-6">
       <header>
-        <h1 className="text-2xl font-semibold">Τα Αρχεία μου</h1>
+        <h1 className="text-2xl font-semibold">
+          Αρχείο θερμοκρασιών & καθαρισμού-απολύμανσης
+        </h1>
+
         <p className="text-sm text-gray-500">
-          Αρχεία που ανεβάσατε ή σας ανατέθηκαν.
+          Αρχεία Excel που ανεβάσατε ή σας ανατέθηκαν.
         </p>
       </header>
 
-      <FilesBoard initialFiles={files} />
+      <ExcelFilesBoard initialFiles={files} />
     </div>
   );
 }
