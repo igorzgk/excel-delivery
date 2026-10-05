@@ -322,7 +322,7 @@ export default function ExcelFilesBoard({
                   >
                     {file.url ? (
                       <a
-                        href={file.url}
+                        href={`${file.url}?download=1`}
                         target="_blank"
                         rel="noreferrer"
                         className="flex w-full min-w-0 flex-col items-center"
@@ -394,13 +394,13 @@ export default function ExcelFilesBoard({
                     <div className="mt-2 flex items-center justify-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                       {file.url && (
                         <a
-                          href={file.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Λήψη"
-                          className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
-                        >
-                          <Download size={15} />
+                            href={`${file.url}?download=1`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Λήψη"
+                            className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
+                            >
+                            <Download size={15} />
                         </a>
                       )}
 
