@@ -6,12 +6,13 @@ import { getToken } from "next-auth/jwt";
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const url = (p: string) => new URL(p, req.url);
+
   const token = await getToken({
     req,
     secret: process.env.NEXTAUTH_SECRET,
   });
 
-  // --- Canonicalize legacy /dashboard/admin -> /admin ---
+  // --- Canonicalize any legacy /dashboard/admin -> /admin (single hop) ---
   if (
     pathname === "/dashboard/admin" ||
     pathname.startsWith("/dashboard/admin/")
@@ -29,8 +30,9 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(url("/login"));
     }
 
-    // Admins -> /admin/users
-    // Users  -> /files
+    // NEW STARTING PAGES:
+    // Admin -> /admin/users
+    // User  -> /files
     return NextResponse.redirect(
       url(token?.role === "ADMIN" ? "/admin/users" : "/files")
     );
@@ -75,16 +77,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url("/files"));
   }
 
-  // --- /admin is the admin gateway ---
-  if (pathname === "/admin" && token?.role === "ADMIN") {
+  // --- Admins landing on /dashboard go to /admin/users ---
+  if (pathname === "/dashboard" && token?.role === "ADMIN") {
     return NextResponse.redirect(url("/admin/users"));
-  }
-
-  // --- /dashboard is the old user/admin landing page ---
-  if (pathname === "/dashboard" && token) {
-    return NextResponse.redirect(
-      url(token?.role === "ADMIN" ? "/admin/users" : "/files")
-    );
   }
 
   return NextResponse.next();
