@@ -985,55 +985,6 @@ export default function PdfFoldersBoard({
                         </>
                       )}
 
-                      {/* Move PDF */}
-                      <select
-                        value={
-                          file.pdfFolderId ??
-                          ""
-                        }
-                        onChange={(
-                          event
-                        ) =>
-                          movePdf(
-                            file.id,
-                            event
-                              .target
-                              .value ||
-                              null
-                          )
-                        }
-                        onClick={(
-                          event
-                        ) =>
-                          event.stopPropagation()
-                        }
-                        className="mt-2 w-full max-w-[135px] rounded-md border bg-white px-1.5 py-1 text-[10px] sm:text-xs"
-                        title="Μετακίνηση σε φάκελο"
-                      >
-                        <option value="">
-                          Χωρίς φάκελο
-                        </option>
-
-                        {folders.map(
-                          (
-                            folder
-                          ) => (
-                            <option
-                              key={
-                                folder.id
-                              }
-                              value={
-                                folder.id
-                              }
-                            >
-                              {
-                                folder.name
-                              }
-                            </option>
-                          )
-                        )}
-                      </select>
-
                       {/* Actions */}
                       <div className="mt-2 flex items-center justify-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                         {file.url && (
@@ -1069,6 +1020,70 @@ export default function PdfFoldersBoard({
                             </a>
                           </>
                         )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const options = [
+                              "0 - Χωρίς φάκελο",
+                              ...folders.map(
+                                (
+                                  folder,
+                                  index
+                                ) =>
+                                  `${index + 1} - ${folder.name}`
+                              ),
+                            ];
+
+                            const choice =
+                              prompt(
+                                `Μετακίνηση αρχείου:\n\n${options.join(
+                                  "\n"
+                                )}\n\nΓράψτε τον αριθμό του φακέλου:`
+                              );
+
+                            if (
+                              choice === null
+                            ) {
+                              return;
+                            }
+
+                            const number =
+                              Number(
+                                choice
+                              );
+
+                            if (
+                              Number.isNaN(
+                                number
+                              ) ||
+                              number < 0 ||
+                              number >
+                                folders.length
+                            ) {
+                              alert(
+                                "Μη έγκυρη επιλογή."
+                              );
+                              return;
+                            }
+
+                            movePdf(
+                              file.id,
+                              number === 0
+                                ? null
+                                : folders[
+                                    number -
+                                      1
+                                  ].id
+                            );
+                          }}
+                          title="Μετακίνηση σε φάκελο"
+                          className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
+                        >
+                          <Folder
+                            size={15}
+                          />
+                        </button>
 
                         <button
                           type="button"
