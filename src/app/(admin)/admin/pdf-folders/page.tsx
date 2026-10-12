@@ -1,190 +1,457 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Folder,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-type UserRow = {
+type FolderRow = {
   id: string;
-  email: string;
-  name: string | null;
-  status: string;
-  role: string;
-};
-
-type FolderUser = UserRow & { folderId: string };
-
-type FolderGroup = {
   name: string;
-  count: number;
-  folderIds: string[];
-  users: FolderUser[];
-  createdAt: string;
+  ownerId?: string | null;
+  createdAt?: string;
 };
 
-function toggleId(ids: string[], id: string) {
-  return ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id];
-}
+function getErrorMessage(
+  json: any,
+  fallback: string
+) {
+  if (
+    json?.error ===
+    "folder_exists"
+  ) {
+    return "Υπάρχει ήδη φάκελος με αυτό το όνομα.";
+  }
 
-function message(json: any, fallback: string) {
-  if (json?.error === "invalid_payload") return "Μη έγκυρα στοιχεία.";
-  if (json?.error === "not_found") return "Ο φάκελος δεν βρέθηκε.";
-  return json?.detail || json?.error || fallback;
+  if (
+    json?.error ===
+    "invalid_payload"
+  ) {
+    return "Μη έγκυρα στοιχεία.";
+  }
+
+  if (
+    json?.error ===
+    "not_found"
+  ) {
+    return "Ο φάκελος δεν βρέθηκε.";
+  }
+
+  return (
+    json?.detail ||
+    json?.error ||
+    fallback
+  );
 }
 
 export default function AdminPdfFoldersPage() {
-  const [folders, setFolders] = useState<FolderGroup[]>([]);
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState(false);
+  const [folders, setFolders] =
+    useState<FolderRow[]>([]);
 
-  const [folderSearch, setFolderSearch] = useState("");
-  const [userSearch, setUserSearch] = useState("");
-  const [newName, setNewName] = useState("");
-  const [newUserIds, setNewUserIds] = useState<string[]>([]);
-  const [createForAll, setCreateForAll] = useState(false);
-  const [addIds, setAddIds] = useState<string[]>([]);
-  const [removeIds, setRemoveIds] = useState<string[]>([]);
-  const [renameValue, setRenameValue] = useState("");
+  const [
+    selectedFolderId,
+    setSelectedFolderId,
+  ] = useState<string | null>(
+    null
+  );
 
-  const load = useCallback(async (preferred?: string | null) => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/admin/pdf-folders", { cache: "no-store" });
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(message(json, "Αποτυχία φόρτωσης."));
+  const [loading, setLoading] =
+    useState(true);
 
-      const nextFolders = json.folders || [];
-      setFolders(nextFolders);
-      setUsers(json.users || []);
-      setSelectedName((current) => {
-        const wanted = preferred ?? current;
-        if (wanted && nextFolders.some((folder: FolderGroup) => folder.name === wanted)) return wanted;
-        return nextFolders[0]?.name ?? null;
-      });
-    } catch (error: any) {
-      alert(error?.message || "Αποτυχία φόρτωσης.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [working, setWorking] =
+    useState(false);
+
+  const [folderSearch, setFolderSearch] =
+    useState("");
+
+  const [newName, setNewName] =
+    useState("");
+
+  const [
+    renameValue,
+    setRenameValue,
+  ] = useState("");
+
+  /*
+   * ---------------------------------------------------------
+   * LOAD SHARED FOLDERS
+   * ---------------------------------------------------------
+   *
+   * IMPORTANT:
+   * We use /api/pdf-folders now.
+   *
+   * Admin GET without userId returns the
+   * global/shared folders where ownerId = null.
+   */
+  const load = useCallback(
+    async (
+      preferredId?: string | null
+    ) => {
+      setLoading(true);
+
+      try {
+        const response =
+          await fetch(
+            `/api/pdf-folders?t=${Date.now()}`,
+            {
+              cache: "no-store",
+            }
+          );
+
+        const json =
+          await response
+            .json()
+            .catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            getErrorMessage(
+              json,
+              "Αποτυχία φόρτωσης φακέλων."
+            )
+          );
+        }
+
+        const nextFolders: FolderRow[] =
+          Array.isArray(
+            json.folders
+          )
+            ? json.folders
+            : [];
+
+        setFolders(nextFolders);
+
+        setSelectedFolderId(
+          (current) => {
+            const wanted =
+              preferredId ??
+              current;
+
+            if (
+              wanted &&
+              nextFolders.some(
+                (folder) =>
+                  folder.id ===
+                  wanted
+              )
+            ) {
+              return wanted;
+            }
+
+            return (
+              nextFolders[0]
+                ?.id ?? null
+            );
+          }
+        );
+      } catch (
+        error: any
+      ) {
+        console.error(
+          "Failed to load shared PDF folders:",
+          error
+        );
+
+        alert(
+          error?.message ||
+            "Αποτυχία φόρτωσης φακέλων."
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
-  const selected = useMemo(
-    () => folders.find((folder) => folder.name === selectedName) || null,
-    [folders, selectedName]
-  );
+  /*
+   * Selected folder
+   */
+  const selectedFolder =
+    useMemo(() => {
+      if (
+        !selectedFolderId
+      ) {
+        return null;
+      }
+
+      return (
+        folders.find(
+          (folder) =>
+            folder.id ===
+            selectedFolderId
+        ) || null
+      );
+    }, [
+      folders,
+      selectedFolderId,
+    ]);
 
   useEffect(() => {
-    setRenameValue(selected?.name || "");
-    setAddIds([]);
-    setRemoveIds([]);
-    setUserSearch("");
-  }, [selected?.name]);
+    setRenameValue(
+      selectedFolder?.name ||
+        ""
+    );
+  }, [
+    selectedFolder?.id,
+    selectedFolder?.name,
+  ]);
 
-  const filteredFolders = useMemo(() => {
-    const q = folderSearch.trim().toLocaleLowerCase("el");
-    return q ? folders.filter((folder) => folder.name.toLocaleLowerCase("el").includes(q)) : folders;
-  }, [folders, folderSearch]);
+  /*
+   * Search
+   */
+  const filteredFolders =
+    useMemo(() => {
+      const q =
+        folderSearch
+          .trim()
+          .toLocaleLowerCase(
+            "el"
+          );
 
-  const assignedSet = useMemo(
-    () => new Set((selected?.users || []).map((user) => user.id)),
-    [selected]
-  );
+      if (!q) {
+        return folders;
+      }
 
-  const available = useMemo(
-    () => users.filter((user) => !assignedSet.has(user.id)),
-    [users, assignedSet]
-  );
+      return folders.filter(
+        (folder) =>
+          folder.name
+            .toLocaleLowerCase(
+              "el"
+            )
+            .includes(q)
+      );
+    }, [
+      folders,
+      folderSearch,
+    ]);
 
-  function filterUsers<T extends { email: string; name: string | null }>(list: T[]) {
-    const q = userSearch.trim().toLocaleLowerCase("el");
-    return q
-      ? list.filter((user) => `${user.name || ""} ${user.email}`.toLocaleLowerCase("el").includes(q))
-      : list;
-  }
-
-  async function request(method: "POST" | "PATCH" | "DELETE", body: object) {
-    const response = await fetch("/api/admin/pdf-folders", {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(message(json, "Η ενέργεια απέτυχε."));
-    return json;
-  }
-
+  /*
+   * ---------------------------------------------------------
+   * CREATE SHARED FOLDER
+   * ---------------------------------------------------------
+   */
   async function createFolder() {
-    const name = newName.trim();
-    if (!name) return alert("Συμπληρώστε όνομα φακέλου.");
-    if (!createForAll && !newUserIds.length) return alert("Επιλέξτε χρήστες.");
+    const name =
+      newName.trim();
+
+    if (!name) {
+      alert(
+        "Συμπληρώστε όνομα φακέλου."
+      );
+      return;
+    }
 
     setWorking(true);
+
     try {
-      const json = await request("POST", createForAll ? { name, all: true } : { name, userIds: newUserIds });
-      alert(`Δημιουργήθηκαν: ${json.created ?? 0}\nΥπήρχαν ήδη: ${json.skipped ?? 0}`);
+      const response =
+        await fetch(
+          "/api/pdf-folders",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                name,
+                shared: true,
+              }),
+          }
+        );
+
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          getErrorMessage(
+            json,
+            "Αποτυχία δημιουργίας φακέλου."
+          )
+        );
+      }
+
       setNewName("");
-      setNewUserIds([]);
-      setCreateForAll(false);
-      await load(name);
-    } catch (error: any) {
-      alert(error?.message || "Αποτυχία δημιουργίας.");
+
+      const createdId =
+        json?.folder?.id ||
+        null;
+
+      await load(
+        createdId
+      );
+    } catch (
+      error: any
+    ) {
+      alert(
+        error?.message ||
+          "Αποτυχία δημιουργίας φακέλου."
+      );
     } finally {
       setWorking(false);
     }
   }
 
-  async function addUsers(all: boolean) {
-    if (!selected) return;
-    const ids = all ? available.map((user) => user.id) : addIds;
-    if (!ids.length) return alert("Δεν υπάρχουν χρήστες για προσθήκη.");
-    if (!confirm(`Να προστεθεί ο φάκελος σε ${ids.length} χρήστη/χρήστες;`)) return;
-
-    setWorking(true);
-    try {
-      await request("POST", { name: selected.name, userIds: ids });
-      await load(selected.name);
-    } catch (error: any) {
-      alert(error?.message || "Αποτυχία προσθήκης.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function removeUsers(all: boolean) {
-    if (!selected) return;
-    const ids = all ? selected.users.map((user) => user.id) : removeIds;
-    if (!ids.length) return alert("Επιλέξτε χρήστες.");
-    if (!confirm(`Να αφαιρεθεί ο φάκελος από ${ids.length} χρήστη/χρήστες;\n\nΤα PDF δεν θα διαγραφούν.`)) return;
-
-    setWorking(true);
-    try {
-      const json = await request("DELETE", { name: selected.name, userIds: ids });
-      alert(`Διαγράφηκαν φάκελοι: ${json.deletedFolders ?? 0}\nΑποσυνδέθηκαν PDF: ${json.detachedFiles ?? 0}`);
-      await load(all ? null : selected.name);
-    } catch (error: any) {
-      alert(error?.message || "Αποτυχία αφαίρεσης.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
+  /*
+   * ---------------------------------------------------------
+   * RENAME SHARED FOLDER
+   * ---------------------------------------------------------
+   */
   async function renameFolder() {
-    if (!selected) return;
-    const next = renameValue.trim();
-    if (!next || next === selected.name) return;
-    if (!confirm(`Να μετονομαστεί ο φάκελος σε "${next}" για όλους;`)) return;
+    if (!selectedFolder) {
+      return;
+    }
+
+    const name =
+      renameValue.trim();
+
+    if (!name) {
+      alert(
+        "Συμπληρώστε νέο όνομα."
+      );
+      return;
+    }
+
+    if (
+      name ===
+      selectedFolder.name
+    ) {
+      return;
+    }
+
+    if (
+      !confirm(
+        `Να μετονομαστεί ο φάκελος "${selectedFolder.name}" σε "${name}";`
+      )
+    ) {
+      return;
+    }
 
     setWorking(true);
+
     try {
-      const json = await request("PATCH", { oldName: selected.name, newName: next });
-      alert(`Μετονομάστηκαν: ${json.renamed ?? 0}\nΣυγχωνεύτηκαν: ${json.merged ?? 0}`);
-      await load(next);
-    } catch (error: any) {
-      alert(error?.message || "Αποτυχία μετονομασίας.");
+      const response =
+        await fetch(
+          `/api/pdf-folders/${selectedFolder.id}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                name,
+              }),
+          }
+        );
+
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          getErrorMessage(
+            json,
+            "Αποτυχία μετονομασίας φακέλου."
+          )
+        );
+      }
+
+      await load(
+        selectedFolder.id
+      );
+    } catch (
+      error: any
+    ) {
+      alert(
+        error?.message ||
+          "Αποτυχία μετονομασίας φακέλου."
+      );
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * DELETE SHARED FOLDER
+   * ---------------------------------------------------------
+   *
+   * Existing PDF files are not deleted.
+   * Your folder delete API detaches them
+   * from the folder.
+   */
+  async function deleteFolder() {
+    if (!selectedFolder) {
+      return;
+    }
+
+    if (
+      !confirm(
+        `Να διαγραφεί ο κοινόχρηστος φάκελος "${selectedFolder.name}";\n\nΟ φάκελος θα εξαφανιστεί από όλους τους χρήστες. Τα PDF δεν θα διαγραφούν.`
+      )
+    ) {
+      return;
+    }
+
+    setWorking(true);
+
+    try {
+      const response =
+        await fetch(
+          `/api/pdf-folders/${selectedFolder.id}`,
+          {
+            method:
+              "DELETE",
+          }
+        );
+
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          getErrorMessage(
+            json,
+            "Αποτυχία διαγραφής φακέλου."
+          )
+        );
+      }
+
+      setSelectedFolderId(
+        null
+      );
+
+      await load(null);
+    } catch (
+      error: any
+    ) {
+      alert(
+        error?.message ||
+          "Αποτυχία διαγραφής φακέλου."
+      );
     } finally {
       setWorking(false);
     }
@@ -192,222 +459,365 @@ export default function AdminPdfFoldersPage() {
 
   return (
     <div className="grid gap-4">
+      {/* HEADER */}
       <header>
-        <h1 className="text-xl font-semibold">PDF Φάκελοι</h1>
-        <p className="mt-1 text-sm text-gray-500">Διαχείριση φακέλων και χρηστών από ένα σημείο.</p>
-      </header>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold">
+              PDF Φάκελοι
+            </h1>
 
-      <section className="rounded-2xl border bg-[color:var(--card,#fff)] p-4">
-        <h2 className="font-semibold">Νέος φάκελος</h2>
-        <div className="mt-3 grid gap-3 lg:grid-cols-2">
-          <div className="grid content-start gap-3">
-            <input
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              placeholder="Όνομα νέου φακέλου"
-              className="rounded-xl border px-3 py-2 text-sm"
-            />
-            <label className="flex items-center gap-2 rounded-xl border bg-gray-50 px-3 py-2 text-sm font-medium">
-              <input
-                type="checkbox"
-                checked={createForAll}
-                onChange={(event) => {
-                  setCreateForAll(event.target.checked);
-                  if (event.target.checked) setNewUserIds([]);
-                }}
-              />
-              Δημιουργία για όλους τους ενεργούς χρήστες
-            </label>
-            <button
-              onClick={createFolder}
-              disabled={working || !newName.trim() || (!createForAll && !newUserIds.length)}
-              className="rounded-xl bg-[color:var(--brand,#25C3F4)] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
-            >
-              {working ? "Επεξεργασία…" : "Δημιουργία φακέλου"}
-            </button>
+            <p className="mt-1 text-sm text-gray-500">
+              Διαχείριση των
+              κοινόχρηστων PDF
+              φακέλων.
+            </p>
           </div>
 
-          {!createForAll && (
-            <Checklist
-              users={users}
-              selectedIds={newUserIds}
-              onToggle={(id) => setNewUserIds((current) => toggleId(current, id))}
-              onToggleAll={() => setNewUserIds(newUserIds.length === users.length ? [] : users.map((user) => user.id))}
+          <button
+            type="button"
+            onClick={() =>
+              void load()
+            }
+            disabled={
+              loading || working
+            }
+            className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw
+              size={16}
+              className={
+                loading
+                  ? "animate-spin"
+                  : ""
+              }
             />
-          )}
+
+            Ανανέωση
+          </button>
+        </div>
+      </header>
+
+      {/* NEW FOLDER */}
+      <section className="rounded-2xl border bg-[color:var(--card,#fff)] p-4">
+        <h2 className="font-semibold">
+          Νέος κοινόχρηστος
+          φάκελος
+        </h2>
+
+        <p className="mt-1 text-sm text-gray-500">
+          Ο φάκελος θα
+          εμφανίζεται αυτόματα σε
+          όλους τους χρήστες.
+        </p>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={newName}
+            onChange={(
+              event
+            ) =>
+              setNewName(
+                event.target.value
+              )
+            }
+            onKeyDown={(
+              event
+            ) => {
+              if (
+                event.key ===
+                "Enter"
+              ) {
+                void createFolder();
+              }
+            }}
+            placeholder="Όνομα νέου φακέλου"
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+          />
+
+          <button
+            type="button"
+            onClick={
+              createFolder
+            }
+            disabled={
+              working ||
+              !newName.trim()
+            }
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[color:var(--brand,#25C3F4)] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+          >
+            <Plus size={16} />
+
+            {working
+              ? "Επεξεργασία…"
+              : "Δημιουργία φακέλου"}
+          </button>
         </div>
       </section>
 
+      {/* MAIN */}
       <div className="grid min-h-[620px] gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+        {/* FOLDER LIST */}
         <section className="overflow-hidden rounded-2xl border bg-[color:var(--card,#fff)]">
           <div className="border-b p-4">
-            <h2 className="font-semibold">Όλοι οι φάκελοι</h2>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">
+                  Όλοι οι φάκελοι
+                </h2>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  {
+                    folders.length
+                  }{" "}
+                  κοινόχρηστος/οι
+                  φάκελος/οι
+                </p>
+              </div>
+
+              <Folder
+                size={22}
+                className="text-amber-500"
+              />
+            </div>
+
             <input
-              value={folderSearch}
-              onChange={(event) => setFolderSearch(event.target.value)}
+              value={
+                folderSearch
+              }
+              onChange={(
+                event
+              ) =>
+                setFolderSearch(
+                  event.target
+                    .value
+                )
+              }
               placeholder="Αναζήτηση φακέλου…"
               className="mt-3 w-full rounded-xl border px-3 py-2 text-sm"
             />
           </div>
+
           <div className="max-h-[650px] overflow-y-auto p-2">
             {loading ? (
-              <div className="p-3 text-sm text-gray-500">Φόρτωση…</div>
-            ) : filteredFolders.length === 0 ? (
-              <div className="p-3 text-sm text-gray-500">Δεν βρέθηκαν φάκελοι.</div>
+              <div className="p-3 text-sm text-gray-500">
+                Φόρτωση…
+              </div>
+            ) : filteredFolders.length ===
+              0 ? (
+              <div className="p-3 text-sm text-gray-500">
+                Δεν βρέθηκαν
+                φάκελοι.
+              </div>
             ) : (
-              filteredFolders.map((folder) => (
-                <button
-                  key={folder.name}
-                  onClick={() => setSelectedName(folder.name)}
-                  className={`mb-1 w-full rounded-xl border px-3 py-3 text-left ${
-                    selectedName === folder.name
-                      ? "border-[color:var(--brand,#25C3F4)] bg-cyan-50"
-                      : "border-transparent hover:bg-gray-50"
-                  }`}
-                >
-                  <span className="block break-words text-sm font-semibold">{folder.name}</span>
-                  <span className="mt-1 block text-xs text-gray-500">{folder.count} χρήστης/χρήστες</span>
-                </button>
-              ))
+              filteredFolders.map(
+                (folder) => (
+                  <button
+                    key={
+                      folder.id
+                    }
+                    type="button"
+                    onClick={() =>
+                      setSelectedFolderId(
+                        folder.id
+                      )
+                    }
+                    className={`mb-1 flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left ${
+                      selectedFolderId ===
+                      folder.id
+                        ? "border-[color:var(--brand,#25C3F4)] bg-cyan-50"
+                        : "border-transparent hover:bg-gray-50"
+                    }`}
+                  >
+                    <Folder
+                      size={
+                        22
+                      }
+                      className="shrink-0 text-amber-500"
+                    />
+
+                    <div className="min-w-0">
+                      <span className="block break-words text-sm font-semibold">
+                        {
+                          folder.name
+                        }
+                      </span>
+
+                      <span className="mt-1 block text-xs text-gray-500">
+                        Κοινόχρηστος
+                        φάκελος
+                      </span>
+                    </div>
+                  </button>
+                )
+              )
             )}
           </div>
         </section>
 
+        {/* DETAILS */}
         <section className="rounded-2xl border bg-[color:var(--card,#fff)] p-4">
-          {!selected ? (
-            <div className="flex min-h-[420px] items-center justify-center text-sm text-gray-500">Επιλέξτε φάκελο.</div>
+          {!selectedFolder ? (
+            <div className="flex min-h-[420px] items-center justify-center text-sm text-gray-500">
+              Επιλέξτε φάκελο.
+            </div>
           ) : (
-            <div className="grid gap-4">
-              <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:justify-between">
-                <div>
-                  <h2 className="break-words text-lg font-semibold">{selected.name}</h2>
-                  <p className="text-sm text-gray-500">{selected.count} από {users.length} ενεργούς χρήστες</p>
-                </div>
-                <button
-                  onClick={() => removeUsers(true)}
-                  disabled={working}
-                  className="rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
-                >
-                  Διαγραφή από όλους
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  value={renameValue}
-                  onChange={(event) => setRenameValue(event.target.value)}
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
-                />
-                <button
-                  onClick={renameFolder}
-                  disabled={working || !renameValue.trim() || renameValue.trim() === selected.name}
-                  className="rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                >
-                  Μετονομασία
-                </button>
-              </div>
-
-              <input
-                value={userSearch}
-                onChange={(event) => setUserSearch(event.target.value)}
-                placeholder="Αναζήτηση χρήστη…"
-                className="rounded-xl border px-3 py-2 text-sm"
-              />
-
-              <div className="grid gap-4 xl:grid-cols-2">
-                <div className="rounded-xl border p-3">
-                  <h3 className="text-sm font-semibold">Έχουν τον φάκελο ({selected.users.length})</h3>
-                  <div className="mt-3">
-                    <Checklist
-                      users={filterUsers(selected.users)}
-                      selectedIds={removeIds}
-                      onToggle={(id) => setRemoveIds((current) => toggleId(current, id))}
-                      onToggleAll={() => setRemoveIds(removeIds.length === selected.users.length ? [] : selected.users.map((user) => user.id))}
+            <div className="grid gap-5">
+              <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-50">
+                    <Folder
+                      size={
+                        28
+                      }
+                      className="text-amber-500"
                     />
                   </div>
+
+                  <div className="min-w-0">
+                    <h2 className="break-words text-lg font-semibold">
+                      {
+                        selectedFolder.name
+                      }
+                    </h2>
+
+                    <p className="mt-1 text-sm text-gray-500">
+                      Αυτός είναι
+                      κοινόχρηστος
+                      φάκελος και
+                      εμφανίζεται σε
+                      όλους τους
+                      χρήστες.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    deleteFolder
+                  }
+                  disabled={
+                    working
+                  }
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  <Trash2
+                    size={16}
+                  />
+                  Διαγραφή
+                </button>
+              </div>
+
+              {/* RENAME */}
+              <div className="rounded-xl border p-4">
+                <h3 className="font-semibold">
+                  Μετονομασία
+                  φακέλου
+                </h3>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Η αλλαγή θα
+                  εμφανιστεί σε όλους
+                  τους χρήστες.
+                </p>
+
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={
+                      renameValue
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setRenameValue(
+                        event.target
+                          .value
+                      )
+                    }
+                    onKeyDown={(
+                      event
+                    ) => {
+                      if (
+                        event.key ===
+                        "Enter"
+                      ) {
+                        void renameFolder();
+                      }
+                    }}
+                    className="w-full rounded-xl border px-3 py-2 text-sm"
+                  />
+
                   <button
-                    onClick={() => removeUsers(false)}
-                    disabled={working || !removeIds.length}
-                    className="mt-3 w-full rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
+                    type="button"
+                    onClick={
+                      renameFolder
+                    }
+                    disabled={
+                      working ||
+                      !renameValue.trim() ||
+                      renameValue.trim() ===
+                        selectedFolder.name
+                    }
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
                   >
-                    Αφαίρεση επιλεγμένων ({removeIds.length})
+                    <Pencil
+                      size={16}
+                    />
+
+                    Μετονομασία
                   </button>
                 </div>
+              </div>
 
-                <div className="rounded-xl border p-3">
-                  <h3 className="text-sm font-semibold">Δεν έχουν τον φάκελο ({available.length})</h3>
-                  <div className="mt-3">
-                    <Checklist
-                      users={filterUsers(available)}
-                      selectedIds={addIds}
-                      onToggle={(id) => setAddIds((current) => toggleId(current, id))}
-                      onToggleAll={() => setAddIds(addIds.length === available.length ? [] : available.map((user) => user.id))}
-                    />
+              {/* INFO */}
+              <div className="rounded-xl border bg-gray-50 p-4">
+                <h3 className="text-sm font-semibold">
+                  Κοινόχρηστος
+                  φάκελος
+                </h3>
+
+                <div className="mt-3 grid gap-2 text-sm text-gray-600">
+                  <div>
+                    <span className="font-medium text-gray-900">
+                      ID:
+                    </span>{" "}
+                    {
+                      selectedFolder.id
+                    }
                   </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <button
-                      onClick={() => addUsers(false)}
-                      disabled={working || !addIds.length}
-                      className="rounded-xl bg-[color:var(--brand,#25C3F4)] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
-                    >
-                      Προσθήκη ({addIds.length})
-                    </button>
-                    <button
-                      onClick={() => addUsers(true)}
-                      disabled={working || !available.length}
-                      className="rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                    >
-                      Προσθήκη σε όλους
-                    </button>
+
+                  <div>
+                    <span className="font-medium text-gray-900">
+                      Πρόσβαση:
+                    </span>{" "}
+                    Όλοι οι χρήστες
                   </div>
+
+                  <div>
+                    <span className="font-medium text-gray-900">
+                      Τύπος:
+                    </span>{" "}
+                    Shared / Global
+                  </div>
+
+                  {selectedFolder.createdAt && (
+                    <div>
+                      <span className="font-medium text-gray-900">
+                        Δημιουργήθηκε:
+                      </span>{" "}
+                      {new Date(
+                        selectedFolder.createdAt
+                      ).toLocaleString(
+                        "el-GR"
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )}
         </section>
-      </div>
-    </div>
-  );
-}
-
-function Checklist({
-  users,
-  selectedIds,
-  onToggle,
-  onToggleAll,
-}: {
-  users: Array<{ id: string; email: string; name: string | null }>;
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-  onToggleAll: () => void;
-}) {
-  const allChecked = users.length > 0 && users.every((user) => selectedIds.includes(user.id));
-
-  return (
-    <div className="overflow-hidden rounded-xl border bg-gray-50">
-      <label className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm font-semibold">
-        <input type="checkbox" checked={allChecked} onChange={onToggleAll} />
-        Επιλογή όλων
-      </label>
-      <div className="max-h-72 overflow-y-auto p-2">
-        {users.length === 0 ? (
-          <div className="px-2 py-3 text-sm text-gray-500">Δεν υπάρχουν χρήστες.</div>
-        ) : (
-          users.map((user) => (
-            <label key={user.id} className="flex cursor-pointer gap-2 rounded-lg px-2 py-2 hover:bg-white">
-              <input
-                type="checkbox"
-                checked={selectedIds.includes(user.id)}
-                onChange={() => onToggle(user.id)}
-                className="mt-1"
-              />
-              <span className="min-w-0 text-sm">
-                {user.name && <span className="block break-words font-medium">{user.name}</span>}
-                <span className="block break-words text-xs text-gray-500">{user.email}</span>
-              </span>
-            </label>
-          ))
-        )}
       </div>
     </div>
   );
