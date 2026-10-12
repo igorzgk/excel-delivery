@@ -314,6 +314,19 @@ export default function AdminFilesPage() {
     );
   }, [folders, currentFolderId]);
 
+  useEffect(() => {
+  if (!currentFolderId) return;
+
+  const folderStillExists = folders.some(
+    (folder) => folder.id === currentFolderId
+  );
+
+  if (!folderStillExists) {
+    setCurrentFolderId(null);
+    setMoveMenuFileId(null);
+  }
+}, [folders, currentFolderId]);
+
   const visibleFiles = useMemo(() => {
     const q = query.trim().toLowerCase();
 
@@ -375,28 +388,39 @@ export default function AdminFilesPage() {
   ]);
 
   const visibleFolders = useMemo(() => {
-    if (
-      activeTab !== "PDF" ||
-      currentFolderId
-    ) {
-      return [];
-    }
+  if (activeTab !== "PDF") {
+    return [];
+  }
 
-    const q = query.trim().toLowerCase();
+  // Only hide root folders when we are
+  // actually inside a valid folder.
+  if (
+    currentFolderId &&
+    currentFolder
+  ) {
+    return [];
+  }
 
-    if (!q) return folders;
+  const q =
+    query.trim().toLowerCase();
 
-    return folders.filter((folder) =>
+  if (!q) {
+    return folders;
+  }
+
+  return folders.filter(
+    (folder) =>
       folder.name
         .toLowerCase()
         .includes(q)
-    );
-  }, [
-    activeTab,
-    currentFolderId,
-    folders,
-    query,
-  ]);
+  );
+}, [
+  activeTab,
+  currentFolderId,
+  currentFolder,
+  folders,
+  query,
+]);
 
   const managingFile = useMemo(
     () =>
