@@ -1,4 +1,5 @@
 // src/app/(admin)/admin/files/page.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -13,6 +14,7 @@ import {
   FolderOpen,
   Pencil,
   Plus,
+  RefreshCw,
   Settings,
   Trash2,
   Upload,
@@ -50,6 +52,8 @@ type UserRow = {
 type FolderRow = {
   id: string;
   name: string;
+  ownerId?: string | null;
+  createdAt?: string;
 };
 
 type FileTab = "EXCEL" | "PDF" | "OTHER";
@@ -77,10 +81,7 @@ function isPdfFile(file: FileRow) {
 
   const mime = (file.mime || "").toLowerCase();
 
-  return (
-    mime.includes("pdf") ||
-    name.endsWith(".pdf")
-  );
+  return mime.includes("pdf") || name.endsWith(".pdf");
 }
 
 function isExcelFile(file: FileRow) {
@@ -104,6 +105,7 @@ function formatSize(bytes?: number | null) {
   if (!bytes || bytes <= 0) return "";
 
   const units = ["B", "KB", "MB", "GB"];
+
   let value = bytes;
   let index = 0;
 
@@ -124,9 +126,11 @@ export default function AdminFilesPage() {
   const [files, setFiles] = useState<FileRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [folders, setFolders] = useState<FolderRow[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // Main explorer state
+  const [loading, setLoading] = useState(true);
+  const [loadingFolders, setLoadingFolders] = useState(false);
+
+  // Explorer
   const [activeTab, setActiveTab] =
     useState<FileTab>("EXCEL");
 
@@ -135,8 +139,9 @@ export default function AdminFilesPage() {
 
   const [query, setQuery] = useState("");
 
-  // Manual upload
+  // Upload
   const [newTitle, setNewTitle] = useState("");
+
   const [newFile, setNewFile] =
     useState<File | null>(null);
 
@@ -157,7 +162,7 @@ export default function AdminFilesPage() {
   const [savingNew, setSavingNew] =
     useState(false);
 
-  // Manage assignments modal
+  // Assignment modal
   const [manageFileId, setManageFileId] =
     useState<string | null>(null);
 
@@ -174,7 +179,7 @@ export default function AdminFilesPage() {
   const [workingFileId, setWorkingFileId] =
     useState<string | null>(null);
 
-  // PDF move menu
+  // PDF move dropdown
   const [moveMenuFileId, setMoveMenuFileId] =
     useState<string | null>(null);
 
@@ -194,6 +199,97 @@ export default function AdminFilesPage() {
     setCleaningMissing,
   ] = useState(false);
 
+  /*
+   * ---------------------------------------------------------
+   * LOAD SHARED PDF FOLDERS
+   * ---------------------------------------------------------
+   *
+   * This is deliberately separate from load().
+   *
+   * The API already returns the shared folders correctly
+   * for ADMIN.
+   */
+  async function loadFolders() {
+    setLoadingFolders(true);
+
+    try {
+      const response = await fetch(
+        `/api/pdf-folders?t=${Date.now()}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      const json = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok) {
+        console.error(
+          "Failed to load PDF folders:",
+          json
+        );
+
+        return;
+      }
+
+      const nextFolders: FolderRow[] =
+        Array.isArray(json.folders)
+          ? json.folders
+          : [];
+
+      console.log(
+        "Admin shared folders loaded:",
+        nextFolders
+      );
+
+      setFolders(nextFolders);
+
+      /*
+       * If admin was inside a folder that no longer exists,
+       * return to PDF root.
+       */
+      if (currentFolderId) {
+        const stillExists =
+          nextFolders.some(
+            (folder) =>
+              folder.id === currentFolderId
+          );
+
+        if (!stillExists) {
+          setCurrentFolderId(null);
+          setMoveMenuFileId(null);
+        }
+      }
+
+      /*
+       * If selected upload folder no longer exists,
+       * reset the selector.
+       */
+      if (newPdfFolderId) {
+        const uploadFolderStillExists =
+          nextFolders.some(
+            (folder) =>
+              folder.id === newPdfFolderId
+          );
+
+        if (!uploadFolderStillExists) {
+          setNewPdfFolderId("");
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Failed to load PDF folders:",
+        error
+      );
+    } finally {
+      setLoadingFolders(false);
+    }
+  }
+
+  /*
+   * Main page data.
+   */
   async function load() {
     setLoading(true);
 
@@ -203,47 +299,83 @@ export default function AdminFilesPage() {
         usersResponse,
         foldersResponse,
       ] = await Promise.all([
-        fetch("/api/files?scope=all", {
-          cache: "no-store",
-        }),
+        fetch(
+          `/api/files?scope=all&t=${Date.now()}`,
+          {
+            cache: "no-store",
+          }
+        ),
 
-        fetch("/api/admin/users", {
-          cache: "no-store",
-        }),
+        fetch(
+          `/api/admin/users?t=${Date.now()}`,
+          {
+            cache: "no-store",
+          }
+        ),
 
-        fetch("/api/pdf-folders", {
-          cache: "no-store",
-        }),
+        fetch(
+          `/api/pdf-folders?t=${Date.now()}`,
+          {
+            cache: "no-store",
+          }
+        ),
       ]);
 
       if (filesResponse.ok) {
         const json =
           await filesResponse.json();
 
-        setFiles(json.files || []);
+        setFiles(
+          Array.isArray(json.files)
+            ? json.files
+            : []
+        );
       }
 
       if (usersResponse.ok) {
         const json =
           await usersResponse.json();
 
-        setUsers(json.users || []);
+        setUsers(
+          Array.isArray(json.users)
+            ? json.users
+            : []
+        );
       }
 
       if (foldersResponse.ok) {
         const json =
           await foldersResponse.json();
 
-        setFolders(json.folders || []);
+        setFolders(
+          Array.isArray(json.folders)
+            ? json.folders
+            : []
+        );
       }
+    } catch (error) {
+      console.error(
+        "Failed to load admin files page:",
+        error
+      );
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
+
+  /*
+   * Force fresh folder request every time
+   * PDF tab is opened.
+   */
+  useEffect(() => {
+    if (activeTab === "PDF") {
+      void loadFolders();
+    }
+  }, [activeTab]);
 
   const activeUsers = useMemo(
     () =>
@@ -255,30 +387,38 @@ export default function AdminFilesPage() {
     [users]
   );
 
-  const filteredUploadUsers = useMemo(() => {
-    const q =
-      newUserSearch.trim().toLowerCase();
+  const filteredUploadUsers =
+    useMemo(() => {
+      const q =
+        newUserSearch
+          .trim()
+          .toLowerCase();
 
-    if (!q) return activeUsers;
+      if (!q) {
+        return activeUsers;
+      }
 
-    return activeUsers.filter((user) => {
-      const email =
-        user.email.toLowerCase();
+      return activeUsers.filter(
+        (user) => {
+          const email =
+            user.email.toLowerCase();
 
-      const name = (
-        user.name || ""
-      ).toLowerCase();
+          const name = (
+            user.name || ""
+          ).toLowerCase();
 
-      return (
-        email.includes(q) ||
-        name.includes(q)
+          return (
+            email.includes(q) ||
+            name.includes(q)
+          );
+        }
       );
-    });
-  }, [activeUsers, newUserSearch]);
+    }, [activeUsers, newUserSearch]);
 
   const selectedFileIsPdf =
     !!newFile &&
-    (newFile.type === "application/pdf" ||
+    (newFile.type ===
+      "application/pdf" ||
       newFile.name
         .toLowerCase()
         .endsWith(".pdf"));
@@ -303,133 +443,194 @@ export default function AdminFilesPage() {
     [files]
   );
 
-  const currentFolder = useMemo(() => {
-    if (!currentFolderId) return null;
+  /*
+   * Only consider ourselves "inside"
+   * a PDF folder if that folder
+   * genuinely exists in current folders.
+   */
+  const currentFolder =
+    useMemo(() => {
+      if (!currentFolderId) {
+        return null;
+      }
 
-    return (
-      folders.find(
-        (folder) =>
-          folder.id === currentFolderId
-      ) || null
-    );
-  }, [folders, currentFolderId]);
+      return (
+        folders.find(
+          (folder) =>
+            folder.id ===
+            currentFolderId
+        ) || null
+      );
+    }, [
+      folders,
+      currentFolderId,
+    ]);
 
+  /*
+   * Extra protection against a stale ID.
+   */
   useEffect(() => {
-  if (!currentFolderId) return;
+    if (!currentFolderId) {
+      return;
+    }
 
-  const folderStillExists = folders.some(
-    (folder) => folder.id === currentFolderId
-  );
+    if (loadingFolders) {
+      return;
+    }
 
-  if (!folderStillExists) {
-    setCurrentFolderId(null);
-    setMoveMenuFileId(null);
-  }
-}, [folders, currentFolderId]);
+    const exists =
+      folders.some(
+        (folder) =>
+          folder.id ===
+          currentFolderId
+      );
 
+    if (!exists) {
+      setCurrentFolderId(null);
+      setMoveMenuFileId(null);
+    }
+  }, [
+    folders,
+    currentFolderId,
+    loadingFolders,
+  ]);
+
+  /*
+   * FILE SEARCH
+   *
+   * Excel:
+   * search all Excel files.
+   *
+   * PDF root:
+   * search PDFs without a folder.
+   *
+   * PDF folder:
+   * search files inside that folder.
+   */
   const visibleFiles = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q =
+      query.trim().toLowerCase();
 
     let source: FileRow[] = [];
 
     if (activeTab === "EXCEL") {
       source = excelFiles;
-    } else if (activeTab === "OTHER") {
+    } else if (
+      activeTab === "OTHER"
+    ) {
       source = otherFiles;
     } else {
-      source = currentFolderId
-        ? pdfFiles.filter(
+      if (currentFolder) {
+        source =
+          pdfFiles.filter(
             (file) =>
               file.pdfFolderId ===
-              currentFolderId
-          )
-        : pdfFiles.filter(
+              currentFolder.id
+          );
+      } else {
+        source =
+          pdfFiles.filter(
             (file) =>
               !file.pdfFolderId
           );
+      }
     }
 
-    if (!q) return source;
+    if (!q) {
+      return source;
+    }
 
-    return source.filter((file) => {
-      const title = (
-        file.title || ""
-      ).toLowerCase();
+    return source.filter(
+      (file) => {
+        const title = (
+          file.title || ""
+        ).toLowerCase();
 
-      const originalName = (
-        file.originalName || ""
-      ).toLowerCase();
+        const originalName = (
+          file.originalName || ""
+        ).toLowerCase();
 
-      const assignedText = (
-        file.assignments || []
-      )
-        .map(
-          (assignment) =>
-            `${assignment.user.email} ${
-              assignment.user.name || ""
-            }`
+        const assignedText = (
+          file.assignments || []
         )
-        .join(" ")
-        .toLowerCase();
+          .map(
+            (assignment) =>
+              `${
+                assignment.user.email
+              } ${
+                assignment.user
+                  .name || ""
+              }`
+          )
+          .join(" ")
+          .toLowerCase();
 
-      return (
-        title.includes(q) ||
-        originalName.includes(q) ||
-        assignedText.includes(q)
-      );
-    });
+        return (
+          title.includes(q) ||
+          originalName.includes(q) ||
+          assignedText.includes(q)
+        );
+      }
+    );
   }, [
     activeTab,
     excelFiles,
     pdfFiles,
     otherFiles,
-    currentFolderId,
+    currentFolder,
     query,
   ]);
 
-  const visibleFolders = useMemo(() => {
-  if (activeTab !== "PDF") {
-    return [];
-  }
+  /*
+   * PDF FOLDERS
+   *
+   * At PDF root:
+   * always show the folders returned by
+   * /api/pdf-folders.
+   *
+   * Inside a folder:
+   * hide folder list.
+   */
+  const visibleFolders =
+    useMemo(() => {
+      if (activeTab !== "PDF") {
+        return [];
+      }
 
-  // Only hide root folders when we are
-  // actually inside a valid folder.
-  if (
-    currentFolderId &&
-    currentFolder
-  ) {
-    return [];
-  }
+      if (currentFolder) {
+        return [];
+      }
 
-  const q =
-    query.trim().toLowerCase();
+      const q =
+        query.trim().toLowerCase();
 
-  if (!q) {
-    return folders;
-  }
+      if (!q) {
+        return folders;
+      }
 
-  return folders.filter(
-    (folder) =>
-      folder.name
-        .toLowerCase()
-        .includes(q)
-  );
-}, [
-  activeTab,
-  currentFolderId,
-  currentFolder,
-  folders,
-  query,
-]);
+      return folders.filter(
+        (folder) =>
+          folder.name
+            .toLowerCase()
+            .includes(q)
+      );
+    }, [
+      activeTab,
+      currentFolder,
+      folders,
+      query,
+    ]);
 
-  const managingFile = useMemo(
-    () =>
-      files.find(
-        (file) =>
-          file.id === manageFileId
-      ) || null,
-    [files, manageFileId]
-  );
+  const managingFile =
+    useMemo(
+      () =>
+        files.find(
+          (file) =>
+            file.id ===
+            manageFileId
+        ) || null,
+      [files, manageFileId]
+    );
 
   function toggleId(
     current: string[],
@@ -442,13 +643,24 @@ export default function AdminFilesPage() {
       : [...current, id];
   }
 
-  function changeTab(tab: FileTab) {
+  function changeTab(
+    tab: FileTab
+  ) {
     setActiveTab(tab);
     setCurrentFolderId(null);
     setMoveMenuFileId(null);
     setQuery("");
+
+    if (tab === "PDF") {
+      void loadFolders();
+    }
   }
 
+  /*
+   * ---------------------------------------------------------
+   * UPLOAD
+   * ---------------------------------------------------------
+   */
   async function createManual() {
     if (
       !newTitle.trim() ||
@@ -457,13 +669,15 @@ export default function AdminFilesPage() {
       alert(
         "Συμπληρώστε τίτλο και επιλέξτε αρχείο."
       );
+
       return;
     }
 
     setSavingNew(true);
 
     try {
-      const formData = new FormData();
+      const formData =
+        new FormData();
 
       formData.append(
         "title",
@@ -476,14 +690,16 @@ export default function AdminFilesPage() {
       );
 
       if (
-        assignmentMode === "ALL"
+        assignmentMode ===
+        "ALL"
       ) {
         formData.append(
           "assignTo",
           "ALL"
         );
       } else if (
-        newSelectedUserIds.length > 0
+        newSelectedUserIds
+          .length > 0
       ) {
         formData.append(
           "assignTo",
@@ -493,17 +709,19 @@ export default function AdminFilesPage() {
         );
       }
 
-      const response = await fetch(
-        "/api/files",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const response =
+        await fetch(
+          "/api/files",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
@@ -514,8 +732,13 @@ export default function AdminFilesPage() {
       }
 
       const createdFileId =
-        json?.file?.id || json?.id;
+        json?.file?.id ||
+        json?.id;
 
+      /*
+       * Put PDF into the selected
+       * shared folder.
+       */
       if (
         selectedFileIsPdf &&
         newPdfFolderId &&
@@ -537,7 +760,17 @@ export default function AdminFilesPage() {
             }
           );
 
+        const moveJson =
+          await moveResponse
+            .json()
+            .catch(() => ({}));
+
         if (!moveResponse.ok) {
+          console.error(
+            "PDF folder assignment failed:",
+            moveJson
+          );
+
           alert(
             "Το αρχείο ανέβηκε, αλλά δεν μπόρεσε να τοποθετηθεί στον επιλεγμένο φάκελο."
           );
@@ -549,7 +782,9 @@ export default function AdminFilesPage() {
       setNewPdfFolderId("");
       setNewSelectedUserIds([]);
       setNewUserSearch("");
-      setAssignmentMode("SELECTED");
+      setAssignmentMode(
+        "SELECTED"
+      );
 
       const input =
         document.getElementById(
@@ -560,51 +795,67 @@ export default function AdminFilesPage() {
         input.value = "";
       }
 
-      await load();
+      await Promise.all([
+        load(),
+        loadFolders(),
+      ]);
     } catch (error: any) {
       alert(
-        error?.message || "Σφάλμα"
+        error?.message ||
+          "Σφάλμα"
       );
     } finally {
       setSavingNew(false);
     }
   }
 
+  /*
+   * ---------------------------------------------------------
+   * ASSIGNMENTS
+   * ---------------------------------------------------------
+   */
   async function assignSelected(
     fileId: string
   ) {
     const userIds =
-      assignmentSelections[fileId] ||
-      [];
+      assignmentSelections[
+        fileId
+      ] || [];
 
-    if (userIds.length === 0) {
+    if (
+      userIds.length === 0
+    ) {
       alert(
         "Επιλέξτε τουλάχιστον έναν χρήστη."
       );
+
       return;
     }
 
     setWorkingFileId(fileId);
 
     try {
-      const response = await fetch(
-        "/api/assignments",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            fileId,
-            userIds,
-          }),
-        }
-      );
+      const response =
+        await fetch(
+          "/api/assignments",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                fileId,
+                userIds,
+              }),
+          }
+        );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
@@ -646,24 +897,27 @@ export default function AdminFilesPage() {
     setWorkingFileId(fileId);
 
     try {
-      const response = await fetch(
-        "/api/assignments",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            fileId,
-            all: true,
-          }),
-        }
-      );
+      const response =
+        await fetch(
+          "/api/assignments",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                fileId,
+                all: true,
+              }),
+          }
+        );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
@@ -688,12 +942,17 @@ export default function AdminFilesPage() {
     fileId: string
   ) {
     const userIds =
-      removalSelections[fileId] || [];
+      removalSelections[
+        fileId
+      ] || [];
 
-    if (userIds.length === 0) {
+    if (
+      userIds.length === 0
+    ) {
       alert(
         "Επιλέξτε τουλάχιστον έναν χρήστη."
       );
+
       return;
     }
 
@@ -708,24 +967,28 @@ export default function AdminFilesPage() {
     setWorkingFileId(fileId);
 
     try {
-      const response = await fetch(
-        `/api/admin/files/${fileId}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            userIds,
-            deleteEntireFile: false,
-          }),
-        }
-      );
+      const response =
+        await fetch(
+          `/api/admin/files/${fileId}`,
+          {
+            method: "DELETE",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                userIds,
+                deleteEntireFile:
+                  false,
+              }),
+          }
+        );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
@@ -767,23 +1030,27 @@ export default function AdminFilesPage() {
     setWorkingFileId(fileId);
 
     try {
-      const response = await fetch(
-        `/api/admin/files/${fileId}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            deleteEntireFile: true,
-          }),
-        }
-      );
+      const response =
+        await fetch(
+          `/api/admin/files/${fileId}`,
+          {
+            method: "DELETE",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify({
+                deleteEntireFile:
+                  true,
+              }),
+          }
+        );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
@@ -793,15 +1060,17 @@ export default function AdminFilesPage() {
         );
       }
 
-      setFiles((previous) =>
-        previous.filter(
-          (file) =>
-            file.id !== fileId
-        )
+      setFiles(
+        (previous) =>
+          previous.filter(
+            (file) =>
+              file.id !== fileId
+          )
       );
 
       if (
-        manageFileId === fileId
+        manageFileId ===
+        fileId
       ) {
         setManageFileId(null);
       }
@@ -815,85 +1084,115 @@ export default function AdminFilesPage() {
     }
   }
 
+  /*
+   * ---------------------------------------------------------
+   * PDF FOLDERS
+   * ---------------------------------------------------------
+   */
   async function movePdf(
     fileId: string,
     folderId: string | null
   ) {
-    const response = await fetch(
-      `/api/files/${fileId}/pdf-folder`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          pdfFolderId: folderId,
-        }),
-      }
-    );
+    const response =
+      await fetch(
+        `/api/files/${fileId}/pdf-folder`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body:
+            JSON.stringify({
+              pdfFolderId:
+                folderId,
+            }),
+        }
+      );
+
+    const json =
+      await response
+        .json()
+        .catch(() => ({}));
 
     if (!response.ok) {
+      console.error(
+        "Move PDF failed:",
+        json
+      );
+
       alert(
         "Αποτυχία μετακίνησης PDF."
       );
+
       return;
     }
 
-    setFiles((previous) =>
-      previous.map((file) =>
-        file.id === fileId
-          ? {
-              ...file,
-              pdfFolderId:
-                folderId,
-            }
-          : file
-      )
+    setFiles(
+      (previous) =>
+        previous.map((file) =>
+          file.id === fileId
+            ? {
+                ...file,
+                pdfFolderId:
+                  folderId,
+              }
+            : file
+        )
     );
 
     setMoveMenuFileId(null);
   }
 
   async function createFolder() {
-  const name = prompt(
-    "Όνομα νέου κοινόχρηστου φακέλου:"
-  )?.trim();
+    const name = prompt(
+      "Όνομα νέου κοινόχρηστου φακέλου:"
+    )?.trim();
 
-  if (!name) return;
-
-  const response = await fetch(
-    "/api/pdf-folders",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        shared: true,
-      }),
+    if (!name) {
+      return;
     }
-  );
 
-  const json = await response
-    .json()
-    .catch(() => ({}));
+    const response =
+      await fetch(
+        "/api/pdf-folders",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body:
+            JSON.stringify({
+              name,
+              shared: true,
+            }),
+        }
+      );
 
-  if (!response.ok) {
-    alert(
-      json?.error ===
-        "folder_exists"
-        ? "Ο κοινόχρηστος φάκελος υπάρχει ήδη."
-        : "Αποτυχία δημιουργίας φακέλου."
-    );
+    const json =
+      await response
+        .json()
+        .catch(() => ({}));
 
-    return;
+    if (!response.ok) {
+      alert(
+        json?.error ===
+          "folder_exists"
+          ? "Ο κοινόχρηστος φάκελος υπάρχει ήδη."
+          : `Αποτυχία δημιουργίας φακέλου: ${
+              json?.error ||
+              "unknown"
+            }`
+      );
+
+      return;
+    }
+
+    setCurrentFolderId(null);
+
+    await loadFolders();
   }
-
-  await load();
-}
 
   async function renameFolder(
     id: string,
@@ -911,28 +1210,39 @@ export default function AdminFilesPage() {
       return;
     }
 
-    const response = await fetch(
-      `/api/pdf-folders/${id}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          name,
-        }),
-      }
-    );
+    const response =
+      await fetch(
+        `/api/pdf-folders/${id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body:
+            JSON.stringify({
+              name,
+            }),
+        }
+      );
+
+    const json =
+      await response
+        .json()
+        .catch(() => ({}));
 
     if (!response.ok) {
       alert(
-        "Αποτυχία μετονομασίας."
+        json?.error ===
+          "folder_exists"
+          ? "Υπάρχει ήδη φάκελος με αυτό το όνομα."
+          : "Αποτυχία μετονομασίας."
       );
+
       return;
     }
 
-    await load();
+    await loadFolders();
   }
 
   async function deleteFolder(
@@ -946,29 +1256,44 @@ export default function AdminFilesPage() {
       return;
     }
 
-    const response = await fetch(
-      `/api/pdf-folders/${id}`,
-      {
-        method: "DELETE",
-      }
-    );
+    const response =
+      await fetch(
+        `/api/pdf-folders/${id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+    const json =
+      await response
+        .json()
+        .catch(() => ({}));
 
     if (!response.ok) {
+      console.error(
+        "Delete folder failed:",
+        json
+      );
+
       alert(
         "Αποτυχία διαγραφής φακέλου."
       );
+
       return;
     }
 
-    setFiles((previous) =>
-      previous.map((file) =>
-        file.pdfFolderId === id
-          ? {
-              ...file,
-              pdfFolderId: null,
-            }
-          : file
-      )
+    setFiles(
+      (previous) =>
+        previous.map((file) =>
+          file.pdfFolderId ===
+          id
+            ? {
+                ...file,
+                pdfFolderId:
+                  null,
+              }
+            : file
+        )
     );
 
     if (
@@ -977,9 +1302,14 @@ export default function AdminFilesPage() {
       setCurrentFolderId(null);
     }
 
-    await load();
+    await loadFolders();
   }
 
+  /*
+   * ---------------------------------------------------------
+   * MAINTENANCE
+   * ---------------------------------------------------------
+   */
   async function cleanupDuplicates() {
     if (
       !confirm(
@@ -992,16 +1322,18 @@ export default function AdminFilesPage() {
     setCleaningDuplicates(true);
 
     try {
-      const response = await fetch(
-        "/api/admin/files/cleanup-duplicates",
-        {
-          method: "POST",
-        }
-      );
+      const response =
+        await fetch(
+          "/api/admin/files/cleanup-duplicates",
+          {
+            method: "POST",
+          }
+        );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
@@ -1025,7 +1357,9 @@ export default function AdminFilesPage() {
           "Σφάλμα κατά τον έλεγχο duplicates"
       );
     } finally {
-      setCleaningDuplicates(false);
+      setCleaningDuplicates(
+        false
+      );
     }
   }
 
@@ -1033,16 +1367,18 @@ export default function AdminFilesPage() {
     setCheckingMissing(true);
 
     try {
-      const response = await fetch(
-        "/api/admin/files/check-missing-storage",
-        {
-          cache: "no-store",
-        }
-      );
+      const response =
+        await fetch(
+          "/api/admin/files/check-missing-storage",
+          {
+            cache: "no-store",
+          }
+        );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
@@ -1072,7 +1408,9 @@ export default function AdminFilesPage() {
           "Σφάλμα κατά τον έλεγχο storage"
       );
     } finally {
-      setCheckingMissing(false);
+      setCheckingMissing(
+        false
+      );
     }
   }
 
@@ -1088,16 +1426,18 @@ export default function AdminFilesPage() {
     setCleaningMissing(true);
 
     try {
-      const response = await fetch(
-        "/api/admin/files/cleanup-missing-storage",
-        {
-          method: "POST",
-        }
-      );
+      const response =
+        await fetch(
+          "/api/admin/files/cleanup-missing-storage",
+          {
+            method: "POST",
+          }
+        );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
@@ -1113,7 +1453,8 @@ export default function AdminFilesPage() {
         }\nDeleted files: ${
           json.deletedFiles ?? 0
         }\nDeleted assignments: ${
-          json.deletedAssignments ?? 0
+          json.deletedAssignments ??
+          0
         }`
       );
 
@@ -1124,10 +1465,17 @@ export default function AdminFilesPage() {
           "Σφάλμα κατά τον καθαρισμό broken files"
       );
     } finally {
-      setCleaningMissing(false);
+      setCleaningMissing(
+        false
+      );
     }
   }
 
+  /*
+   * ---------------------------------------------------------
+   * UI
+   * ---------------------------------------------------------
+   */
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -1157,6 +1505,7 @@ export default function AdminFilesPage() {
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {/* File */}
           <div className="space-y-3">
             <label className="block">
               <span className="mb-1 block text-sm font-medium">
@@ -1194,7 +1543,9 @@ export default function AdminFilesPage() {
                     selectedFile
                   );
 
-                  setNewPdfFolderId("");
+                  setNewPdfFolderId(
+                    ""
+                  );
 
                   if (
                     selectedFile &&
@@ -1206,15 +1557,52 @@ export default function AdminFilesPage() {
                       )
                     );
                   }
+
+                  if (
+                    selectedFile &&
+                    (selectedFile.type ===
+                      "application/pdf" ||
+                      selectedFile.name
+                        .toLowerCase()
+                        .endsWith(
+                          ".pdf"
+                        ))
+                  ) {
+                    void loadFolders();
+                  }
                 }}
               />
             </label>
 
             {selectedFileIsPdf && (
               <label className="block">
-                <span className="mb-1 block text-sm font-medium">
-                  Φάκελος τεκμηρίωσης
-                </span>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">
+                    Φάκελος τεκμηρίωσης
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void loadFolders()
+                    }
+                    disabled={
+                      loadingFolders
+                    }
+                    className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-black disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      size={13}
+                      className={
+                        loadingFolders
+                          ? "animate-spin"
+                          : ""
+                      }
+                    />
+
+                    Ανανέωση
+                  </button>
+                </div>
 
                 <select
                   value={
@@ -1222,7 +1610,8 @@ export default function AdminFilesPage() {
                   }
                   onChange={(event) =>
                     setNewPdfFolderId(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm"
@@ -1250,11 +1639,9 @@ export default function AdminFilesPage() {
                 </select>
 
                 <p className="mt-1 text-xs text-gray-500">
-                  Ο ίδιος φάκελος θα
-                  ισχύει για όλους
-                  τους χρήστες στους
-                  οποίους ανατίθεται
-                  το PDF.
+                  {loadingFolders
+                    ? "Φόρτωση φακέλων..."
+                    : `${folders.length} κοινόχρηστοι φάκελοι διαθέσιμοι.`}
                 </p>
               </label>
             )}
@@ -1422,8 +1809,9 @@ export default function AdminFilesPage() {
         </button>
       </section>
 
-      {/* Tabs */}
-      <section className="overflow-hidden rounded-2xl border bg-white">
+      {/* Explorer */}
+      <section className="overflow-visible rounded-2xl border bg-white">
+        {/* Tabs */}
         <div className="flex flex-wrap gap-2 border-b bg-gray-50 p-3">
           <TabButton
             active={
@@ -1463,15 +1851,16 @@ export default function AdminFilesPage() {
               onClick={() =>
                 changeTab("OTHER")
               }
-              icon={<File size={17} />}
+              icon={
+                <File size={17} />
+              }
             >
-              Άλλα (
-              {otherFiles.length})
+              Άλλα ({otherFiles.length})
             </TabButton>
           )}
         </div>
 
-        {/* Breadcrumb for PDF */}
+        {/* Breadcrumb */}
         {activeTab === "PDF" &&
           currentFolder && (
             <div className="flex items-center gap-2 border-b px-3 py-2 sm:px-4">
@@ -1479,6 +1868,9 @@ export default function AdminFilesPage() {
                 type="button"
                 onClick={() => {
                   setCurrentFolderId(
+                    null
+                  );
+                  setMoveMenuFileId(
                     null
                   );
                   setQuery("");
@@ -1493,11 +1885,15 @@ export default function AdminFilesPage() {
 
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
                   setCurrentFolderId(
                     null
-                  )
-                }
+                  );
+                  setMoveMenuFileId(
+                    null
+                  );
+                  setQuery("");
+                }}
                 className="text-sm text-gray-500 hover:text-gray-900"
               >
                 PDF
@@ -1528,48 +1924,90 @@ export default function AdminFilesPage() {
             className="w-full rounded-xl border px-3 py-2 text-sm sm:max-w-[480px]"
           />
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {activeTab === "PDF" &&
+              !currentFolder && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void loadFolders()
+                    }
+                    disabled={
+                      loadingFolders
+                    }
+                    className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      size={15}
+                      className={
+                        loadingFolders
+                          ? "animate-spin"
+                          : ""
+                      }
+                    />
+
+                    Ανανέωση
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={createFolder}
+                    className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50"
+                  >
+                    <Plus size={16} />
+                    Νέος φάκελος
+                  </button>
+                </>
+              )}
+
             <span className="text-sm text-gray-500">
               {activeTab === "PDF" &&
-              !currentFolderId
+              !currentFolder
                 ? visibleFolders.length +
                   visibleFiles.length
                 : visibleFiles.length}{" "}
               στοιχείο(α)
             </span>
-
-            {activeTab === "PDF" &&
-              !currentFolderId && (
-                <button
-                  type="button"
-                  onClick={createFolder}
-                  className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50"
-                >
-                  <Plus size={16} />
-                  Νέος φάκελος
-                </button>
-              )}
           </div>
         </div>
 
-        {/* Explorer */}
+        {/* Folder status */}
+        {activeTab === "PDF" &&
+          !currentFolder && (
+            <div className="border-b bg-gray-50/50 px-4 py-2 text-xs text-gray-500">
+              {loadingFolders
+                ? "Φόρτωση κοινόχρηστων φακέλων..."
+                : `${folders.length} κοινόχρηστοι φάκελοι φορτώθηκαν.`}
+            </div>
+          )}
+
+        {/* Explorer grid */}
         <div className="min-h-[440px] p-2 sm:p-4 lg:p-5">
           {loading ? (
             <div className="py-16 text-center text-sm text-gray-500">
               Φόρτωση...
+            </div>
+          ) : activeTab ===
+              "PDF" &&
+            loadingFolders &&
+            folders.length === 0 ? (
+            <div className="py-16 text-center text-sm text-gray-500">
+              Φόρτωση φακέλων...
             </div>
           ) : visibleFolders.length ===
               0 &&
             visibleFiles.length ===
               0 ? (
             <div className="py-16 text-center text-sm text-gray-500">
-              Δεν βρέθηκαν αρχεία.
+              Δεν βρέθηκαν αρχεία ή
+              φάκελοι.
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-x-2 gap-y-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
-              {/* PDF folders */}
+              {/* Shared PDF folders */}
               {activeTab === "PDF" &&
-                !currentFolderId &&
+                !currentFolder &&
                 visibleFolders.map(
                   (folder) => (
                     <div
@@ -1584,9 +2022,12 @@ export default function AdminFilesPage() {
                           setCurrentFolderId(
                             folder.id
                           );
-                          setQuery(
-                            ""
+
+                          setMoveMenuFileId(
+                            null
                           );
+
+                          setQuery("");
                         }}
                         className="flex w-full flex-col items-center"
                       >
@@ -1610,12 +2051,14 @@ export default function AdminFilesPage() {
                       <div className="mt-2 flex gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
                             setCurrentFolderId(
                               folder.id
-                            )
-                          }
-                          className="rounded-md border bg-white p-1.5"
+                            );
+
+                            setQuery("");
+                          }}
+                          className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
                           title="Άνοιγμα"
                         >
                           <FolderOpen
@@ -1631,7 +2074,7 @@ export default function AdminFilesPage() {
                               folder.name
                             )
                           }
-                          className="rounded-md border bg-white p-1.5"
+                          className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
                           title="Μετονομασία"
                         >
                           <Pencil
@@ -1646,7 +2089,7 @@ export default function AdminFilesPage() {
                               folder.id
                             )
                           }
-                          className="rounded-md border bg-white p-1.5 text-red-600"
+                          className="rounded-md border bg-white p-1.5 text-red-600 hover:bg-red-50"
                           title="Διαγραφή"
                         >
                           <Trash2
@@ -1877,13 +2320,16 @@ function AdminFileCard({
   isPdf: boolean;
   isExcel: boolean;
   moveMenuFileId: string | null;
+
   setMoveMenuFileId: (
     value: string | null
   ) => void;
+
   onMovePdf: (
     fileId: string,
     folderId: string | null
   ) => Promise<void>;
+
   onManage: () => void;
   onDelete: () => void;
   working: boolean;
@@ -1931,9 +2377,11 @@ function AdminFileCard({
         </>
       )}
 
-      <div className="mt-1 text-[10px] text-gray-400">
-        {formatSize(file.size)}
-      </div>
+      {formatSize(file.size) && (
+        <div className="mt-1 text-[10px] text-gray-400">
+          {formatSize(file.size)}
+        </div>
+      )}
 
       <div className="mt-1 text-[10px] text-gray-500">
         {assignedCount} ανάθεση(εις)
@@ -1961,7 +2409,9 @@ function AdminFileCard({
               title="Λήψη"
               className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
             >
-              <Download size={15} />
+              <Download
+                size={15}
+              />
             </a>
           </>
         )}
@@ -1990,12 +2440,14 @@ function AdminFileCard({
               title="Μετακίνηση σε φάκελο"
               className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
             >
-              <Folder size={15} />
+              <Folder
+                size={15}
+              />
             </button>
 
             {moveMenuFileId ===
               file.id && (
-              <div className="absolute left-1/2 top-full z-50 mt-2 w-52 -translate-x-1/2 overflow-hidden rounded-lg border bg-white py-1 text-left shadow-lg">
+              <div className="absolute left-1/2 top-full z-[200] mt-2 max-h-72 w-60 -translate-x-1/2 overflow-y-auto rounded-lg border bg-white py-1 text-left shadow-xl">
                 <div className="border-b px-3 py-2 text-xs font-semibold text-gray-500">
                   Μετακίνηση σε
                 </div>
@@ -2023,6 +2475,7 @@ function AdminFileCard({
                     size={15}
                     className="text-gray-400"
                   />
+
                   Χωρίς φάκελο
                 </button>
 
@@ -2053,7 +2506,7 @@ function AdminFileCard({
                     >
                       <Folder
                         size={15}
-                        className="text-amber-500"
+                        className="shrink-0 text-amber-500"
                       />
 
                       <span className="truncate">
@@ -2124,7 +2577,8 @@ function FileTitle({
     <div
       className="mt-1 w-full overflow-hidden break-words text-xs font-medium leading-4 text-gray-800 sm:text-sm sm:leading-5"
       style={{
-        display: "-webkit-box",
+        display:
+          "-webkit-box",
         WebkitLineClamp: 3,
         WebkitBoxOrient:
           "vertical",
@@ -2150,16 +2604,22 @@ function AssignmentModal({
 }: {
   file: FileRow;
   activeUsers: UserRow[];
+
   assigning: string[];
   removing: string[];
+
   working: boolean;
+
   onClose: () => void;
+
   onToggleAssign: (
     id: string
   ) => void;
+
   onToggleRemove: (
     id: string
   ) => void;
+
   onAssignSelected: () => void;
   onAssignAll: () => void;
   onRemoveSelected: () => void;
@@ -2185,7 +2645,17 @@ function AssignmentModal({
     );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-3">
+    <div
+      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-3"
+      onMouseDown={(event) => {
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
+          onClose();
+        }
+      }}
+    >
       <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div>
@@ -2193,7 +2663,7 @@ function AssignmentModal({
               Διαχείριση αναθέσεων
             </h2>
 
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 break-words text-sm text-gray-500">
               {file.title}
             </p>
           </div>
@@ -2208,6 +2678,7 @@ function AssignmentModal({
         </div>
 
         <div className="grid gap-4 p-4 lg:grid-cols-2">
+          {/* Add assignments */}
           <section className="rounded-xl border p-3">
             <h3 className="font-semibold">
               Πρόσθετη ανάθεση
@@ -2246,8 +2717,8 @@ function AssignmentModal({
                         className="mt-0.5"
                       />
 
-                      <span className="text-sm">
-                        <span className="block">
+                      <span className="min-w-0 text-sm">
+                        <span className="block break-words">
                           {
                             user.email
                           }
@@ -2294,6 +2765,7 @@ function AssignmentModal({
             </div>
           </section>
 
+          {/* Existing assignments */}
           <section className="rounded-xl border p-3">
             <h3 className="font-semibold">
               Ανατεθειμένο σε
@@ -2333,8 +2805,8 @@ function AssignmentModal({
                         className="mt-0.5"
                       />
 
-                      <span className="text-sm">
-                        <span className="block">
+                      <span className="min-w-0 text-sm">
+                        <span className="block break-words">
                           {
                             user.email
                           }
