@@ -832,42 +832,44 @@ export default function AdminFilesPage() {
   }
 
   async function createFolder() {
-    const name = prompt(
-      "Όνομα νέου φακέλου:"
-    )?.trim();
+  const name = prompt(
+    "Όνομα νέου κοινόχρηστου φακέλου:"
+  )?.trim();
 
-    if (!name) return;
+  if (!name) return;
 
-    const response = await fetch(
-      "/api/pdf-folders",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          name,
-        }),
-      }
+  const response = await fetch(
+    "/api/pdf-folders",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        shared: true,
+      }),
+    }
+  );
+
+  const json = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok) {
+    alert(
+      json?.error ===
+        "folder_exists"
+        ? "Ο κοινόχρηστος φάκελος υπάρχει ήδη."
+        : "Αποτυχία δημιουργίας φακέλου."
     );
 
-    const json = await response
-      .json()
-      .catch(() => ({}));
-
-    if (!response.ok) {
-      alert(
-        json?.error ===
-          "folder_exists"
-          ? "Ο φάκελος υπάρχει ήδη."
-          : "Αποτυχία δημιουργίας φακέλου."
-      );
-      return;
-    }
-
-    await load();
+    return;
   }
+
+  await load();
+}
 
   async function renameFolder(
     id: string,
