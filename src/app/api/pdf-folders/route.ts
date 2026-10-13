@@ -10,8 +10,13 @@ export const dynamic = "force-dynamic";
 async function requireSignedIn() {
   const session = await getServerSession(authOptions);
 
-  const userId = (session as any)?.user?.id as string | undefined;
-  const role = (session as any)?.user?.role as string | undefined;
+  const userId = (session as any)?.user?.id as
+    | string
+    | undefined;
+
+  const role = (session as any)?.user?.role as
+    | string
+    | undefined;
 
   if (!userId) {
     return {
@@ -37,89 +42,29 @@ async function requireSignedIn() {
 
 const CreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  userId: z.string().trim().min(1).optional(),
-  shared: z.boolean().optional(),
+
+  // Admin may create a folder for a specific user.
+  userId: z
+    .string()
+    .trim()
+    .min(1)
+    .optional(),
 });
 
-/*
- * Ensures that every existing folder name
- * used by normal users also exists once
- * as a GLOBAL folder with ownerId = null.
+/**
+ * GET /api/pdf-folders
  *
- * Existing personal folders are NOT changed.
+ * USER:
+ *   Returns only that user's own folders.
+ *
+ * ADMIN + ?userId=xxx:
+ *   Returns only that specific user's folders.
+ *
+ * ADMIN without userId:
+ *   Returns an empty list.
+ *
+ * There are no global/shared folders anymore.
  */
-async function ensureSharedFoldersFromExisting() {
-  const existingFolders = await prisma.pdfFolder.findMany({
-    where: {
-      ownerId: {
-        not: null,
-      },
-    },
-    select: {
-      name: true,
-    },
-  });
-
-  const uniqueNames = Array.from(
-    new Set(
-      existingFolders
-        .map((folder) => folder.name.trim())
-        .filter(Boolean)
-    )
-  );
-
-  if (uniqueNames.length === 0) {
-    return;
-  }
-
-  const existingShared =
-    await prisma.pdfFolder.findMany({
-      where: {
-        ownerId: null,
-      },
-      select: {
-        name: true,
-      },
-    });
-
-  const sharedNames = new Set(
-    existingShared.map((folder) => folder.name.trim())
-  );
-
-  for (const name of uniqueNames) {
-    if (sharedNames.has(name)) {
-      continue;
-    }
-
-    /*
-     * Check again before create because
-     * ownerId = null is not reliably protected
-     * by a compound SQL UNIQUE constraint.
-     */
-    const alreadyExists =
-      await prisma.pdfFolder.findFirst({
-        where: {
-          ownerId: null,
-          name,
-        },
-        select: {
-          id: true,
-        },
-      });
-
-    if (alreadyExists) {
-      continue;
-    }
-
-    await prisma.pdfFolder.create({
-      data: {
-        name,
-        ownerId: null,
-      },
-    });
-  }
-}
-
 export async function GET(req: Request) {
   const guard = await requireSignedIn();
 
@@ -130,114 +75,77 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
   const userIdParam =
-    searchParams.get("userId")?.trim() || undefined;
+    searchParams.get("userId")?.trim() ||
+    undefined;
 
-  /*
-   * ADMIN without userId
-   *
-   * Automatically sync the existing common
-   * folder names into global/shared folders.
-   */
-  if (
-    guard.role === "ADMIN" &&
-    !userIdParam
-  ) {
-    await ensureSharedFoldersFromExisting();
+  let ownerId: string | null = null;
 
-    const folders =
-      await prisma.pdfFolder.findMany({
-        where: {
-          ownerId: null,
+  if (guard.role === "ADMIN") {
+    /**
+     * Admin must specify which user's
+     * folder space is being viewed.
+     *
+     * Other admin-specific folder management
+     * will be handled by /api/admin/pdf-folders.
+     */
+    if (!userIdParam) {
+      return NextResponse.json(
+        {
+          ok: true,
+          folders: [],
         },
-        orderBy: {
-          name: "asc",
+        {
+          headers: {
+            "Cache-Control":
+              "no-store, no-cache, must-revalidate",
+          },
+        }
+      );
+    }
+
+    /**
+     * Make sure the requested user exists
+     * and is not an admin account.
+     */
+    const targetUser =
+      await prisma.user.findUnique({
+        where: {
+          id: userIdParam,
         },
         select: {
           id: true,
-          name: true,
-          ownerId: true,
-          createdAt: true,
+          role: true,
         },
       });
 
-    return NextResponse.json(
-      {
-        ok: true,
-        folders,
-      },
-      {
-        headers: {
-          "Cache-Control":
-            "no-store, no-cache, must-revalidate",
+    if (
+      !targetUser ||
+      targetUser.role === "ADMIN"
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "user_not_found",
         },
-      }
-    );
+        {
+          status: 404,
+        }
+      );
+    }
+
+    ownerId = targetUser.id;
+  } else {
+    /**
+     * Normal users may only access
+     * their own folder space.
+     */
+    ownerId = guard.userId;
   }
 
-  /*
-   * ADMIN looking at a specific user:
-   *
-   * personal folders + global folders
-   */
-  if (
-    guard.role === "ADMIN" &&
-    userIdParam
-  ) {
-    await ensureSharedFoldersFromExisting();
-
-    const folders =
-      await prisma.pdfFolder.findMany({
-        where: {
-          OR: [
-            {
-              ownerId: userIdParam,
-            },
-            {
-              ownerId: null,
-            },
-          ],
-        },
-        orderBy: {
-          name: "asc",
-        },
-        select: {
-          id: true,
-          name: true,
-          ownerId: true,
-          createdAt: true,
-        },
-      });
-
-    return NextResponse.json(
-      {
-        ok: true,
-        folders,
-      },
-      {
-        headers: {
-          "Cache-Control":
-            "no-store, no-cache, must-revalidate",
-        },
-      }
-    );
-  }
-
-  /*
-   * NORMAL USER
-   *
-   * personal folders + global folders
-   */
   const folders =
     await prisma.pdfFolder.findMany({
       where: {
-        OR: [
-          {
-            ownerId: guard.userId,
-          },
-          {
-            ownerId: null,
-          },
-        ],
+        ownerId,
       },
       orderBy: {
         name: "asc",
@@ -264,6 +172,18 @@ export async function GET(req: Request) {
   );
 }
 
+/**
+ * POST /api/pdf-folders
+ *
+ * USER:
+ *   Creates a folder owned by themselves.
+ *
+ * ADMIN:
+ *   Must supply userId.
+ *   Creates a folder owned by that user.
+ *
+ * This endpoint never creates ownerId = null.
+ */
 export async function POST(req: Request) {
   const guard = await requireSignedIn();
 
@@ -283,7 +203,8 @@ export async function POST(req: Request) {
       {
         ok: false,
         error: "invalid_payload",
-        detail: parsed.error.flatten(),
+        detail:
+          parsed.error.flatten(),
       },
       {
         status: 400,
@@ -291,31 +212,74 @@ export async function POST(req: Request) {
     );
   }
 
-  const name = parsed.data.name;
+  const name =
+    parsed.data.name.trim();
 
-  let ownerId: string | null;
+  let ownerId: string;
 
-  /*
-   * ADMIN + specific user:
-   * create personal folder for that user.
-   *
-   * ADMIN without userId:
-   * create GLOBAL folder.
-   *
-   * Normal user:
-   * create own personal folder.
-   */
-  if (
-    guard.role === "ADMIN" &&
-    parsed.data.userId
-  ) {
-    ownerId = parsed.data.userId;
-  } else if (guard.role === "ADMIN") {
-    ownerId = null;
+  if (guard.role === "ADMIN") {
+    /**
+     * Admin must explicitly choose
+     * which user owns the folder.
+     */
+    if (!parsed.data.userId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "user_id_required",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    const targetUser =
+      await prisma.user.findUnique({
+        where: {
+          id: parsed.data.userId,
+        },
+        select: {
+          id: true,
+          role: true,
+        },
+      });
+
+    if (
+      !targetUser ||
+      targetUser.role === "ADMIN"
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "user_not_found",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
+    ownerId = targetUser.id;
   } else {
+    /**
+     * Normal user:
+     * folder always belongs to themselves.
+     */
     ownerId = guard.userId;
   }
 
+  /**
+   * Because schema has:
+   *
+   * @@unique([ownerId, name])
+   *
+   * the same user cannot have the same
+   * folder twice.
+   *
+   * Different users CAN have the same name.
+   */
   const exists =
     await prisma.pdfFolder.findFirst({
       where: {

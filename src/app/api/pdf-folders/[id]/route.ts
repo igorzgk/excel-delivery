@@ -7,24 +7,18 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { z } from "zod";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-async function requireSignedIn() {
-  const session =
-    await getServerSession(
-      authOptions
-    );
+async function requireAdmin() {
+  const session = await getServerSession(authOptions);
 
-  const userId =
-    (session as any)?.user
-      ?.id as
-      | string
-      | undefined;
+  const userId = (session as any)?.user?.id as
+    | string
+    | undefined;
 
-  const role =
-    (session as any)?.user
-      ?.role as
-      | string
-      | undefined;
+  const role = (session as any)?.user?.role as
+    | string
+    | undefined;
 
   if (!userId) {
     return {
@@ -36,6 +30,21 @@ async function requireSignedIn() {
         },
         {
           status: 401,
+        }
+      ),
+    };
+  }
+
+  if (role !== "ADMIN") {
+    return {
+      ok: false as const,
+      res: NextResponse.json(
+        {
+          ok: false,
+          error: "forbidden",
+        },
+        {
+          status: 403,
         }
       ),
     };
@@ -56,6 +65,22 @@ const PatchSchema = z.object({
     .max(80),
 });
 
+/**
+ * PATCH /api/pdf-folders/[id]
+ *
+ * ADMIN ONLY.
+ *
+ * Renames one PERSONAL folder.
+ *
+ * ownerId = null folders are the temporary
+ * old global folders and are intentionally
+ * not handled by this route anymore.
+ *
+ * Normally the bulk admin endpoint
+ * /api/admin/pdf-folders should be used
+ * when renaming a standard folder for
+ * every user.
+ */
 export async function PATCH(
   req: Request,
   ctx: {
@@ -65,7 +90,7 @@ export async function PATCH(
   }
 ) {
   const guard =
-    await requireSignedIn();
+    await requireAdmin();
 
   if (!guard.ok) {
     return guard.res;
@@ -86,6 +111,8 @@ export async function PATCH(
       {
         ok: false,
         error: "invalid_payload",
+        detail:
+          parsed.error.flatten(),
       },
       {
         status: 400,
@@ -94,18 +121,16 @@ export async function PATCH(
   }
 
   const folder =
-    await prisma.pdfFolder.findUnique(
-      {
-        where: {
-          id: folderId,
-        },
-        select: {
-          id: true,
-          name: true,
-          ownerId: true,
-        },
-      }
-    );
+    await prisma.pdfFolder.findUnique({
+      where: {
+        id: folderId,
+      },
+      select: {
+        id: true,
+        name: true,
+        ownerId: true,
+      },
+    });
 
   if (!folder) {
     return NextResponse.json(
@@ -119,35 +144,29 @@ export async function PATCH(
     );
   }
 
-  /*
-   * Normal users can only rename
-   * their OWN personal folders.
+  /**
+   * Global/shared folders are obsolete.
    *
-   * Shared folder:
-   * ownerId === null
-   *
-   * Therefore only ADMIN may rename
-   * shared folders.
+   * We don't want this route modifying them.
    */
-  if (
-    guard.role !== "ADMIN" &&
-    folder.ownerId !==
-      guard.userId
-  ) {
+  if (!folder.ownerId) {
     return NextResponse.json(
       {
         ok: false,
-        error: "forbidden",
+        error: "legacy_global_folder",
       },
       {
-        status: 403,
+        status: 409,
       }
     );
   }
 
-  /*
-   * Prevent duplicate folder name
-   * within the same owner scope.
+  const name =
+    parsed.data.name.trim();
+
+  /**
+   * Don't allow the same user to have
+   * two folders with the same name.
    */
   const duplicate =
     await prisma.pdfFolder.findFirst({
@@ -157,7 +176,7 @@ export async function PATCH(
         },
         ownerId:
           folder.ownerId,
-        name: parsed.data.name,
+        name,
       },
       select: {
         id: true,
@@ -182,13 +201,14 @@ export async function PATCH(
         id: folderId,
       },
       data: {
-        name: parsed.data.name,
+        name,
       },
       select: {
         id: true,
         name: true,
         ownerId: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -198,6 +218,20 @@ export async function PATCH(
   });
 }
 
+/**
+ * DELETE /api/pdf-folders/[id]
+ *
+ * ADMIN ONLY.
+ *
+ * Deletes one PERSONAL folder.
+ *
+ * Files themselves are NOT deleted.
+ * They are detached from the folder first.
+ *
+ * Normally /api/admin/pdf-folders should
+ * be used when removing a standard folder
+ * from multiple/all users.
+ */
 export async function DELETE(
   req: Request,
   ctx: {
@@ -207,7 +241,7 @@ export async function DELETE(
   }
 ) {
   const guard =
-    await requireSignedIn();
+    await requireAdmin();
 
   if (!guard.ok) {
     return guard.res;
@@ -217,18 +251,16 @@ export async function DELETE(
     ctx.params.id;
 
   const folder =
-    await prisma.pdfFolder.findUnique(
-      {
-        where: {
-          id: folderId,
-        },
-        select: {
-          id: true,
-          name: true,
-          ownerId: true,
-        },
-      }
-    );
+    await prisma.pdfFolder.findUnique({
+      where: {
+        id: folderId,
+      },
+      select: {
+        id: true,
+        name: true,
+        ownerId: true,
+      },
+    });
 
   if (!folder) {
     return NextResponse.json(
@@ -242,50 +274,55 @@ export async function DELETE(
     );
   }
 
-  /*
-   * Normal users may delete only
-   * their own personal folders.
-   *
-   * Only ADMIN may delete
-   * shared/global folders.
+  /**
+   * Do not touch the temporary
+   * global folders here.
    */
-  if (
-    guard.role !== "ADMIN" &&
-    folder.ownerId !==
-      guard.userId
-  ) {
+  if (!folder.ownerId) {
     return NextResponse.json(
       {
         ok: false,
-        error: "forbidden",
+        error: "legacy_global_folder",
       },
       {
-        status: 403,
+        status: 409,
       }
     );
   }
 
-  /*
-   * Detach files before deleting
-   * the folder.
-   */
-  await prisma.file.updateMany({
-    where: {
-      pdfFolderId:
-        folderId,
-    },
-    data: {
-      pdfFolderId: null,
-    },
-  });
+  const result =
+    await prisma.$transaction(
+      async (tx) => {
+        const detached =
+          await tx.file.updateMany({
+            where: {
+              pdfFolderId:
+                folderId,
+            },
+            data: {
+              pdfFolderId:
+                null,
+            },
+          });
 
-  await prisma.pdfFolder.delete({
-    where: {
-      id: folderId,
-    },
-  });
+        await tx.pdfFolder.delete({
+          where: {
+            id: folderId,
+          },
+        });
+
+        return {
+          detachedFiles:
+            detached.count,
+        };
+      }
+    );
 
   return NextResponse.json({
     ok: true,
+    deletedFolderId:
+      folderId,
+    detachedFiles:
+      result.detachedFiles,
   });
 }
