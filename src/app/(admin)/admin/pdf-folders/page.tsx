@@ -784,35 +784,7 @@ export default function AdminPdfFoldersPage() {
         </div>
       </header>
 
-      {/* EXPLANATION */}
-      <section className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
-        <div className="flex items-start gap-3">
-          <Users
-            size={20}
-            className="mt-0.5 shrink-0 text-blue-700"
-          />
-
-          <div>
-            <div className="text-sm font-semibold text-blue-950">
-              Ίδια δομή φακέλων,
-              ξεχωριστό περιεχόμενο
-              ανά χρήστη
-            </div>
-
-            <p className="mt-1 text-sm text-blue-900/75">
-              Κάθε φάκελος της
-              λίστας δημιουργείται
-              ξεχωριστά για κάθε
-              χρήστη. Τα ονόματα
-              παραμένουν κοινά,
-              αλλά κάθε χρήστης
-              έχει το δικό του
-              folder ID και τα δικά
-              του PDF.
-            </p>
-          </div>
-        </div>
-      </section>
+    
 
       {/* NEW FOLDER */}
       <section className="rounded-2xl border bg-[color:var(--card,#fff)] p-4">
