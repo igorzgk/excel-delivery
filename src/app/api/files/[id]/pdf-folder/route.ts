@@ -9,15 +9,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BodySchema = z.object({
-  /**
-   * Accept:
-   *
-   * null
-   * ""
-   * folder ID
-   *
-   * Empty string becomes null.
-   */
   pdfFolderId: z.preprocess(
     (value) =>
       typeof value === "string" &&
@@ -25,6 +16,17 @@ const BodySchema = z.object({
         ? null
         : value,
     z.string().nullable()
+  ),
+
+  // Admin sends this so we know WHICH user's
+  // assignment is being moved.
+  userId: z.preprocess(
+    (value) =>
+      typeof value === "string" &&
+      value.trim() === ""
+        ? null
+        : value,
+    z.string().nullable().optional()
   ),
 });
 
@@ -100,14 +102,14 @@ export async function PATCH(
 
   const {
     pdfFolderId,
+    userId:
+      requestedUserId,
   } = parsed.data;
 
-  /**
-   * Load the file together with
-   * its assignments.
-   *
-   * This lets us determine which
-   * USER owns this PDF.
+  /*
+   * -------------------------------------------------------
+   * LOAD FILE
+   * -------------------------------------------------------
    */
   const file =
     await prisma.file.findUnique({
@@ -119,7 +121,10 @@ export async function PATCH(
         id: true,
         mime: true,
         originalName: true,
+
         uploadedById: true,
+
+        // Legacy field
         pdfFolderId: true,
 
         uploadedBy: {
@@ -131,12 +136,22 @@ export async function PATCH(
 
         assignments: {
           select: {
+            id: true,
             userId: true,
+            pdfFolderId: true,
 
             user: {
               select: {
                 id: true,
                 role: true,
+              },
+            },
+
+            pdfFolder: {
+              select: {
+                id: true,
+                name: true,
+                ownerId: true,
               },
             },
           },
@@ -154,8 +169,10 @@ export async function PATCH(
     );
   }
 
-  /**
-   * Only PDFs may use PdfFolder.
+  /*
+   * -------------------------------------------------------
+   * PDF CHECK
+   * -------------------------------------------------------
    */
   const isPdf =
     (
@@ -180,192 +197,18 @@ export async function PATCH(
     );
   }
 
-  /**
-   * Get unique normal-user
-   * assignments.
-   */
-  const assignedUserIds =
-    Array.from(
-      new Set(
-        file.assignments
-          .filter(
-            (assignment) =>
-              assignment.user
-                .role ===
-              "USER"
-          )
-          .map(
-            (assignment) =>
-              assignment.userId
-          )
-      )
-    );
-
-  let targetUserId:
-    | string
-    | null = null;
-
-  /**
+  /*
    * -------------------------------------------------------
-   * ADMIN
+   * LOAD DESTINATION FOLDER
    * -------------------------------------------------------
-   *
-   * New PDFs should always have
-   * exactly one assigned user.
-   */
-  if (isAdmin) {
-    if (
-      assignedUserIds.length >
-      1
-    ) {
-      return json(
-        {
-          ok: false,
-          error:
-            "pdf_has_multiple_users",
-          detail:
-            "Το PDF είναι ανατεθειμένο σε περισσότερους από έναν χρήστες και δεν μπορεί να τοποθετηθεί σε προσωπικό φάκελο.",
-        },
-        409
-      );
-    }
-
-    if (
-      assignedUserIds.length ===
-      1
-    ) {
-      targetUserId =
-        assignedUserIds[0];
-    } else if (
-      file.uploadedBy &&
-      file.uploadedBy.role ===
-        "USER"
-    ) {
-      /**
-       * Compatibility for an old
-       * user-uploaded PDF that may
-       * not have a FileAssignment.
-       */
-      targetUserId =
-        file.uploadedBy.id;
-    } else {
-      return json(
-        {
-          ok: false,
-          error:
-            "pdf_has_no_user",
-          detail:
-            "Το PDF δεν είναι συνδεδεμένο με συγκεκριμένο χρήστη.",
-        },
-        409
-      );
-    }
-  } else {
-    /**
-     * -----------------------------------------------------
-     * NORMAL USER
-     * -----------------------------------------------------
-     *
-     * The file must actually belong
-     * to / be assigned to this user.
-     */
-    const assignedToMe =
-      assignedUserIds.includes(
-        meId
-      );
-
-    const uploadedByMe =
-      file.uploadedById ===
-      meId;
-
-    if (
-      !assignedToMe &&
-      !uploadedByMe
-    ) {
-      return json(
-        {
-          ok: false,
-          error:
-            "forbidden",
-        },
-        403
-      );
-    }
-
-    /**
-     * Prevent an old PDF shared with
-     * multiple users from being moved
-     * by one user, because that would
-     * change its folder for everyone.
-     */
-    if (
-      assignedUserIds.length >
-      1
-    ) {
-      return json(
-        {
-          ok: false,
-          error:
-            "pdf_has_multiple_users",
-          detail:
-            "Το PDF είναι κοινό σε περισσότερους από έναν χρήστες και δεν μπορεί να μετακινηθεί σε προσωπικό φάκελο.",
-        },
-        409
-      );
-    }
-
-    /**
-     * If it has one assignment,
-     * that assignment must be this user.
-     */
-    if (
-      assignedUserIds.length ===
-        1 &&
-      assignedUserIds[0] !==
-        meId
-    ) {
-      return json(
-        {
-          ok: false,
-          error:
-            "forbidden",
-        },
-        403
-      );
-    }
-
-    targetUserId =
-      meId;
-  }
-
-  if (!targetUserId) {
-    return json(
-      {
-        ok: false,
-        error:
-          "user_not_resolved",
-      },
-      409
-    );
-  }
-
-  /**
-   * -------------------------------------------------------
-   * FOLDER VALIDATION
-   * -------------------------------------------------------
-   *
-   * If null:
-   * remove PDF from its folder.
-   *
-   * If ID:
-   * folder MUST belong to the
-   * resolved target user.
    */
   let folder:
     | {
         id: string;
         name: string;
-        ownerId: string | null;
+        ownerId:
+          | string
+          | null;
       }
     | null = null;
 
@@ -397,10 +240,8 @@ export async function PATCH(
       );
     }
 
-    /**
-     * ownerId = null belongs to
-     * the obsolete global-folder
-     * architecture.
+    /*
+     * Never use old global folders.
      */
     if (!folder.ownerId) {
       return json(
@@ -414,66 +255,358 @@ export async function PATCH(
         409
       );
     }
+  }
 
-    /**
-     * CRITICAL SECURITY RULE:
-     *
-     * The folder must belong to
-     * the SAME user as the PDF.
+  /*
+   * -------------------------------------------------------
+   * RESOLVE TARGET USER
+   * -------------------------------------------------------
+   *
+   * NORMAL USER:
+   * always themselves.
+   *
+   * ADMIN:
+   *
+   * 1. userId from request
+   * 2. destination folder owner
+   * 3. single assignment
+   * 4. legacy uploader fallback
+   */
+  let targetUserId:
+    | string
+    | null = null;
+
+  if (!isAdmin) {
+    /*
+     * Normal users can only move
+     * their own assignment.
      */
     if (
-      folder.ownerId !==
-      targetUserId
+      requestedUserId &&
+      requestedUserId !==
+        meId
     ) {
       return json(
         {
           ok: false,
           error:
-            "folder_owner_mismatch",
-          detail:
-            "Ο επιλεγμένος φάκελος δεν ανήκει στον χρήστη του PDF.",
+            "forbidden",
         },
         403
       );
     }
+
+    targetUserId =
+      meId;
+  } else {
+    if (
+      requestedUserId
+    ) {
+      targetUserId =
+        requestedUserId;
+    } else if (
+      folder?.ownerId
+    ) {
+      /*
+       * If moving INTO a folder,
+       * its owner tells us which
+       * user's assignment to update.
+       */
+      targetUserId =
+        folder.ownerId;
+    } else {
+      const normalAssignments =
+        file.assignments.filter(
+          (assignment) =>
+            assignment.user
+              .role ===
+            "USER"
+        );
+
+      if (
+        normalAssignments.length ===
+        1
+      ) {
+        targetUserId =
+          normalAssignments[0]
+            .userId;
+      } else if (
+        normalAssignments.length ===
+          0 &&
+        file.uploadedBy?.role ===
+          "USER"
+      ) {
+        /*
+         * Legacy user-uploaded file.
+         */
+        targetUserId =
+          file.uploadedBy.id;
+      } else {
+        /*
+         * Shared PDF + move to root:
+         *
+         * Folder is null, so admin MUST
+         * specify which user is being changed.
+         */
+        return json(
+          {
+            ok: false,
+            error:
+              "target_user_required",
+            detail:
+              "Για κοινό PDF πρέπει να καθοριστεί ο χρήστης του οποίου η θέση φακέλου θα αλλάξει.",
+          },
+          400
+        );
+      }
+    }
   }
 
-  /**
-   * Update only after every
-   * ownership check passed.
+  if (!targetUserId) {
+    return json(
+      {
+        ok: false,
+        error:
+          "user_not_resolved",
+      },
+      409
+    );
+  }
+
+  /*
+   * -------------------------------------------------------
+   * DESTINATION FOLDER OWNERSHIP
+   * -------------------------------------------------------
    */
-  const updated =
-    await prisma.file.update({
-      where: {
-        id: fileId,
+  if (
+    folder &&
+    folder.ownerId !==
+      targetUserId
+  ) {
+    return json(
+      {
+        ok: false,
+        error:
+          "folder_owner_mismatch",
+        detail:
+          "Ο επιλεγμένος φάκελος δεν ανήκει στον συγκεκριμένο χρήστη.",
       },
+      403
+    );
+  }
 
-      data: {
-        pdfFolderId,
+  /*
+   * -------------------------------------------------------
+   * FIND TARGET ASSIGNMENT
+   * -------------------------------------------------------
+   */
+  const existingAssignment =
+    file.assignments.find(
+      (assignment) =>
+        assignment.userId ===
+          targetUserId &&
+        assignment.user.role ===
+          "USER"
+    ) || null;
+
+  /*
+   * Normal user must actually have access.
+   *
+   * Legacy exception:
+   * a user-uploaded file may not have an
+   * assignment yet.
+   */
+  if (
+    !isAdmin &&
+    !existingAssignment &&
+    file.uploadedById !==
+      meId
+  ) {
+    return json(
+      {
+        ok: false,
+        error:
+          "forbidden",
       },
+      403
+    );
+  }
 
-      select: {
-        id: true,
-        pdfFolderId: true,
-
-        pdfFolder: {
-          select: {
-            id: true,
-            name: true,
-            ownerId: true,
-          },
-        },
+  /*
+   * Admin also cannot arbitrarily attach
+   * an existing file to some unrelated user.
+   *
+   * That must happen through the assignment API.
+   */
+  if (
+    isAdmin &&
+    !existingAssignment &&
+    file.uploadedById !==
+      targetUserId
+  ) {
+    return json(
+      {
+        ok: false,
+        error:
+          "file_not_assigned_to_user",
+        detail:
+          "Το αρχείο δεν είναι ανατεθειμένο στον συγκεκριμένο χρήστη.",
       },
-    });
+      409
+    );
+  }
+
+  /*
+   * -------------------------------------------------------
+   * UPDATE ASSIGNMENT FOLDER
+   * -------------------------------------------------------
+   *
+   * If a legacy user-uploaded PDF has no
+   * FileAssignment, create one now.
+   *
+   * We also clear File.pdfFolderId because
+   * folder placement now belongs exclusively
+   * to FileAssignment.
+   */
+  const result =
+    await prisma.$transaction(
+      async (tx) => {
+        let assignment;
+
+        if (
+          existingAssignment
+        ) {
+          assignment =
+            await tx.fileAssignment.update(
+              {
+                where: {
+                  id:
+                    existingAssignment.id,
+                },
+
+                data: {
+                  pdfFolderId,
+                },
+
+                select: {
+                  id: true,
+                  fileId: true,
+                  userId: true,
+                  pdfFolderId: true,
+
+                  pdfFolder: {
+                    select: {
+                      id: true,
+                      name: true,
+                      ownerId: true,
+                    },
+                  },
+
+                  user: {
+                    select: {
+                      id: true,
+                      email: true,
+                      name: true,
+                    },
+                  },
+                },
+              }
+            );
+        } else {
+          /*
+           * Legacy compatibility:
+           *
+           * file was uploaded by this USER
+           * but has no FileAssignment yet.
+           */
+          assignment =
+            await tx.fileAssignment.create(
+              {
+                data: {
+                  fileId,
+                  userId:
+                    targetUserId,
+
+                  assignedById:
+                    meId,
+
+                  pdfFolderId,
+                },
+
+                select: {
+                  id: true,
+                  fileId: true,
+                  userId: true,
+                  pdfFolderId: true,
+
+                  pdfFolder: {
+                    select: {
+                      id: true,
+                      name: true,
+                      ownerId: true,
+                    },
+                  },
+
+                  user: {
+                    select: {
+                      id: true,
+                      email: true,
+                      name: true,
+                    },
+                  },
+                },
+              }
+            );
+        }
+
+        /*
+         * Remove old File-level folder placement.
+         *
+         * We do NOT delete any folder or PDF.
+         */
+        if (
+          file.pdfFolderId
+        ) {
+          await tx.file.update({
+            where: {
+              id: fileId,
+            },
+
+            data: {
+              pdfFolderId:
+                null,
+            },
+          });
+        }
+
+        return assignment;
+      }
+    );
 
   return json({
     ok: true,
 
-    file: updated,
+    file: {
+      id: fileId,
 
-    targetUserId,
+      /*
+       * Compatibility with existing frontend
+       * File shape.
+       */
+      pdfFolderId:
+        result.pdfFolderId,
+
+      pdfFolder:
+        result.pdfFolder,
+    },
+
+    assignment:
+      result,
+
+    targetUserId:
+      result.userId,
 
     folder:
-      updated.pdfFolder,
+      result.pdfFolder,
   });
 }

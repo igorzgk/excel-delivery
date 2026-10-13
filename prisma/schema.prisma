@@ -122,11 +122,11 @@ model UserProfile {
   businessTypes BusinessType[]
 
   // Πλήθος εξοπλισμού συντήρησης
-  fridgeCount          Int @default(0) // Αριθμός ψυγείων
-  freezerCount         Int @default(0) // Αριθμός καταψύξεων
-  hotCabinetCount      Int @default(0) // Αριθμός θερμοθαλάμων / Bain Marie
-  dryAgedChamberCount  Int @default(0) // Αριθμός θαλάμων Dry Aged
-  iceCreamFreezerCount Int @default(0) // Αριθμός καταψύκτη/έκθεσης παγωτών
+  fridgeCount           Int @default(0) // Αριθμός ψυγείων
+  freezerCount          Int @default(0) // Αριθμός καταψύξεων
+  hotCabinetCount       Int @default(0) // Αριθμός θερμοθαλάμων / Bain Marie
+  dryAgedChamberCount   Int @default(0) // Αριθμός θαλάμων Dry Aged
+  iceCreamFreezerCount  Int @default(0) // Αριθμός καταψύκτη/έκθεσης παγωτών
   chocolateDisplayCount Int @default(0) // Αριθμός προθηκών έκθεσης προϊόντων σοκολατοποιίας
 
   // Αρχικά υπευθύνου
@@ -152,8 +152,11 @@ model PdfFolder {
   ownerId String?
   owner   User?   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  // ✅ SAME relation name on both sides
+  // Legacy relation - keep for now
   files File[] @relation("PdfFolderFiles")
+
+  // New relation - folder placement per assignment/user
+  assignments FileAssignment[] @relation("AssignmentPdfFolder")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -178,21 +181,23 @@ model PasswordResetToken {
 }
 
 model File {
-  id           String     @id @default(cuid())
+  id           String  @id @default(cuid())
   title        String
   originalName String?
-  url          String? // for external or pre-signed location (we’ll wire actual uploads next day)
+  url          String?
   mime         String?
   size         Int?
-  uploadedBy   User?      @relation("UserUploads", fields: [uploadedById], references: [id])
-  uploadedById String?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  // ✅ SAME relation name on both sides
-  pdfFolderId  String?
-  pdfFolder    PdfFolder? @relation("PdfFolderFiles", fields: [pdfFolderId], references: [id], onDelete: SetNull)
 
-  // Assignments
+  uploadedBy   User?   @relation("UserUploads", fields: [uploadedById], references: [id])
+  uploadedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Legacy PDF folder relation - keep temporarily
+  pdfFolderId String?
+  pdfFolder   PdfFolder? @relation("PdfFolderFiles", fields: [pdfFolderId], references: [id], onDelete: SetNull)
+
   assignments FileAssignment[]
 
   @@index([uploadedById])
@@ -200,19 +205,28 @@ model File {
 }
 
 model FileAssignment {
-  id           String   @id @default(cuid())
-  file         File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  fileId       String
-  user         User     @relation("UserAssignments", fields: [userId], references: [id], onDelete: Cascade)
-  userId       String
-  assignedBy   User     @relation("AssignmentsAssignedBy", fields: [assignedById], references: [id])
-  assignedById String
-  note         String?
-  createdAt    DateTime @default(now())
+  id String @id @default(cuid())
 
-  @@unique([fileId, userId]) // prevent double-assigning the same file to same user
+  file   File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  fileId String
+
+  user   User   @relation("UserAssignments", fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  assignedBy   User   @relation("AssignmentsAssignedBy", fields: [assignedById], references: [id])
+  assignedById String
+
+  // New: each user's assignment can belong to that user's own folder
+  pdfFolderId String?
+  pdfFolder   PdfFolder? @relation("AssignmentPdfFolder", fields: [pdfFolderId], references: [id], onDelete: SetNull)
+
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([fileId, userId])
   @@index([userId, createdAt])
   @@index([assignedById])
+  @@index([pdfFolderId])
 }
 
 model ApiKey {
