@@ -6,11 +6,28 @@ import { z } from "zod";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Standard folder creation.
+/*
+ * ---------------------------------------------------------
+ * SCHEMAS
+ * ---------------------------------------------------------
+ */
+
+/*
+ * Create folder for selected users.
  *
- * A folder created here is created for
- * EVERY normal USER account.
+ * Examples:
+ *
+ * {
+ *   name: "ΑΔΕΙΑ ΛΕΙΤΟΥΡΓΙΑΣ",
+ *   userIds: ["user1", "user2", "user3"]
+ * }
+ *
+ * OR:
+ *
+ * {
+ *   name: "ΑΔΕΙΑ ΛΕΙΤΟΥΡΓΙΑΣ",
+ *   all: true
+ * }
  */
 const CreateSchema = z
   .object({
@@ -19,14 +36,25 @@ const CreateSchema = z
       .trim()
       .min(1)
       .max(80),
+
+    userIds: z
+      .array(z.string().min(1))
+      .optional(),
+
+    all: z
+      .boolean()
+      .optional(),
   })
   .strict();
 
-/**
- * Standard folder rename.
+/*
+ * Rename logical folder.
  *
- * Every personal copy with oldName
- * becomes newName.
+ * This renames ONLY the users who
+ * currently have the old folder.
+ *
+ * It does NOT add the folder to users
+ * who do not already have it.
  */
 const RenameSchema = z
   .object({
@@ -44,11 +72,27 @@ const RenameSchema = z
   })
   .strict();
 
-/**
- * Standard folder deletion.
+/*
+ * Replace folder membership.
  *
- * Every personal copy of this folder
- * is deleted.
+ * The supplied userIds become the exact
+ * list of users who should have this folder.
+ */
+const MembershipSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80),
+
+    userIds: z
+      .array(z.string().min(1)),
+  })
+  .strict();
+
+/*
+ * Delete logical folder completely.
  */
 const DeleteSchema = z
   .object({
@@ -88,16 +132,11 @@ async function requireAdmin() {
   };
 }
 
-/**
+/*
  * All normal application users.
  *
- * We intentionally include:
- * - ACTIVE
- * - PENDING
- * - SUSPENDED
- *
- * because the standard folder structure
- * should be identical for every USER.
+ * Folder management may include ACTIVE,
+ * PENDING or SUSPENDED users.
  */
 async function getNormalUsers() {
   return prisma.user.findMany({
@@ -124,28 +163,35 @@ async function getNormalUsers() {
   });
 }
 
-/**
+function noStoreHeaders() {
+  return {
+    "Cache-Control":
+      "no-store, no-cache, must-revalidate",
+  };
+}
+
+/*
  * ---------------------------------------------------------
  * GET
  * ---------------------------------------------------------
  *
- * Returns the standard folder structure
- * grouped by folder name.
+ * Returns folders grouped by logical name.
  *
- * Example database:
+ * Example:
  *
- * User A -> ΑΡΧΕΙΟ ΝΕΡΟΥ -> folder_A
- * User B -> ΑΡΧΕΙΟ ΝΕΡΟΥ -> folder_B
+ * User A -> ΑΔΕΙΑ ΛΕΙΤΟΥΡΓΙΑΣ -> folder_A
+ * User B -> ΑΔΕΙΑ ΛΕΙΤΟΥΡΓΙΑΣ -> folder_B
  *
- * Response:
+ * becomes:
  *
- * ΑΡΧΕΙΟ ΝΕΡΟΥ
- * count: 2
- * totalUsers: 2
- * missingCount: 0
+ * {
+ *   name: "ΑΔΕΙΑ ΛΕΙΤΟΥΡΓΙΑΣ",
+ *   count: 2,
+ *   users: [...]
+ * }
  *
- * IMPORTANT:
- * ownerId = null legacy/global folders are ignored.
+ * ownerId = null legacy/global folders
+ * are ignored.
  */
 export async function GET() {
   const guard =
@@ -208,7 +254,10 @@ export async function GET() {
       string,
       {
         name: string;
-        folderIds: string[];
+
+        folderIds:
+          string[];
+
         users: Array<{
           id: string;
           email: string;
@@ -218,7 +267,9 @@ export async function GET() {
           status: string;
           folderId: string;
         }>;
-        createdAt: Date;
+
+        createdAt:
+          Date;
       }
     >();
 
@@ -262,12 +313,16 @@ export async function GET() {
 
     group.users.push({
       id: owner.id,
+
       email:
         owner.email,
+
       name:
         owner.name,
+
       status:
         owner.status,
+
       folderId:
         folder.id,
     });
@@ -298,8 +353,7 @@ export async function GET() {
           ...group,
 
           count:
-            group.users
-              .length,
+            group.users.length,
 
           totalUsers,
 
@@ -307,13 +361,11 @@ export async function GET() {
             Math.max(
               0,
               totalUsers -
-                group.users
-                  .length
+                group.users.length
             ),
 
           complete:
-            group.users
-              .length ===
+            group.users.length ===
             totalUsers,
 
           users:
@@ -350,33 +402,20 @@ export async function GET() {
       totalUsers,
     },
     {
-      headers: {
-        "Cache-Control":
-          "no-store, no-cache, must-revalidate",
-      },
+      headers:
+        noStoreHeaders(),
     }
   );
 }
 
-/**
+/*
  * ---------------------------------------------------------
  * POST
  * ---------------------------------------------------------
  *
- * Creates a standard folder for EVERY
- * normal user.
+ * Create a logical folder for SELECTED users.
  *
- * Example:
- *
- * POST
- * {
- *   "name": "ΑΡΧΕΙΟ ΝΕΡΟΥ"
- * }
- *
- * If some users already have it,
- * they are skipped.
- *
- * Missing copies are created.
+ * Does NOT automatically create it for everybody.
  */
 export async function POST(
   req: Request
@@ -402,8 +441,10 @@ export async function POST(
     return NextResponse.json(
       {
         ok: false,
+
         error:
           "invalid_payload",
+
         detail:
           parsed.error.flatten(),
       },
@@ -413,29 +454,87 @@ export async function POST(
     );
   }
 
-  const name =
-    parsed.data.name;
+  const {
+    name,
+    all,
+  } = parsed.data;
+
+  const requestedUserIds =
+    Array.from(
+      new Set(
+        parsed.data.userIds ||
+          []
+      )
+    );
 
   const users =
     await getNormalUsers();
 
-  const userIds =
-    users.map(
-      (user) => user.id
+  const validUserIds =
+    new Set(
+      users.map(
+        (user) =>
+          user.id
+      )
     );
 
+  let targetUserIds:
+    string[];
+
+  if (all === true) {
+    targetUserIds =
+      users.map(
+        (user) =>
+          user.id
+      );
+  } else {
+    targetUserIds =
+      requestedUserIds;
+  }
+
+  /*
+   * Must choose at least one user.
+   */
   if (
-    userIds.length === 0
+    targetUserIds.length ===
+    0
   ) {
     return NextResponse.json(
       {
-        ok: true,
-        created: 0,
-        skipped: 0,
-        totalUsers: 0,
+        ok: false,
+        error:
+          "no_users_selected",
+        detail:
+          "Επιλέξτε τουλάχιστον έναν χρήστη.",
       },
       {
-        status: 201,
+        status: 400,
+      }
+    );
+  }
+
+  /*
+   * Reject ADMIN / unknown IDs.
+   */
+  const invalidUserIds =
+    targetUserIds.filter(
+      (id) =>
+        !validUserIds.has(id)
+    );
+
+  if (
+    invalidUserIds.length >
+    0
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "invalid_user_ids",
+        invalidUserIds,
+      },
+      {
+        status: 400,
       }
     );
   }
@@ -447,7 +546,8 @@ export async function POST(
           name,
 
           ownerId: {
-            in: userIds,
+            in:
+              targetUserIds,
           },
         },
 
@@ -473,7 +573,7 @@ export async function POST(
     );
 
   const missingIds =
-    userIds.filter(
+    targetUserIds.filter(
       (id) =>
         !existingOwnerIds.has(
           id
@@ -481,7 +581,8 @@ export async function POST(
     );
 
   if (
-    missingIds.length > 0
+    missingIds.length >
+    0
   ) {
     await prisma.pdfFolder.createMany(
       {
@@ -505,44 +606,369 @@ export async function POST(
     {
       ok: true,
 
+      name,
+
       created:
         missingIds.length,
 
       skipped:
-        userIds.length -
+        targetUserIds.length -
         missingIds.length,
 
-      totalUsers:
-        userIds.length,
+      selectedUsers:
+        targetUserIds.length,
+
+      userIds:
+        targetUserIds,
     },
     {
       status: 201,
+
+      headers:
+        noStoreHeaders(),
     }
   );
 }
 
-/**
+/*
+ * ---------------------------------------------------------
+ * PUT
+ * ---------------------------------------------------------
+ *
+ * Set EXACT folder membership.
+ *
+ * Example:
+ *
+ * {
+ *   name: "ΑΔΕΙΑ ΛΕΙΤΟΥΡΓΙΑΣ",
+ *   userIds: [
+ *     "userA",
+ *     "userB",
+ *     "userC"
+ *   ]
+ * }
+ *
+ * Those users will have the folder.
+ *
+ * Any other user who currently has this
+ * folder will have their personal copy removed.
+ *
+ * PDFs are NOT deleted.
+ *
+ * Their FileAssignment.pdfFolderId becomes null.
+ */
+export async function PUT(
+  req: Request
+) {
+  const guard =
+    await requireAdmin();
+
+  if (!guard.ok) {
+    return guard.response;
+  }
+
+  const body =
+    await req
+      .json()
+      .catch(() => ({}));
+
+  const parsed =
+    MembershipSchema.safeParse(
+      body
+    );
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        ok: false,
+
+        error:
+          "invalid_payload",
+
+        detail:
+          parsed.error.flatten(),
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  const {
+    name,
+  } = parsed.data;
+
+  const requestedUserIds =
+    Array.from(
+      new Set(
+        parsed.data.userIds
+      )
+    );
+
+  const users =
+    await getNormalUsers();
+
+  const allUserIds =
+    users.map(
+      (user) =>
+        user.id
+    );
+
+  const validUserIds =
+    new Set(
+      allUserIds
+    );
+
+  const invalidUserIds =
+    requestedUserIds.filter(
+      (id) =>
+        !validUserIds.has(id)
+    );
+
+  if (
+    invalidUserIds.length >
+    0
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+
+        error:
+          "invalid_user_ids",
+
+        invalidUserIds,
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  const selectedSet =
+    new Set(
+      requestedUserIds
+    );
+
+  const result =
+    await prisma.$transaction(
+      async (tx) => {
+        const existingFolders =
+          await tx.pdfFolder.findMany(
+            {
+              where: {
+                name,
+
+                ownerId: {
+                  in:
+                    allUserIds,
+                },
+              },
+
+              select: {
+                id: true,
+                ownerId: true,
+              },
+            }
+          );
+
+        const existingByOwner =
+          new Map<
+            string,
+            string
+          >();
+
+        for (
+          const folder of
+          existingFolders
+        ) {
+          if (
+            folder.ownerId
+          ) {
+            existingByOwner.set(
+              folder.ownerId,
+              folder.id
+            );
+          }
+        }
+
+        /*
+         * Add folder to newly selected users.
+         */
+        const toAdd =
+          requestedUserIds.filter(
+            (userId) =>
+              !existingByOwner.has(
+                userId
+              )
+          );
+
+        if (
+          toAdd.length > 0
+        ) {
+          await tx.pdfFolder.createMany(
+            {
+              data:
+                toAdd.map(
+                  (
+                    ownerId
+                  ) => ({
+                    name,
+                    ownerId,
+                  })
+                ),
+
+              skipDuplicates:
+                true,
+            }
+          );
+        }
+
+        /*
+         * Remove folder copies from users
+         * that are no longer selected.
+         */
+        const foldersToRemove =
+          existingFolders.filter(
+            (folder) =>
+              !!folder.ownerId &&
+              !selectedSet.has(
+                folder.ownerId
+              )
+          );
+
+        const removeFolderIds =
+          foldersToRemove.map(
+            (folder) =>
+              folder.id
+          );
+
+        let detachedAssignments =
+          0;
+
+        let detachedLegacyFiles =
+          0;
+
+        let removedFolders =
+          0;
+
+        if (
+          removeFolderIds.length >
+          0
+        ) {
+          /*
+           * NEW architecture.
+           */
+          const assignmentResult =
+            await tx.fileAssignment.updateMany(
+              {
+                where: {
+                  pdfFolderId: {
+                    in:
+                      removeFolderIds,
+                  },
+                },
+
+                data: {
+                  pdfFolderId:
+                    null,
+                },
+              }
+            );
+
+          detachedAssignments =
+            assignmentResult.count;
+
+          /*
+           * LEGACY architecture.
+           *
+           * Keep this until old File.pdfFolderId
+           * data is fully migrated.
+           */
+          const legacyResult =
+            await tx.file.updateMany(
+              {
+                where: {
+                  pdfFolderId: {
+                    in:
+                      removeFolderIds,
+                  },
+                },
+
+                data: {
+                  pdfFolderId:
+                    null,
+                },
+              }
+            );
+
+          detachedLegacyFiles =
+            legacyResult.count;
+
+          const deleted =
+            await tx.pdfFolder.deleteMany(
+              {
+                where: {
+                  id: {
+                    in:
+                      removeFolderIds,
+                  },
+                },
+              }
+            );
+
+          removedFolders =
+            deleted.count;
+        }
+
+        return {
+          added:
+            toAdd.length,
+
+          removed:
+            removedFolders,
+
+          detachedAssignments,
+
+          detachedLegacyFiles,
+        };
+      }
+    );
+
+  return NextResponse.json(
+    {
+      ok: true,
+
+      name,
+
+      selectedUsers:
+        requestedUserIds.length,
+
+      userIds:
+        requestedUserIds,
+
+      ...result,
+    },
+    {
+      headers:
+        noStoreHeaders(),
+    }
+  );
+}
+
+/*
  * ---------------------------------------------------------
  * PATCH
  * ---------------------------------------------------------
  *
- * Renames a standard folder for EVERY
- * normal user.
+ * Rename folder.
  *
- * It also repairs inconsistencies.
+ * IMPORTANT:
  *
- * If:
+ * Only users who ALREADY have oldName
+ * are affected.
  *
- * User A has oldName
- * User A already has newName
- *
- * the two folders are merged.
- *
- * Files from oldName are moved into newName
- * and the old folder is deleted.
- *
- * At the end, every USER is guaranteed
- * to have newName.
+ * We do NOT create the folder for users
+ * who did not have it.
  */
 export async function PATCH(
   req: Request
@@ -568,8 +994,10 @@ export async function PATCH(
     return NextResponse.json(
       {
         ok: false,
+
         error:
           "invalid_payload",
+
         detail:
           parsed.error.flatten(),
       },
@@ -587,15 +1015,11 @@ export async function PATCH(
   if (
     oldName === newName
   ) {
-    return NextResponse.json(
-      {
-        ok: true,
-        renamed: 0,
-        merged: 0,
-        createdMissing:
-          0,
-      }
-    );
+    return NextResponse.json({
+      ok: true,
+      renamed: 0,
+      merged: 0,
+    });
   }
 
   const users =
@@ -603,7 +1027,8 @@ export async function PATCH(
 
   const userIds =
     users.map(
-      (user) => user.id
+      (user) =>
+        user.id
     );
 
   const result =
@@ -617,7 +1042,8 @@ export async function PATCH(
                   oldName,
 
                 ownerId: {
-                  in: userIds,
+                  in:
+                    userIds,
                 },
               },
 
@@ -637,11 +1063,29 @@ export async function PATCH(
               true,
 
             renamed: 0,
+
             merged: 0,
-            createdMissing:
+
+            movedAssignments:
+              0,
+
+            movedLegacyFiles:
               0,
           };
         }
+
+        const ownersWithOldFolder =
+          oldFolders
+            .map(
+              (folder) =>
+                folder.ownerId
+            )
+            .filter(
+              (
+                id
+              ): id is string =>
+                !!id
+            );
 
         const targetFolders =
           await tx.pdfFolder.findMany(
@@ -651,7 +1095,8 @@ export async function PATCH(
                   newName,
 
                 ownerId: {
-                  in: userIds,
+                  in:
+                    ownersWithOldFolder,
                 },
               },
 
@@ -670,7 +1115,7 @@ export async function PATCH(
 
         for (
           const target of
-            targetFolders
+          targetFolders
         ) {
           if (
             target.ownerId
@@ -685,9 +1130,15 @@ export async function PATCH(
         let renamed = 0;
         let merged = 0;
 
+        let movedAssignments =
+          0;
+
+        let movedLegacyFiles =
+          0;
+
         for (
           const folder of
-            oldFolders
+          oldFolders
         ) {
           if (
             !folder.ownerId
@@ -700,31 +1151,53 @@ export async function PATCH(
               folder.ownerId
             );
 
-          /**
+          /*
            * User already has newName.
            *
-           * Move files into new folder
-           * and delete old folder.
+           * Merge old folder into target.
            */
           if (targetId) {
-            await tx.file.updateMany(
-              {
-                where: {
-                  pdfFolderId:
-                    folder.id,
-                },
+            const assignments =
+              await tx.fileAssignment.updateMany(
+                {
+                  where: {
+                    pdfFolderId:
+                      folder.id,
+                  },
 
-                data: {
-                  pdfFolderId:
-                    targetId,
-                },
-              }
-            );
+                  data: {
+                    pdfFolderId:
+                      targetId,
+                  },
+                }
+              );
+
+            movedAssignments +=
+              assignments.count;
+
+            const legacyFiles =
+              await tx.file.updateMany(
+                {
+                  where: {
+                    pdfFolderId:
+                      folder.id,
+                  },
+
+                  data: {
+                    pdfFolderId:
+                      targetId,
+                  },
+                }
+              );
+
+            movedLegacyFiles +=
+              legacyFiles.count;
 
             await tx.pdfFolder.delete(
               {
                 where: {
-                  id: folder.id,
+                  id:
+                    folder.id,
                 },
               }
             );
@@ -734,13 +1207,14 @@ export async function PATCH(
             continue;
           }
 
-          /**
+          /*
            * Normal rename.
            */
           await tx.pdfFolder.update(
             {
               where: {
-                id: folder.id,
+                id:
+                  folder.id,
               },
 
               data: {
@@ -758,77 +1232,6 @@ export async function PATCH(
           renamed += 1;
         }
 
-        /**
-         * Repair any users who were
-         * already missing oldName.
-         *
-         * After this operation EVERY
-         * user must have newName.
-         */
-        const finalTargets =
-          await tx.pdfFolder.findMany(
-            {
-              where: {
-                name:
-                  newName,
-
-                ownerId: {
-                  in: userIds,
-                },
-              },
-
-              select: {
-                ownerId: true,
-              },
-            }
-          );
-
-        const finalOwnerIds =
-          new Set(
-            finalTargets
-              .map(
-                (folder) =>
-                  folder.ownerId
-              )
-              .filter(
-                (
-                  id
-                ): id is string =>
-                  !!id
-              )
-          );
-
-        const missingIds =
-          userIds.filter(
-            (id) =>
-              !finalOwnerIds.has(
-                id
-              )
-          );
-
-        if (
-          missingIds.length >
-          0
-        ) {
-          await tx.pdfFolder.createMany(
-            {
-              data:
-                missingIds.map(
-                  (
-                    ownerId
-                  ) => ({
-                    name:
-                      newName,
-                    ownerId,
-                  })
-                ),
-
-              skipDuplicates:
-                true,
-            }
-          );
-        }
-
         return {
           notFound:
             false,
@@ -837,8 +1240,9 @@ export async function PATCH(
 
           merged,
 
-          createdMissing:
-            missingIds.length,
+          movedAssignments,
+
+          movedLegacyFiles,
         };
       }
     );
@@ -858,34 +1262,45 @@ export async function PATCH(
     );
   }
 
-  return NextResponse.json({
-    ok: true,
+  return NextResponse.json(
+    {
+      ok: true,
 
-    renamed:
-      result.renamed,
+      renamed:
+        result.renamed,
 
-    merged:
-      result.merged,
+      merged:
+        result.merged,
 
-    createdMissing:
-      result.createdMissing,
-  });
+      movedAssignments:
+        result.movedAssignments,
+
+      movedLegacyFiles:
+        result.movedLegacyFiles,
+    },
+    {
+      headers:
+        noStoreHeaders(),
+    }
+  );
 }
 
-/**
+/*
  * ---------------------------------------------------------
  * DELETE
  * ---------------------------------------------------------
  *
- * Deletes a standard folder from EVERY
- * normal user.
+ * Delete this logical folder from EVERY
+ * user who currently has it.
  *
- * PDFs are NOT deleted.
+ * PDFs themselves are NOT deleted.
  *
- * Any PDF currently inside one of these
- * folders is detached:
+ * Both:
  *
- * pdfFolderId = null
+ * FileAssignment.pdfFolderId
+ * File.pdfFolderId (legacy)
+ *
+ * are detached first.
  */
 export async function DELETE(
   req: Request
@@ -911,8 +1326,10 @@ export async function DELETE(
     return NextResponse.json(
       {
         ok: false,
+
         error:
           "invalid_payload",
+
         detail:
           parsed.error.flatten(),
       },
@@ -927,7 +1344,8 @@ export async function DELETE(
 
   const userIds =
     users.map(
-      (user) => user.id
+      (user) =>
+        user.id
     );
 
   const result =
@@ -938,11 +1356,11 @@ export async function DELETE(
             {
               where: {
                 name:
-                  parsed.data
-                    .name,
+                  parsed.data.name,
 
                 ownerId: {
-                  in: userIds,
+                  in:
+                    userIds,
                 },
               },
 
@@ -965,12 +1383,37 @@ export async function DELETE(
             deletedFolders:
               0,
 
-            detachedFiles:
+            detachedAssignments:
+              0,
+
+            detachedLegacyFiles:
               0,
           };
         }
 
-        const detached =
+        /*
+         * New architecture.
+         */
+        const detachedAssignments =
+          await tx.fileAssignment.updateMany(
+            {
+              where: {
+                pdfFolderId: {
+                  in: ids,
+                },
+              },
+
+              data: {
+                pdfFolderId:
+                  null,
+              },
+            }
+          );
+
+        /*
+         * Legacy architecture.
+         */
+        const detachedLegacyFiles =
           await tx.file.updateMany(
             {
               where: {
@@ -1001,14 +1444,23 @@ export async function DELETE(
           deletedFolders:
             deleted.count,
 
-          detachedFiles:
-            detached.count,
+          detachedAssignments:
+            detachedAssignments.count,
+
+          detachedLegacyFiles:
+            detachedLegacyFiles.count,
         };
       }
     );
 
-  return NextResponse.json({
-    ok: true,
-    ...result,
-  });
+  return NextResponse.json(
+    {
+      ok: true,
+      ...result,
+    },
+    {
+      headers:
+        noStoreHeaders(),
+    }
+  );
 }
