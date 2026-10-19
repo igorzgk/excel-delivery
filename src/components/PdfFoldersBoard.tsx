@@ -13,7 +13,7 @@ import {
   FileText,
   Folder,
   FolderOpen,
-  Trash2,
+  RefreshCw,
   Upload,
 } from "lucide-react";
 
@@ -25,7 +25,22 @@ type FileItem = {
   size?: number | null;
   url?: string | null;
   mime?: string | null;
+
+  /*
+   * For the normal USER this is already
+   * resolved by GET /api/files from:
+   *
+   * FileAssignment.pdfFolderId
+   *
+   * for THIS logged-in user.
+   */
   pdfFolderId?: string | null;
+
+  pdfFolder?: {
+    id: string;
+    name: string;
+    ownerId?: string | null;
+  } | null;
 };
 
 type FolderItem = {
@@ -75,6 +90,43 @@ function cleanUploadedFilename(
   );
 }
 
+function formatSize(
+  bytes?: number | null
+) {
+  if (
+    !bytes ||
+    bytes <= 0
+  ) {
+    return "";
+  }
+
+  const units = [
+    "B",
+    "KB",
+    "MB",
+    "GB",
+  ];
+
+  let value = bytes;
+  let index = 0;
+
+  while (
+    value >= 1024 &&
+    index <
+      units.length - 1
+  ) {
+    value /= 1024;
+    index += 1;
+  }
+
+  return `${value.toFixed(
+    value < 10 &&
+      index > 0
+      ? 1
+      : 0
+  )} ${units[index]}`;
+}
+
 function getErrorMessage(
   json: any,
   fallback: string
@@ -102,12 +154,16 @@ function getErrorMessage(
 
   if (
     json?.error ===
-    "pdf_has_multiple_users"
+    "file_not_assigned_to_user"
   ) {
-    return (
-      json?.detail ||
-      "Το PDF είναι συνδεδεμένο με περισσότερους από έναν χρήστες."
-    );
+    return "Το PDF δεν είναι ανατεθειμένο στον συγκεκριμένο χρήστη.";
+  }
+
+  if (
+    json?.error ===
+    "forbidden"
+  ) {
+    return "Δεν έχετε δικαίωμα για αυτή την ενέργεια.";
   }
 
   return (
@@ -122,9 +178,15 @@ export default function PdfFoldersBoard({
 }: {
   initialFiles: FileItem[];
 }) {
-  const [files, setFiles] =
+  const [
+    files,
+    setFiles,
+  ] =
     useState<FileItem[]>(
-      (initialFiles ?? []).filter(
+      (
+        initialFiles ??
+        []
+      ).filter(
         isPdfFile
       )
     );
@@ -133,7 +195,9 @@ export default function PdfFoldersBoard({
     folders,
     setFolders,
   ] =
-    useState<FolderItem[]>([]);
+    useState<
+      FolderItem[]
+    >([]);
 
   const [
     loadingFolders,
@@ -141,17 +205,26 @@ export default function PdfFoldersBoard({
   ] = useState(true);
 
   const [
+    refreshingFiles,
+    setRefreshingFiles,
+  ] = useState(false);
+
+  const [
     currentFolderId,
     setCurrentFolderId,
   ] =
-    useState<string | null>(
-      null
-    );
+    useState<
+      string | null
+    >(null);
 
-  const [query, setQuery] =
-    useState("");
+  const [
+    query,
+    setQuery,
+  ] = useState("");
 
-  // Upload
+  /*
+   * Upload
+   */
   const [
     newTitle,
     setNewTitle,
@@ -161,30 +234,25 @@ export default function PdfFoldersBoard({
     newFile,
     setNewFile,
   ] =
-    useState<File | null>(null);
+    useState<
+      File | null
+    >(null);
 
   const [
     uploading,
     setUploading,
   ] = useState(false);
 
-  // Move menu
+  /*
+   * Move menu
+   */
   const [
     moveMenuFileId,
     setMoveMenuFileId,
   ] =
-    useState<string | null>(
-      null
-    );
-
-  // Delete
-  const [
-    deletingFileId,
-    setDeletingFileId,
-  ] =
-    useState<string | null>(
-      null
-    );
+    useState<
+      string | null
+    >(null);
 
   const currentFolder =
     useMemo(() => {
@@ -206,11 +274,10 @@ export default function PdfFoldersBoard({
       currentFolderId,
     ]);
 
-  /**
-   * If admin changes/deletes the
-   * folder structure while the user
-   * has the page open, return safely
-   * to the root.
+  /*
+   * If admin removes a folder while
+   * this page is open, return safely
+   * to root.
    */
   useEffect(() => {
     if (
@@ -224,12 +291,20 @@ export default function PdfFoldersBoard({
       setCurrentFolderId(
         null
       );
+
+      setMoveMenuFileId(
+        null
+      );
     }
   }, [
     folders,
     currentFolderId,
   ]);
 
+  /*
+   * Anything with no folder assignment
+   * for THIS user appears at root.
+   */
   const rootFiles =
     useMemo(() => {
       return files.filter(
@@ -259,17 +334,22 @@ export default function PdfFoldersBoard({
 
   const visibleFolders =
     useMemo(() => {
+      /*
+       * Folders only appear
+       * at Explorer root.
+       */
       if (
         currentFolderId
       ) {
         return [];
       }
 
-      const q = query
-        .trim()
-        .toLocaleLowerCase(
-          "el"
-        );
+      const q =
+        query
+          .trim()
+          .toLocaleLowerCase(
+            "el"
+          );
 
       if (!q) {
         return folders;
@@ -291,11 +371,12 @@ export default function PdfFoldersBoard({
 
   const visibleFiles =
     useMemo(() => {
-      const q = query
-        .trim()
-        .toLocaleLowerCase(
-          "el"
-        );
+      const q =
+        query
+          .trim()
+          .toLocaleLowerCase(
+            "el"
+          );
 
       if (!q) {
         return currentFolderFiles;
@@ -319,7 +400,9 @@ export default function PdfFoldersBoard({
             );
 
           return (
-            title.includes(q) ||
+            title.includes(
+              q
+            ) ||
             originalName.includes(
               q
             )
@@ -331,15 +414,23 @@ export default function PdfFoldersBoard({
       query,
     ]);
 
+  /*
+   * -------------------------------------------------------
+   * LOAD CURRENT USER'S FOLDERS
+   * -------------------------------------------------------
+   *
+   * GET /api/pdf-folders as USER returns
+   * only PdfFolder rows owned by that user.
+   */
   async function loadFolders() {
     setLoadingFolders(
       true
     );
 
     try {
-      const res =
+      const response =
         await fetch(
-          "/api/pdf-folders",
+          `/api/pdf-folders?t=${Date.now()}`,
           {
             cache:
               "no-store",
@@ -347,27 +438,66 @@ export default function PdfFoldersBoard({
         );
 
       const json =
-        await res
+        await response
           .json()
           .catch(
             () => ({})
           );
 
-      if (!res.ok) {
+      if (
+        !response.ok
+      ) {
         console.error(
           "Could not load PDF folders:",
           json
         );
 
+        setFolders(
+          []
+        );
+
         return;
       }
 
-      setFolders(
+      const nextFolders:
+        FolderItem[] =
         Array.isArray(
           json.folders
         )
           ? json.folders
-          : []
+          : [];
+
+      setFolders(
+        nextFolders
+      );
+
+      setCurrentFolderId(
+        (current) => {
+          if (
+            !current
+          ) {
+            return null;
+          }
+
+          return nextFolders.some(
+            (folder) =>
+              folder.id ===
+              current
+          )
+            ? current
+            : null;
+        }
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        "Could not load PDF folders:",
+        error
+      );
+
+      setFolders(
+        []
       );
     } finally {
       setLoadingFolders(
@@ -376,48 +506,92 @@ export default function PdfFoldersBoard({
     }
   }
 
+  /*
+   * -------------------------------------------------------
+   * LOAD CURRENT USER'S FILES
+   * -------------------------------------------------------
+   *
+   * GET /api/files resolves each PDF's
+   * top-level pdfFolderId from THIS
+   * user's FileAssignment.
+   */
   async function refreshFiles() {
-    const res =
-      await fetch(
-        "/api/files",
-        {
-          cache:
-            "no-store",
-        }
-      );
+    setRefreshingFiles(
+      true
+    );
 
-    const json =
-      await res
-        .json()
-        .catch(() => ({}));
+    try {
+      const response =
+        await fetch(
+          `/api/files?t=${Date.now()}`,
+          {
+            cache:
+              "no-store",
+          }
+        );
 
-    if (res.ok) {
+      const json =
+        await response
+          .json()
+          .catch(
+            () => ({})
+          );
+
+      if (
+        !response.ok
+      ) {
+        console.error(
+          "Could not refresh files:",
+          json
+        );
+
+        return;
+      }
+
       setFiles(
         (
-          json.files || []
+          json.files ||
+          []
         ).filter(
           isPdfFile
         )
       );
+    } catch (
+      error
+    ) {
+      console.error(
+        "Could not refresh files:",
+        error
+      );
+    } finally {
+      setRefreshingFiles(
+        false
+      );
     }
+  }
+
+  async function refreshAll() {
+    await Promise.all([
+      loadFolders(),
+      refreshFiles(),
+    ]);
   }
 
   useEffect(() => {
     void loadFolders();
   }, []);
 
-  /**
-   * -----------------------------------------------------
+  /*
+   * -------------------------------------------------------
    * UPLOAD PDF
-   * -----------------------------------------------------
+   * -------------------------------------------------------
    *
-   * Normal user is automatically
-   * assigned to themselves by
-   * POST /api/files.
+   * Normal user is assigned automatically
+   * to themselves by POST /api/files.
    *
-   * If currently inside a folder,
-   * send that folder ID directly
-   * with the upload.
+   * When uploading while inside a folder,
+   * that physical personal folder ID is
+   * written to FileAssignment.pdfFolderId.
    */
   async function uploadPdf() {
     if (
@@ -448,7 +622,9 @@ export default function PdfFoldersBoard({
       return;
     }
 
-    setUploading(true);
+    setUploading(
+      true
+    );
 
     try {
       const formData =
@@ -464,11 +640,9 @@ export default function PdfFoldersBoard({
         newFile
       );
 
-      /**
-       * Important:
-       *
-       * No second PATCH is required
-       * anymore.
+      /*
+       * This is THIS user's own
+       * physical folder ID.
        */
       if (
         currentFolderId
@@ -485,7 +659,8 @@ export default function PdfFoldersBoard({
           {
             method:
               "POST",
-            body: formData,
+            body:
+              formData,
           }
         );
 
@@ -530,18 +705,23 @@ export default function PdfFoldersBoard({
           "Αποτυχία upload"
       );
     } finally {
-      setUploading(false);
+      setUploading(
+        false
+      );
     }
   }
 
-  /**
-   * -----------------------------------------------------
+  /*
+   * -------------------------------------------------------
    * MOVE PDF
-   * -----------------------------------------------------
+   * -------------------------------------------------------
    *
-   * A user may organize their PDFs
-   * only inside their own standard
-   * folders.
+   * This updates ONLY this user's
+   * FileAssignment.pdfFolderId.
+   *
+   * If the same physical PDF is shared
+   * with 30 other users, their folder
+   * positions remain unchanged.
    */
   async function movePdf(
     fileId: string,
@@ -549,7 +729,7 @@ export default function PdfFoldersBoard({
       | string
       | null
   ) {
-    const res =
+    const response =
       await fetch(
         `/api/files/${fileId}/pdf-folder`,
         {
@@ -562,21 +742,23 @@ export default function PdfFoldersBoard({
           },
 
           body:
-            JSON.stringify(
-              {
-                pdfFolderId:
-                  folderId,
-              }
-            ),
+            JSON.stringify({
+              pdfFolderId:
+                folderId,
+            }),
         }
       );
 
     const json =
-      await res
+      await response
         .json()
-        .catch(() => ({}));
+        .catch(
+          () => ({})
+        );
 
-    if (!res.ok) {
+    if (
+      !response.ok
+    ) {
       alert(
         getErrorMessage(
           json,
@@ -587,83 +769,20 @@ export default function PdfFoldersBoard({
       return false;
     }
 
-    setFiles(
-      (previous) =>
-        previous.map(
-          (file) =>
-            file.id ===
-            fileId
-              ? {
-                  ...file,
-                  pdfFolderId:
-                    folderId,
-                }
-              : file
-        )
+    setMoveMenuFileId(
+      null
     );
+
+    /*
+     * Reload from server instead of
+     * guessing locally.
+     *
+     * GET /api/files returns this user's
+     * assignment-level folder ID.
+     */
+    await refreshFiles();
 
     return true;
-  }
-
-  async function deleteFile(
-    fileId: string
-  ) {
-    if (
-      !confirm(
-        "Διαγραφή αρχείου PDF;"
-      )
-    ) {
-      return;
-    }
-
-    setDeletingFileId(
-      fileId
-    );
-
-    try {
-      const res =
-        await fetch(
-          `/api/files/${fileId}`,
-          {
-            method:
-              "DELETE",
-          }
-        );
-
-      const json =
-        await res
-          .json()
-          .catch(
-            () => ({})
-          );
-
-      if (!res.ok) {
-        throw new Error(
-          json?.error ||
-            "Αποτυχία διαγραφής"
-        );
-      }
-
-      setFiles(
-        (previous) =>
-          previous.filter(
-            (file) =>
-              file.id !==
-              fileId
-          )
-      );
-    } catch (
-      error: any
-    ) {
-      alert(
-        error?.message ||
-          "Αποτυχία διαγραφής"
-      );
-    } finally {
-      setDeletingFileId(
-        null
-      );
-    }
   }
 
   function openFolder(
@@ -694,18 +813,44 @@ export default function PdfFoldersBoard({
 
   return (
     <div className="space-y-4">
-      {/* Upload */}
+      {/* UPLOAD */}
       <section className="rounded-xl border bg-white p-3 sm:p-4">
-        <div>
-          <h2 className="font-semibold">
-            Προσθήκη PDF
-          </h2>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="font-semibold">
+              Προσθήκη PDF
+            </h2>
 
-          <p className="mt-1 text-xs text-gray-500">
-            {currentFolder
-              ? `Το αρχείο θα προστεθεί στον φάκελο "${currentFolder.name}".`
-              : "Το αρχείο θα προστεθεί στα υπόλοιπα αρχεία τεκμηρίωσης."}
-          </p>
+            <p className="mt-1 text-xs text-gray-500">
+              {currentFolder
+                ? `Το αρχείο θα προστεθεί στον προσωπικό σας φάκελο "${currentFolder.name}".`
+                : "Το αρχείο θα προστεθεί στα υπόλοιπα αρχεία τεκμηρίωσης."}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              void refreshAll()
+            }
+            disabled={
+              loadingFolders ||
+              refreshingFiles
+            }
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw
+              size={15}
+              className={
+                loadingFolders ||
+                refreshingFiles
+                  ? "animate-spin"
+                  : ""
+              }
+            />
+
+            Ανανέωση
+          </button>
         </div>
 
         <div className="mt-3 grid gap-3 md:grid-cols-[1.2fr_1fr_auto]">
@@ -782,11 +927,10 @@ export default function PdfFoldersBoard({
         </div>
       </section>
 
-      {/* Explorer */}
-      <section className="overflow-hidden rounded-xl border bg-white">
-        {/* Top bar */}
+      {/* EXPLORER */}
+      <section className="overflow-visible rounded-xl border bg-white">
         <div className="border-b bg-gray-50">
-          {/* Breadcrumb */}
+          {/* BREADCRUMB */}
           <div className="flex min-h-[50px] items-center gap-2 border-b px-3 py-2 sm:px-4">
             {currentFolder ? (
               <button
@@ -811,6 +955,7 @@ export default function PdfFoldersBoard({
                 }
                 className={[
                   "truncate",
+
                   currentFolder
                     ? "text-gray-500 hover:text-gray-900"
                     : "font-medium text-gray-900",
@@ -838,7 +983,7 @@ export default function PdfFoldersBoard({
             </div>
           </div>
 
-          {/* Search */}
+          {/* SEARCH */}
           <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
             <input
               value={
@@ -860,21 +1005,32 @@ export default function PdfFoldersBoard({
               className="w-full rounded-lg border bg-white px-3 py-2 text-sm sm:max-w-[440px]"
             />
 
-            <div className="text-sm text-gray-500">
-              {currentFolder
-                ? `${visibleFiles.length} αρχείο(α)`
-                : `${
-                    visibleFolders.length +
-                    visibleFiles.length
-                  } στοιχείο(α)`}
+            <div className="flex items-center gap-3">
+              {(loadingFolders ||
+                refreshingFiles) && (
+                <RefreshCw
+                  size={14}
+                  className="animate-spin text-gray-400"
+                />
+              )}
+
+              <div className="text-sm text-gray-500">
+                {currentFolder
+                  ? `${visibleFiles.length} αρχείο(α)`
+                  : `${
+                      visibleFolders.length +
+                      visibleFiles.length
+                    } στοιχείο(α)`}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Explorer content */}
+        {/* EXPLORER CONTENT */}
         <div className="min-h-[420px] p-2 sm:p-4 lg:p-5">
           {loadingFolders &&
-          !currentFolder ? (
+          folders.length ===
+            0 ? (
             <div className="py-16 text-center text-sm text-gray-500">
               Φόρτωση
               φακέλων…
@@ -889,20 +1045,8 @@ export default function PdfFoldersBoard({
                 : "Δεν βρέθηκαν αρχεία ή φάκελοι."}
             </div>
           ) : (
-            <div
-              className="
-                grid
-                grid-cols-2
-                gap-x-2
-                gap-y-4
-                sm:grid-cols-3
-                md:grid-cols-4
-                lg:grid-cols-5
-                xl:grid-cols-6
-                2xl:grid-cols-7
-              "
-            >
-              {/* Folders */}
+            <div className="grid grid-cols-2 gap-x-2 gap-y-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+              {/* FOLDERS */}
               {visibleFolders.map(
                 (
                   folder
@@ -911,24 +1055,7 @@ export default function PdfFoldersBoard({
                     key={
                       folder.id
                     }
-                    className="
-                      group
-                      relative
-                      flex
-                      min-w-0
-                      flex-col
-                      items-center
-                      rounded-lg
-                      border
-                      border-transparent
-                      px-1
-                      py-3
-                      text-center
-                      transition
-                      hover:border-blue-200
-                      hover:bg-blue-50/70
-                      sm:px-2
-                    "
+                    className="group relative flex min-w-0 flex-col items-center rounded-lg border border-transparent px-1 py-3 text-center transition hover:border-blue-200 hover:bg-blue-50/70 sm:px-2"
                   >
                     <button
                       type="button"
@@ -944,9 +1071,7 @@ export default function PdfFoldersBoard({
                     >
                       <div className="flex h-16 items-center justify-center sm:h-20">
                         <Folder
-                          size={
-                            62
-                          }
+                          size={62}
                           strokeWidth={
                             1.35
                           }
@@ -955,22 +1080,14 @@ export default function PdfFoldersBoard({
                       </div>
 
                       <div
-                        className="
-                          mt-1
-                          w-full
-                          overflow-hidden
-                          break-words
-                          text-xs
-                          font-medium
-                          leading-4
-                          text-gray-800
-                          sm:text-sm
-                          sm:leading-5
-                        "
+                        className="mt-1 w-full overflow-hidden break-words text-xs font-medium leading-4 text-gray-800 sm:text-sm sm:leading-5"
                         style={{
                           display:
                             "-webkit-box",
-                          WebkitLineClamp: 3,
+
+                          WebkitLineClamp:
+                            3,
+
                           WebkitBoxOrient:
                             "vertical",
                         }}
@@ -993,9 +1110,7 @@ export default function PdfFoldersBoard({
                         title="Άνοιγμα"
                       >
                         <FolderOpen
-                          size={
-                            15
-                          }
+                          size={15}
                         />
                       </button>
                     </div>
@@ -1003,9 +1118,11 @@ export default function PdfFoldersBoard({
                 )
               )}
 
-              {/* PDF files */}
+              {/* PDF FILES */}
               {visibleFiles.map(
-                (file) => {
+                (
+                  file
+                ) => {
                   const title =
                     file.title ||
                     file.originalName ||
@@ -1016,24 +1133,7 @@ export default function PdfFoldersBoard({
                       key={
                         file.id
                       }
-                      className="
-                        group
-                        relative
-                        flex
-                        min-w-0
-                        flex-col
-                        items-center
-                        rounded-lg
-                        border
-                        border-transparent
-                        px-1
-                        py-3
-                        text-center
-                        transition
-                        hover:border-blue-200
-                        hover:bg-blue-50/70
-                        sm:px-2
-                      "
+                      className="group relative flex min-w-0 flex-col items-center rounded-lg border border-transparent px-1 py-3 text-center transition hover:border-blue-200 hover:bg-blue-50/70 sm:px-2"
                     >
                       {file.url ? (
                         <a
@@ -1049,9 +1149,7 @@ export default function PdfFoldersBoard({
                         >
                           <div className="flex h-16 items-center justify-center sm:h-20">
                             <FileText
-                              size={
-                                56
-                              }
+                              size={56}
                               strokeWidth={
                                 1.4
                               }
@@ -1069,9 +1167,7 @@ export default function PdfFoldersBoard({
                         <>
                           <div className="flex h-16 items-center justify-center sm:h-20">
                             <FileText
-                              size={
-                                56
-                              }
+                              size={56}
                               strokeWidth={
                                 1.4
                               }
@@ -1087,7 +1183,17 @@ export default function PdfFoldersBoard({
                         </>
                       )}
 
-                      {/* File actions */}
+                      {formatSize(
+                        file.size
+                      ) && (
+                        <div className="mt-1 text-[10px] text-gray-400">
+                          {formatSize(
+                            file.size
+                          )}
+                        </div>
+                      )}
+
+                      {/* FILE ACTIONS */}
                       <div className="mt-2 flex items-center justify-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                         {file.url && (
                           <>
@@ -1101,9 +1207,7 @@ export default function PdfFoldersBoard({
                               className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
                             >
                               <Eye
-                                size={
-                                  15
-                                }
+                                size={15}
                               />
                             </a>
 
@@ -1115,15 +1219,13 @@ export default function PdfFoldersBoard({
                               className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
                             >
                               <Download
-                                size={
-                                  15
-                                }
+                                size={15}
                               />
                             </a>
                           </>
                         )}
 
-                        {/* Move */}
+                        {/* MOVE */}
                         <div className="relative">
                           <button
                             type="button"
@@ -1142,32 +1244,13 @@ export default function PdfFoldersBoard({
                             className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
                           >
                             <Folder
-                              size={
-                                15
-                              }
+                              size={15}
                             />
                           </button>
 
                           {moveMenuFileId ===
                             file.id && (
-                            <div
-                              className="
-                                absolute
-                                left-1/2
-                                top-full
-                                z-50
-                                mt-2
-                                w-52
-                                -translate-x-1/2
-                                overflow-hidden
-                                rounded-lg
-                                border
-                                bg-white
-                                py-1
-                                text-left
-                                shadow-lg
-                              "
-                            >
+                            <div className="absolute left-1/2 top-full z-[200] mt-2 max-h-72 w-56 -translate-x-1/2 overflow-y-auto rounded-lg border bg-white py-1 text-left shadow-xl">
                               <div className="border-b px-3 py-2 text-xs font-semibold text-gray-500">
                                 Μετακίνηση
                                 σε
@@ -1175,23 +1258,15 @@ export default function PdfFoldersBoard({
 
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  const ok =
-                                    await movePdf(
-                                      file.id,
-                                      null
-                                    );
-
-                                  if (
-                                    ok
-                                  ) {
-                                    setMoveMenuFileId(
-                                      null
-                                    );
-                                  }
-                                }}
+                                onClick={() =>
+                                  void movePdf(
+                                    file.id,
+                                    null
+                                  )
+                                }
                                 className={[
                                   "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100",
+
                                   !file.pdfFolderId
                                     ? "bg-gray-50 font-medium"
                                     : "",
@@ -1200,9 +1275,7 @@ export default function PdfFoldersBoard({
                                 )}
                               >
                                 <Folder
-                                  size={
-                                    15
-                                  }
+                                  size={15}
                                   className="shrink-0 text-gray-400"
                                 />
 
@@ -1223,23 +1296,15 @@ export default function PdfFoldersBoard({
                                         folder.id
                                       }
                                       type="button"
-                                      onClick={async () => {
-                                        const ok =
-                                          await movePdf(
-                                            file.id,
-                                            folder.id
-                                          );
-
-                                        if (
-                                          ok
-                                        ) {
-                                          setMoveMenuFileId(
-                                            null
-                                          );
-                                        }
-                                      }}
+                                      onClick={() =>
+                                        void movePdf(
+                                          file.id,
+                                          folder.id
+                                        )
+                                      }
                                       className={[
                                         "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100",
+
                                         file.pdfFolderId ===
                                         folder.id
                                           ? "bg-gray-50 font-medium"
@@ -1249,9 +1314,7 @@ export default function PdfFoldersBoard({
                                       )}
                                     >
                                       <Folder
-                                        size={
-                                          15
-                                        }
+                                        size={15}
                                         className="shrink-0 text-amber-500"
                                       />
 
@@ -1265,35 +1328,13 @@ export default function PdfFoldersBoard({
                                 )
                               ) : (
                                 <div className="px-3 py-2 text-xs text-gray-500">
-                                  Δεν
-                                  υπάρχουν
+                                  Δεν υπάρχουν
                                   φάκελοι.
                                 </div>
                               )}
                             </div>
                           )}
                         </div>
-
-                        <button
-                          type="button"
-                          disabled={
-                            deletingFileId ===
-                            file.id
-                          }
-                          onClick={() =>
-                            deleteFile(
-                              file.id
-                            )
-                          }
-                          title="Διαγραφή"
-                          className="rounded-md border bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                        >
-                          <Trash2
-                            size={
-                              15
-                            }
-                          />
-                        </button>
                       </div>
                     </div>
                   );
@@ -1314,22 +1355,14 @@ function FileName({
 }) {
   return (
     <div
-      className="
-        mt-1
-        w-full
-        overflow-hidden
-        break-words
-        text-xs
-        font-medium
-        leading-4
-        text-gray-800
-        sm:text-sm
-        sm:leading-5
-      "
+      className="mt-1 w-full overflow-hidden break-words text-xs font-medium leading-4 text-gray-800 sm:text-sm sm:leading-5"
       style={{
         display:
           "-webkit-box",
-        WebkitLineClamp: 3,
+
+        WebkitLineClamp:
+          3,
+
         WebkitBoxOrient:
           "vertical",
       }}

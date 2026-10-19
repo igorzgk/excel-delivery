@@ -34,9 +34,9 @@ export default async function UserFilesPage() {
   return (
     <div className="mx-auto max-w-[1460px] space-y-5 p-6">
       <header>
-        <h1 className="text-2xl font-semibold">
-          Αρχείο θερμοκρασιών & καθαρισμού-απολύμανσης
-        </h1>
+        <h3 className="font-semibold">
+          Αρχείο θερμοκρασιών & καθαρισμού - απολύμανσης
+        </h3>
 
         <p className="text-sm text-gray-500">
           Αρχεία Excel που ανεβάσατε ή σας ανατέθηκαν.
