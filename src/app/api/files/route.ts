@@ -79,13 +79,19 @@ function parseSelectedUserIds(
     }
 
     try {
-      const parsed = JSON.parse(value);
+      const parsed =
+        JSON.parse(value);
 
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) {
-          const id = String(
-            item || ""
-          ).trim();
+      if (
+        Array.isArray(parsed)
+      ) {
+        for (
+          const item of parsed
+        ) {
+          const id =
+            String(
+              item || ""
+            ).trim();
 
           if (id) {
             result.push(id);
@@ -95,7 +101,7 @@ function parseSelectedUserIds(
         continue;
       }
     } catch {
-      // Normal user ID.
+      // Normal single ID
     }
 
     result.push(value);
@@ -115,6 +121,7 @@ function errorResponse(
     {
       ok: false,
       error,
+
       ...(detail !== undefined
         ? { detail }
         : {}),
@@ -125,25 +132,17 @@ function errorResponse(
   );
 }
 
-/**
+/*
  * ---------------------------------------------------------
- * GET FILES
+ * GET
  * ---------------------------------------------------------
  *
- * Important:
- *
- * File.pdfFolderId is now legacy.
- *
- * New PDF folder placement comes from:
+ * New PDF folder placement:
  *
  * FileAssignment.pdfFolderId
  *
- * For USER requests we expose the current user's assignment
- * folder as top-level pdfFolderId/pdfFolder so the existing
- * user frontend can continue using the same File shape.
- *
- * For ADMIN scope=all we also return all assignments and
- * their individual folder information.
+ * File.pdfFolderId remains only as
+ * legacy compatibility.
  */
 export async function GET(
   req: Request
@@ -154,7 +153,8 @@ export async function GET(
   if (!me) {
     return NextResponse.json(
       {
-        error: "unauthenticated",
+        error:
+          "unauthenticated",
       },
       {
         status: 401,
@@ -162,16 +162,19 @@ export async function GET(
     );
   }
 
-  const meId = String(
-    (me as any).id
-  );
+  const meId =
+    String(
+      (me as any).id
+    );
 
   const {
     searchParams,
   } = new URL(req.url);
 
   const scope =
-    searchParams.get("scope");
+    searchParams.get(
+      "scope"
+    );
 
   const adminScope =
     (me as any).role ===
@@ -187,6 +190,7 @@ export async function GET(
               uploadedById:
                 meId,
             },
+
             {
               assignments: {
                 some: {
@@ -203,7 +207,8 @@ export async function GET(
       where,
 
       orderBy: {
-        createdAt: "desc",
+        createdAt:
+          "desc",
       },
 
       select: {
@@ -215,7 +220,9 @@ export async function GET(
         size: true,
         createdAt: true,
 
-        // Legacy folder fields
+        /*
+         * Legacy
+         */
         pdfFolderId: true,
 
         pdfFolder: {
@@ -235,24 +242,19 @@ export async function GET(
         },
 
         assignments: {
-          where: adminScope
-            ? undefined
-            : {
-                userId: meId,
-              },
+          where:
+            adminScope
+              ? undefined
+              : {
+                  userId:
+                    meId,
+                },
 
           select: {
             id: true,
             userId: true,
-            pdfFolderId: true,
-
-            pdfFolder: {
-              select: {
-                id: true,
-                name: true,
-                ownerId: true,
-              },
-            },
+            pdfFolderId:
+              true,
 
             user: {
               select: {
@@ -261,95 +263,97 @@ export async function GET(
                 name: true,
               },
             },
+
+            pdfFolder: {
+              select: {
+                id: true,
+                name: true,
+                ownerId: true,
+              },
+            },
           },
         },
       },
     });
 
   const files =
-    rawFiles.map((file) => {
-      /*
-       * ADMIN / scope=all
-       *
-       * A multi-user PDF does not have one single folder.
-       * Each assignment has its own pdfFolderId.
-       */
-      if (adminScope) {
-        const singleAssignment =
-          file.assignments.length ===
-          1
-            ? file.assignments[0]
-            : null;
+    rawFiles.map(
+      (file) => {
+        /*
+         * Admin needs ALL assignment
+         * information because the same
+         * PDF may belong to many users.
+         */
+        if (adminScope) {
+          const singleAssignment =
+            file.assignments.length ===
+            1
+              ? file.assignments[0]
+              : null;
+
+          const safeLegacyFolder =
+            file.assignments.length ===
+              0 &&
+            file.pdfFolder?.ownerId
+              ? file.pdfFolder
+              : null;
+
+          return {
+            ...file,
+
+            pdfFolderId:
+              singleAssignment
+                ?.pdfFolderId ??
+              safeLegacyFolder
+                ?.id ??
+              null,
+
+            pdfFolder:
+              singleAssignment
+                ?.pdfFolder ??
+              safeLegacyFolder ??
+              null,
+          };
+        }
+
+        /*
+         * Normal user only gets their
+         * own assignment folder.
+         */
+        const myAssignment =
+          file.assignments[0] ||
+          null;
 
         const safeLegacyFolder =
-          file.assignments.length ===
-            0 &&
-          file.pdfFolder?.ownerId
+          file.pdfFolder
+            ?.ownerId ===
+          meId
             ? file.pdfFolder
             : null;
 
+        const {
+          assignments,
+          ...rest
+        } = file;
+
         return {
-          ...file,
+          ...rest,
 
           pdfFolderId:
-            singleAssignment
+            myAssignment
               ?.pdfFolderId ??
             safeLegacyFolder
               ?.id ??
             null,
 
           pdfFolder:
-            singleAssignment
+            myAssignment
               ?.pdfFolder ??
             safeLegacyFolder ??
             null,
         };
       }
-
-      /*
-       * Normal USER.
-       *
-       * Only their own assignment was selected above.
-       */
-      const myAssignment =
-        file.assignments[0] ||
-        null;
-
-      /*
-       * Legacy fallback only when the old
-       * File folder actually belongs to this user.
-       *
-       * ownerId=null global folders are NOT exposed
-       * as the user's folder.
-       */
-      const safeLegacyFolder =
-        file.pdfFolder?.ownerId ===
-        meId
-          ? file.pdfFolder
-          : null;
-
-      const {
-        assignments,
-        ...rest
-      } = file;
-
-      return {
-        ...rest,
-
-        pdfFolderId:
-          myAssignment
-            ?.pdfFolderId ??
-          safeLegacyFolder
-            ?.id ??
-          null,
-
-        pdfFolder:
-          myAssignment
-            ?.pdfFolder ??
-          safeLegacyFolder ??
-          null,
-      };
-    });
+    );
 
   return NextResponse.json(
     {
@@ -359,57 +363,66 @@ export async function GET(
       headers: {
         "Cache-Control":
           "no-store, no-cache, must-revalidate, proxy-revalidate",
-        Pragma: "no-cache",
-        Expires: "0",
+
+        Pragma:
+          "no-cache",
+
+        Expires:
+          "0",
       },
     }
   );
 }
 
-/**
+/*
  * ---------------------------------------------------------
- * POST FILE
+ * POST
  * ---------------------------------------------------------
  *
- * EXCEL / OTHER
- * ----------------
- * Works as before:
+ * EXCEL / OTHER:
  *
- * assignTo = [user ids]
- * OR
- * assignTo = ALL
+ * assignTo = selected IDs
+ * OR assignTo = ALL
  *
  *
- * PDF - ONE USER
- * ----------------
+ * PDF:
  *
- * assignTo = [one user id]
- * pdfFolderId = that user's physical folder ID
+ * assignTo = selected IDs
+ * OR assignTo = ALL
  *
+ * pdfFolderName =
+ * logical/common folder name.
  *
- * PDF - ALL USERS
- * ----------------
- *
- * assignTo = ALL
- * pdfFolderName = logical folder name
  *
  * Example:
  *
- * assignTo = ALL
- * pdfFolderName = ΑΡΧΕΙΟ ΝΕΡΟΥ
+ * assignTo:
+ * [
+ *   userA,
+ *   userB,
+ *   userC
+ * ]
+ *
+ * pdfFolderName:
+ * "ΑΔΕΙΑ ΛΕΙΤΟΥΡΓΙΑΣ"
+ *
  *
  * Result:
  *
+ * ONE File
  * ONE Supabase object
- * ONE File row
  *
- * FileAssignment User A
- *   -> User A's ΑΡΧΕΙΟ ΝΕΡΟΥ folder
+ * Assignment A
+ * -> User A
+ * -> User A's folder ID
  *
- * FileAssignment User B
- *   -> User B's ΑΡΧΕΙΟ ΝΕΡΟΥ folder
+ * Assignment B
+ * -> User B
+ * -> User B's folder ID
  *
- * etc.
+ * Assignment C
+ * -> User C
+ * -> User C's folder ID
  */
 export async function POST(
   req: Request
@@ -429,9 +442,10 @@ export async function POST(
     );
   }
 
-  const meId = String(
-    (me as any).id
-  );
+  const meId =
+    String(
+      (me as any).id
+    );
 
   const isAdmin =
     (me as any).role ===
@@ -459,13 +473,16 @@ export async function POST(
 
     const suppliedTitle =
       String(
-        form.get("title") ||
-          ""
+        form.get(
+          "title"
+        ) || ""
       ).trim();
 
     /*
-     * For ONE user:
-     * physical folder ID.
+     * Physical folder ID.
+     *
+     * Mainly compatibility for
+     * one-user PDF uploads.
      */
     const requestedPdfFolderId =
       String(
@@ -475,8 +492,10 @@ export async function POST(
       ).trim() || null;
 
     /*
-     * For ALL users:
-     * logical/common folder name.
+     * Logical folder name.
+     *
+     * Recommended for any PDF
+     * recipient selection.
      */
     const requestedPdfFolderName =
       String(
@@ -486,7 +505,8 @@ export async function POST(
       ).trim() || null;
 
     const rawOriginalName =
-      file.name || "file";
+      file.name ||
+      "file";
 
     const cleanedOriginalName =
       removeUserEmailPrefix(
@@ -519,36 +539,43 @@ export async function POST(
      * -----------------------------------------------------
      */
     const lower =
-      originalName.toLowerCase();
+      originalName
+        .toLowerCase();
 
     const contentTypeRaw =
       file.type || "";
 
     const mime =
       contentTypeRaw ||
-      (lower.endsWith(
-        ".pdf"
-      )
-        ? "application/pdf"
-        : lower.endsWith(
-              ".xlsx"
-            )
-          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      (
+        lower.endsWith(
+          ".pdf"
+        )
+          ? "application/pdf"
           : lower.endsWith(
-                ".xls"
+                ".xlsx"
               )
-            ? "application/vnd.ms-excel"
-            : "application/octet-stream");
+            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            : lower.endsWith(
+                  ".xls"
+                )
+              ? "application/vnd.ms-excel"
+              : "application/octet-stream"
+      );
 
     const isPdf =
       mime
         .toLowerCase()
-        .includes("pdf") ||
-      lower.endsWith(".pdf");
+        .includes(
+          "pdf"
+        ) ||
+      lower.endsWith(
+        ".pdf"
+      );
 
     /*
      * -----------------------------------------------------
-     * ASSIGNMENTS
+     * RECIPIENTS
      * -----------------------------------------------------
      */
     let selectedUserIds =
@@ -564,7 +591,7 @@ export async function POST(
 
     if (!isAdmin) {
       /*
-       * Normal users may only upload
+       * Normal user uploads only
        * for themselves.
        */
       selectedUserIds = [
@@ -577,9 +604,11 @@ export async function POST(
         await prisma.user.findMany(
           {
             where: {
+              role:
+                "USER",
+
               status:
                 "ACTIVE",
-              role: "USER",
             },
 
             select: {
@@ -598,7 +627,10 @@ export async function POST(
       0
     ) {
       /*
-       * Validate selected recipients.
+       * Validate selected IDs.
+       *
+       * Only ACTIVE users receive
+       * uploaded files.
        */
       const validUsers =
         await prisma.user.findMany(
@@ -609,7 +641,8 @@ export async function POST(
                   selectedUserIds,
               },
 
-              role: "USER",
+              role:
+                "USER",
 
               status:
                 "ACTIVE",
@@ -636,47 +669,24 @@ export async function POST(
       );
 
     /*
-     * -----------------------------------------------------
-     * PDF RECIPIENT RULE
-     * -----------------------------------------------------
-     *
-     * PDF allows:
-     *
-     * - exactly ONE user
-     * - ALL active users
-     *
-     * It does NOT allow arbitrary 2, 3, 4...
-     * selected users because the UI requirement
-     * is "specific user" or "all users".
+     * PDF must have at least one
+     * recipient.
      */
-    if (isPdf) {
-      if (
-        selectedUserIds.length ===
+    if (
+      isPdf &&
+      selectedUserIds.length ===
         0
-      ) {
-        return errorResponse(
-          "pdf_requires_user",
-          400,
-          "Επιλέξτε χρήστη ή όλους τους χρήστες."
-        );
-      }
-
-      if (
-        isAdmin &&
-        !allRequested &&
-        selectedUserIds.length !==
-          1
-      ) {
-        return errorResponse(
-          "pdf_requires_single_or_all",
-          400,
-          "Για PDF επιλέξτε έναν χρήστη ή όλους τους χρήστες."
-        );
-      }
+    ) {
+      return errorResponse(
+        "pdf_requires_user",
+        400,
+        "Επιλέξτε τουλάχιστον έναν χρήστη."
+      );
     }
 
     /*
-     * Folder fields make sense only for PDFs.
+     * Folder parameters only make
+     * sense for PDFs.
      */
     if (
       !isPdf &&
@@ -693,15 +703,16 @@ export async function POST(
 
     /*
      * -----------------------------------------------------
-     * BUILD ASSIGNMENT ROWS
+     * ASSIGNMENT ROWS
      * -----------------------------------------------------
-     *
-     * Each assignment can now have its own folder.
      */
-    const assignmentRows: {
-      userId: string;
-      pdfFolderId: string | null;
-    }[] =
+    const assignmentRows:
+      {
+        userId: string;
+        pdfFolderId:
+          | string
+          | null;
+      }[] =
       selectedUserIds.map(
         (userId) => ({
           userId,
@@ -712,175 +723,36 @@ export async function POST(
 
     /*
      * -----------------------------------------------------
-     * PDF + ALL USERS
+     * PDF FOLDER RESOLUTION
      * -----------------------------------------------------
      *
-     * We resolve a logical folder NAME into
-     * each user's physical folder ID.
+     * For multiple selected users we
+     * resolve the SAME logical folder
+     * name separately for each user.
      */
     if (
       isPdf &&
-      allRequested &&
-      (
-        requestedPdfFolderName ||
-        requestedPdfFolderId
-      )
+      selectedUserIds.length >
+        0
     ) {
       let logicalFolderName =
         requestedPdfFolderName;
 
       /*
-       * Be tolerant if frontend sends a
-       * representative folder ID.
+       * Compatibility:
        *
-       * We derive its logical name first.
+       * If frontend sent one physical
+       * folder ID and there is one user,
+       * validate and use it.
        */
       if (
-        !logicalFolderName &&
-        requestedPdfFolderId
+        requestedPdfFolderId &&
+        selectedUserIds.length ===
+          1
       ) {
-        const representativeFolder =
-          await prisma.pdfFolder.findUnique(
-            {
-              where: {
-                id:
-                  requestedPdfFolderId,
-              },
+        const targetUserId =
+          selectedUserIds[0];
 
-              select: {
-                id: true,
-                name: true,
-                ownerId: true,
-              },
-            }
-          );
-
-        if (
-          !representativeFolder
-        ) {
-          return errorResponse(
-            "folder_not_found",
-            404
-          );
-        }
-
-        if (
-          !representativeFolder.ownerId
-        ) {
-          return errorResponse(
-            "legacy_global_folder",
-            409
-          );
-        }
-
-        logicalFolderName =
-          representativeFolder.name;
-      }
-
-      if (
-        logicalFolderName
-      ) {
-        const personalFolders =
-          await prisma.pdfFolder.findMany(
-            {
-              where: {
-                ownerId: {
-                  in:
-                    selectedUserIds,
-                },
-
-                name:
-                  logicalFolderName,
-              },
-
-              select: {
-                id: true,
-                name: true,
-                ownerId: true,
-              },
-            }
-          );
-
-        const folderByUser =
-          new Map<
-            string,
-            string
-          >();
-
-        for (
-          const folder of
-          personalFolders
-        ) {
-          if (
-            folder.ownerId
-          ) {
-            folderByUser.set(
-              folder.ownerId,
-              folder.id
-            );
-          }
-        }
-
-        const missingUsers =
-          selectedUserIds.filter(
-            (userId) =>
-              !folderByUser.has(
-                userId
-              )
-          );
-
-        /*
-         * ALL means ALL.
-         *
-         * If even one user lacks this logical
-         * folder, stop rather than placing the
-         * PDF inconsistently.
-         */
-        if (
-          missingUsers.length >
-          0
-        ) {
-          return errorResponse(
-            "folder_missing_for_users",
-            409,
-            `Ο φάκελος "${logicalFolderName}" λείπει από ${missingUsers.length} ενεργό/ούς χρήστη/ες. Δημιουργήστε πρώτα τον φάκελο για όλους τους χρήστες.`
-          );
-        }
-
-        for (
-          const row of
-          assignmentRows
-        ) {
-          row.pdfFolderId =
-            folderByUser.get(
-              row.userId
-            ) || null;
-        }
-      }
-    }
-
-    /*
-     * -----------------------------------------------------
-     * PDF + ONE USER
-     * -----------------------------------------------------
-     */
-    if (
-      isPdf &&
-      !allRequested &&
-      selectedUserIds.length ===
-        1
-    ) {
-      const targetUserId =
-        selectedUserIds[0];
-
-      /*
-       * Preferred single-user input:
-       *
-       * pdfFolderId
-       */
-      if (
-        requestedPdfFolderId
-      ) {
         const folder =
           await prisma.pdfFolder.findUnique(
             {
@@ -920,29 +792,37 @@ export async function POST(
           return errorResponse(
             "folder_owner_mismatch",
             403,
-            "Ο επιλεγμένος φάκελος δεν ανήκει στον χρήστη του PDF."
+            "Ο επιλεγμένος φάκελος δεν ανήκει στον συγκεκριμένο χρήστη."
           );
         }
 
         assignmentRows[0]
           .pdfFolderId =
           folder.id;
-      } else if (
-        requestedPdfFolderName
+
+        logicalFolderName =
+          folder.name;
+      }
+
+      /*
+       * If a logical folder name is
+       * supplied, EVERY selected user
+       * must have their own copy of it.
+       */
+      if (
+        logicalFolderName
       ) {
-        /*
-         * Also support folder name for
-         * convenience/compatibility.
-         */
-        const folder =
-          await prisma.pdfFolder.findFirst(
+        const personalFolders =
+          await prisma.pdfFolder.findMany(
             {
               where: {
-                ownerId:
-                  targetUserId,
-
                 name:
-                  requestedPdfFolderName,
+                  logicalFolderName,
+
+                ownerId: {
+                  in:
+                    selectedUserIds,
+                },
               },
 
               select: {
@@ -952,17 +832,54 @@ export async function POST(
             }
           );
 
-        if (!folder) {
+        const folderByUser =
+          new Map<
+            string,
+            string
+          >();
+
+        for (
+          const folder of
+          personalFolders
+        ) {
+          if (
+            folder.ownerId
+          ) {
+            folderByUser.set(
+              folder.ownerId,
+              folder.id
+            );
+          }
+        }
+
+        const missingUserIds =
+          selectedUserIds.filter(
+            (userId) =>
+              !folderByUser.has(
+                userId
+              )
+          );
+
+        if (
+          missingUserIds.length >
+          0
+        ) {
           return errorResponse(
-            "folder_not_found",
-            404,
-            `Ο φάκελος "${requestedPdfFolderName}" δεν υπάρχει για τον επιλεγμένο χρήστη.`
+            "folder_missing_for_selected_users",
+            409,
+            `Ο φάκελος "${logicalFolderName}" δεν υπάρχει για ${missingUserIds.length} από τους επιλεγμένους χρήστες.`
           );
         }
 
-        assignmentRows[0]
-          .pdfFolderId =
-          folder.id;
+        for (
+          const row of
+          assignmentRows
+        ) {
+          row.pdfFolderId =
+            folderByUser.get(
+              row.userId
+            ) || null;
+        }
       }
     }
 
@@ -971,10 +888,8 @@ export async function POST(
      * STORAGE
      * -----------------------------------------------------
      *
-     * IMPORTANT:
-     *
-     * This happens ONCE regardless of whether
-     * the file is assigned to 1 or 100 users.
+     * ONE upload regardless of
+     * recipient count.
      */
     const buffer =
       Buffer.from(
@@ -1011,7 +926,9 @@ export async function POST(
           {
             contentType:
               mime,
-            upsert: false,
+
+            upsert:
+              false,
           }
         );
 
@@ -1052,15 +969,11 @@ export async function POST(
      * DATABASE
      * -----------------------------------------------------
      *
-     * ONE File.
+     * ONE File
+     * MANY FileAssignments
      *
-     * MANY FileAssignments if ALL was selected.
-     *
-     * Each assignment can point to a different
-     * physical PdfFolder row.
-     *
-     * New uploads DO NOT use File.pdfFolderId.
-     * That column remains only for old/legacy data.
+     * Each assignment may have
+     * its own PdfFolder ID.
      */
     const created =
       await prisma.$transaction(
@@ -1081,10 +994,8 @@ export async function POST(
                     meId,
 
                   /*
-                   * Legacy field.
-                   *
-                   * All new PDF placement is stored
-                   * on FileAssignment.pdfFolderId.
+                   * New uploads do not use
+                   * File.pdfFolderId.
                    */
                   pdfFolderId:
                     null,
@@ -1135,84 +1046,61 @@ export async function POST(
             );
           }
 
-          const result =
-            await tx.file.findUnique(
-              {
-                where: {
-                  id:
-                    createdFile.id,
-                },
+          return tx.file.findUniqueOrThrow(
+            {
+              where: {
+                id:
+                  createdFile.id,
+              },
 
-                select: {
-                  id: true,
-                  title: true,
-                  originalName:
-                    true,
-                  url: true,
-                  mime: true,
-                  size: true,
-                  createdAt:
-                    true,
+              select: {
+                id: true,
+                title: true,
+                originalName:
+                  true,
+                url: true,
+                mime: true,
+                size: true,
+                createdAt:
+                  true,
 
-                  assignments: {
-                    select: {
-                      id: true,
-                      userId: true,
-                      pdfFolderId:
-                        true,
+                assignments: {
+                  select: {
+                    id: true,
+                    userId: true,
+                    pdfFolderId:
+                      true,
 
-                      user: {
-                        select: {
-                          id: true,
-                          email: true,
-                          name: true,
-                        },
+                    user: {
+                      select: {
+                        id: true,
+                        email: true,
+                        name: true,
                       },
+                    },
 
-                      pdfFolder: {
-                        select: {
-                          id: true,
-                          name: true,
-                          ownerId: true,
-                        },
+                    pdfFolder: {
+                      select: {
+                        id: true,
+                        name: true,
+                        ownerId:
+                          true,
                       },
                     },
                   },
                 },
-              }
-            );
-
-          return result!;
+              },
+            }
+          );
         }
       );
-
-    /*
-     * For convenience:
-     *
-     * a one-user PDF gets its folder ID returned
-     * at top level too.
-     *
-     * An ALL-users PDF has many different IDs,
-     * therefore top-level pdfFolderId is null.
-     */
-    const responsePdfFolderId =
-      isPdf &&
-      created.assignments
-        .length === 1
-        ? created.assignments[0]
-            .pdfFolderId
-        : null;
 
     return NextResponse.json(
       {
         ok: true,
 
-        file: {
-          ...created,
-
-          pdfFolderId:
-            responsePdfFolderId,
-        },
+        file:
+          created,
 
         id:
           created.id,
@@ -1227,12 +1115,6 @@ export async function POST(
               assignment.userId
           ),
 
-        pdfFolderId:
-          responsePdfFolderId,
-
-        /*
-         * Helpful for ALL upload confirmation.
-         */
         assignmentFolders:
           created.assignments.map(
             (assignment) => ({
@@ -1243,7 +1125,8 @@ export async function POST(
                 assignment.pdfFolderId,
 
               folderName:
-                assignment.pdfFolder
+                assignment
+                  .pdfFolder
                   ?.name ??
                 null,
             })
@@ -1262,8 +1145,8 @@ export async function POST(
     );
 
     /*
-     * Storage succeeded but DB failed:
-     * remove the single orphaned object.
+     * DB failed after upload:
+     * remove orphaned storage object.
      */
     if (
       uploadedStorageKey
