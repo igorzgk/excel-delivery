@@ -1,52 +1,241 @@
-// src/app/api/profile/password/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { z } from "zod";
-
-// IMPORTANT: adjust this import to your authOptions location.
-// If you already have authOptions exported somewhere else, change it accordingly.
 import { authOptions } from "@/lib/authOptions";
 
 export const runtime = "nodejs";
-
-const BodySchema = z.object({
-  currentPassword: z.string().min(1),
-  newPassword: z.string().min(6),
-});
+export const dynamic = "force-dynamic";
 
 export async function PUT(req: Request) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
+  /*
+   * -------------------------------------------------------
+   * AUTH
+   * -------------------------------------------------------
+   */
+  const session =
+    await getServerSession(authOptions);
+
+  const email =
+    session?.user?.email;
+
   if (!email) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "unauthorized",
+      },
+      {
+        status: 401,
+      }
+    );
   }
 
-  let body: z.infer<typeof BodySchema>;
+  /*
+   * -------------------------------------------------------
+   * BODY
+   * -------------------------------------------------------
+   *
+   * Current frontend:
+   *
+   * {
+   *   currentPassword: "...",
+   *   newPassword: "..."
+   * }
+   *
+   * We also accept the older:
+   *
+   * {
+   *   current: "...",
+   *   next: "..."
+   * }
+   *
+   * so older deployed frontend versions do not produce
+   * invalid_payload.
+   */
+  let rawBody: any;
+
   try {
-    body = BodySchema.parse(await req.json());
+    rawBody =
+      await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "invalid_json",
+      },
+      {
+        status: 400,
+      }
+    );
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, passwordHash: true },
-  });
+  const currentPassword =
+    typeof rawBody?.currentPassword ===
+    "string"
+      ? rawBody.currentPassword
+      : typeof rawBody?.current ===
+          "string"
+        ? rawBody.current
+        : "";
 
-  if (!user) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const newPassword =
+    typeof rawBody?.newPassword ===
+    "string"
+      ? rawBody.newPassword
+      : typeof rawBody?.next ===
+          "string"
+        ? rawBody.next
+        : "";
 
-  const ok = await bcrypt.compare(body.currentPassword, user.passwordHash);
-  if (!ok) {
-    return NextResponse.json({ error: "wrong_password" }, { status: 400 });
+  if (
+    currentPassword.length === 0
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "current_password_required",
+        detail:
+          "Συμπληρώστε τον τρέχοντα κωδικό.",
+      },
+      {
+        status: 400,
+      }
+    );
   }
 
-  const hash = await bcrypt.hash(body.newPassword, 10);
+  if (
+    newPassword.length < 6
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "new_password_too_short",
+        detail:
+          "Ο νέος κωδικός πρέπει να είναι τουλάχιστον 6 χαρακτήρες.",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  /*
+   * -------------------------------------------------------
+   * USER
+   * -------------------------------------------------------
+   */
+  const user =
+    await prisma.user.findUnique({
+      where: {
+        email,
+      },
+
+      select: {
+        id: true,
+        passwordHash: true,
+      },
+    });
+
+  if (!user) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "not_found",
+      },
+      {
+        status: 404,
+      }
+    );
+  }
+
+  if (!user.passwordHash) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "password_not_configured",
+        detail:
+          "Δεν υπάρχει αποθηκευμένος κωδικός για αυτόν τον λογαριασμό.",
+      },
+      {
+        status: 409,
+      }
+    );
+  }
+
+  /*
+   * -------------------------------------------------------
+   * VERIFY CURRENT PASSWORD
+   * -------------------------------------------------------
+   */
+  const correctPassword =
+    await bcrypt.compare(
+      currentPassword,
+      user.passwordHash
+    );
+
+  if (!correctPassword) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "wrong_password",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  /*
+   * Prevent replacing the password
+   * with exactly the same password.
+   */
+  const samePassword =
+    await bcrypt.compare(
+      newPassword,
+      user.passwordHash
+    );
+
+  if (samePassword) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "same_password",
+        detail:
+          "Ο νέος κωδικός πρέπει να είναι διαφορετικός από τον τρέχοντα.",
+      },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  /*
+   * -------------------------------------------------------
+   * SAVE NEW PASSWORD
+   * -------------------------------------------------------
+   */
+  const passwordHash =
+    await bcrypt.hash(
+      newPassword,
+      10
+    );
+
   await prisma.user.update({
-    where: { id: user.id },
-    data: { passwordHash: hash },
+    where: {
+      id: user.id,
+    },
+
+    data: {
+      passwordHash,
+    },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+  });
 }
