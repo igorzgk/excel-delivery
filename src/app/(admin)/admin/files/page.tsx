@@ -2459,7 +2459,7 @@ export default function AdminFilesPage() {
                       currentPdfFolderId={
                         currentPdfFolderId
                       }
-                      allowAssignmentManagement
+                      allowAssignmentManagement={false}
                       allowPdfMove={
                         pdf &&
                         pdfViewMode ===
