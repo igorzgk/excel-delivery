@@ -15,7 +15,7 @@ export function getMenu(role: Role): MenuItem[] {
 
   return [
     /*{ label: "Πίνακας Ελέγχου", href: "/dashboard" },*/
-    { label: "Αρχείο θερμ/σιών & καθ/σμού-απολ/νσης", href: "/files" },
+    { label: "Αρχείο θερμοκρασιών & καθαρισμού - απολύμανσης", href: "/files" },
     { label: "Υπόλοιπα αρχεία τεκμηρίωσης", href: "/documentation" },
     { label: "Υποστήριξη", href: "/support" },
     { label: "Προφίλ", href: "/profile" },
