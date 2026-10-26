@@ -591,22 +591,45 @@ export default function AdminFilesPage() {
         return [];
       }
 
-      return logicalFolders.filter(
-        (folder) => {
-          const ownerIds =
-            new Set(
-              (folder.users || []).map(
-                (user) =>
+      const selectedSet =
+        new Set(
+          uploadTargetUserIds
+        );
+
+      return logicalFolders
+        .map((folder) => {
+          const selectedCount =
+            (folder.users || []).reduce(
+              (count, user) =>
+                count +
+                (selectedSet.has(
                   user.id
-              )
+                )
+                  ? 1
+                  : 0),
+              0
             );
 
-          return uploadTargetUserIds.every(
-            (userId) =>
-              ownerIds.has(userId)
-          );
-        }
-      );
+          return {
+            ...folder,
+            selectedCount,
+            selectedTotal:
+              uploadTargetUserIds.length,
+          };
+        })
+        .filter(
+          (folder) =>
+            folder.selectedCount > 0
+        )
+        .sort(
+          (a, b) =>
+            b.selectedCount -
+              a.selectedCount ||
+            a.name.localeCompare(
+              b.name,
+              "el"
+            )
+        );
     }, [
       selectedFileIsPdf,
       uploadTargetUserIds,
@@ -1583,7 +1606,7 @@ export default function AdminFilesPage() {
           </h2>
 
           <p className="mt-1 text-sm text-gray-500">
-            Επιλέξτε όσους χρήστες θέλετε. Για PDF εμφανίζονται μόνο οι φάκελοι που υπάρχουν σε όλους τους επιλεγμένους χρήστες.
+            Επιλέξτε όσους χρήστες θέλετε. Για PDF μπορείτε να επιλέξετε οποιονδήποτε φάκελο υπάρχει σε τουλάχιστον έναν από τους επιλεγμένους χρήστες.
           </p>
         </div>
 
@@ -1664,7 +1687,7 @@ export default function AdminFilesPage() {
                     </div>
 
                     <p className="mt-1 text-xs text-gray-500">
-                      Εμφανίζονται μόνο οι φάκελοι που υπάρχουν σε όλους τους χρήστες που θα λάβουν το PDF.
+                      Αν κάποιος επιλεγμένος χρήστης δεν έχει τον φάκελο, θα λάβει κανονικά το PDF χωρίς φάκελο.
                     </p>
                   </div>
 
@@ -1725,9 +1748,7 @@ export default function AdminFilesPage() {
                               folder.name
                             }
                           >
-                            {
-                              folder.name
-                            }
+                            {`${folder.name} — ${folder.selectedCount} / ${folder.selectedTotal}`}
                           </option>
                         )
                       )}
@@ -1736,13 +1757,13 @@ export default function AdminFilesPage() {
                     <p className="mt-2 text-xs text-gray-500">
                       {loadingLogicalFolders
                         ? "Φόρτωση φακέλων..."
-                        : `${availableUploadFolders.length} διαθέσιμοι φάκελοι για ${uploadTargetUserIds.length} επιλεγμένο/ους χρήστη/ες.`}
+                        : `${availableUploadFolders.length} διαθέσιμοι φάκελοι. Η ένδειξη δίπλα σε κάθε φάκελο δείχνει πόσοι από τους ${uploadTargetUserIds.length} επιλεγμένους χρήστες τον έχουν.`}
                     </p>
 
                     {!loadingLogicalFolders &&
                       availableUploadFolders.length === 0 && (
                         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                          Δεν υπάρχει κοινός φάκελος που να ανήκει σε όλους τους επιλεγμένους χρήστες. Μπορείτε να επιλέξετε «Χωρίς φάκελο» ή να αλλάξετε τους χρήστες.
+                          Κανένας από τους επιλεγμένους χρήστες δεν έχει διαθέσιμο φάκελο. Το PDF μπορεί να σταλεί ως «Χωρίς φάκελο».
                         </div>
                       )}
                   </>
@@ -2086,7 +2107,7 @@ export default function AdminFilesPage() {
             <p className="mt-2 text-xs text-gray-500">
               {pdfViewMode ===
               "ALL_FILES"
-                ? "Αναζητήστε οποιοδήποτε PDF και πατήστε το εικονίδιο χρηστών για να δείτε σε ποιους έχει ανατεθεί."
+                ? "Αναζητήστε οποιοδήποτε PDF."
                 : "Επιλέξτε χρήστη για να δείτε το προσωπικό Windows-style περιβάλλον φακέλων του."}
             </p>
           </div>

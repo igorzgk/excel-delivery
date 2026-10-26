@@ -82,12 +82,8 @@ function parseSelectedUserIds(
       const parsed =
         JSON.parse(value);
 
-      if (
-        Array.isArray(parsed)
-      ) {
-        for (
-          const item of parsed
-        ) {
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
           const id =
             String(
               item || ""
@@ -137,12 +133,11 @@ function errorResponse(
  * GET
  * ---------------------------------------------------------
  *
- * New PDF folder placement:
+ * PDF folder placement is stored per assignment:
  *
  * FileAssignment.pdfFolderId
  *
- * File.pdfFolderId remains only as
- * legacy compatibility.
+ * File.pdfFolderId remains only for legacy compatibility.
  */
 export async function GET(
   req: Request
@@ -153,8 +148,7 @@ export async function GET(
   if (!me) {
     return NextResponse.json(
       {
-        error:
-          "unauthenticated",
+        error: "unauthenticated",
       },
       {
         status: 401,
@@ -172,9 +166,7 @@ export async function GET(
   } = new URL(req.url);
 
   const scope =
-    searchParams.get(
-      "scope"
-    );
+    searchParams.get("scope");
 
   const adminScope =
     (me as any).role ===
@@ -207,8 +199,7 @@ export async function GET(
       where,
 
       orderBy: {
-        createdAt:
-          "desc",
+        createdAt: "desc",
       },
 
       select: {
@@ -246,15 +237,13 @@ export async function GET(
             adminScope
               ? undefined
               : {
-                  userId:
-                    meId,
+                  userId: meId,
                 },
 
           select: {
             id: true,
             userId: true,
-            pdfFolderId:
-              true,
+            pdfFolderId: true,
 
             user: {
               select: {
@@ -280,9 +269,14 @@ export async function GET(
     rawFiles.map(
       (file) => {
         /*
-         * Admin needs ALL assignment
-         * information because the same
-         * PDF may belong to many users.
+         * Admin:
+         *
+         * If the file has exactly one assignment,
+         * expose that assignment folder at top-level
+         * for backwards compatibility.
+         *
+         * Multi-user PDFs keep folder information
+         * inside assignments[].
          */
         if (adminScope) {
           const singleAssignment =
@@ -303,30 +297,29 @@ export async function GET(
 
             pdfFolderId:
               singleAssignment
-                ?.pdfFolderId ??
-              safeLegacyFolder
-                ?.id ??
-              null,
+                ? singleAssignment.pdfFolderId
+                : safeLegacyFolder?.id ??
+                  null,
 
             pdfFolder:
               singleAssignment
-                ?.pdfFolder ??
-              safeLegacyFolder ??
-              null,
+                ? singleAssignment.pdfFolder
+                : safeLegacyFolder ??
+                  null,
           };
         }
 
         /*
-         * Normal user only gets their
-         * own assignment folder.
+         * Normal user:
+         *
+         * Only their own assignment is returned.
          */
         const myAssignment =
           file.assignments[0] ||
           null;
 
         const safeLegacyFolder =
-          file.pdfFolder
-            ?.ownerId ===
+          file.pdfFolder?.ownerId ===
           meId
             ? file.pdfFolder
             : null;
@@ -341,16 +334,15 @@ export async function GET(
 
           pdfFolderId:
             myAssignment
-              ?.pdfFolderId ??
-            safeLegacyFolder
-              ?.id ??
-            null,
+              ? myAssignment.pdfFolderId
+              : safeLegacyFolder?.id ??
+                null,
 
           pdfFolder:
             myAssignment
-              ?.pdfFolder ??
-            safeLegacyFolder ??
-            null,
+              ? myAssignment.pdfFolder
+              : safeLegacyFolder ??
+                null,
         };
       }
     );
@@ -364,11 +356,8 @@ export async function GET(
         "Cache-Control":
           "no-store, no-cache, must-revalidate, proxy-revalidate",
 
-        Pragma:
-          "no-cache",
-
-        Expires:
-          "0",
+        Pragma: "no-cache",
+        Expires: "0",
       },
     }
   );
@@ -382,47 +371,39 @@ export async function GET(
  * EXCEL / OTHER:
  *
  * assignTo = selected IDs
- * OR assignTo = ALL
+ * OR
+ * assignTo = ALL
  *
  *
  * PDF:
  *
  * assignTo = selected IDs
- * OR assignTo = ALL
+ * OR
+ * assignTo = ALL
  *
  * pdfFolderName =
  * logical/common folder name.
  *
  *
+ * IMPORTANT NEW BEHAVIOUR:
+ *
+ * The selected folder does NOT need to exist
+ * for every selected user.
+ *
  * Example:
  *
- * assignTo:
- * [
- *   userA,
- *   userB,
- *   userC
- * ]
+ * Selected users: 50
+ * Folder: "ΑΔΕΙΑ ΛΕΙΤΟΥΡΓΙΑΣ"
  *
- * pdfFolderName:
- * "ΑΔΕΙΑ ΛΕΙΤΟΥΡΓΙΑΣ"
+ * 31 users have the folder:
+ * -> PDF goes inside their personal folder.
  *
+ * 19 users do not have the folder:
+ * -> PDF is still assigned to them.
+ * -> pdfFolderId = null.
+ * -> PDF appears loose / without folder.
  *
- * Result:
- *
- * ONE File
- * ONE Supabase object
- *
- * Assignment A
- * -> User A
- * -> User A's folder ID
- *
- * Assignment B
- * -> User B
- * -> User B's folder ID
- *
- * Assignment C
- * -> User C
- * -> User C's folder ID
+ * ONE physical PDF is still stored in Supabase.
  */
 export async function POST(
   req: Request
@@ -433,8 +414,7 @@ export async function POST(
   if (!me) {
     return NextResponse.json(
       {
-        error:
-          "unauthenticated",
+        error: "unauthenticated",
       },
       {
         status: 401,
@@ -473,16 +453,14 @@ export async function POST(
 
     const suppliedTitle =
       String(
-        form.get(
-          "title"
-        ) || ""
+        form.get("title") || ""
       ).trim();
 
     /*
      * Physical folder ID.
      *
-     * Mainly compatibility for
-     * one-user PDF uploads.
+     * Used mainly when one user uploads
+     * directly into one of their folders.
      */
     const requestedPdfFolderId =
       String(
@@ -494,8 +472,8 @@ export async function POST(
     /*
      * Logical folder name.
      *
-     * Recommended for any PDF
-     * recipient selection.
+     * Used by admin when one PDF is
+     * assigned to multiple users.
      */
     const requestedPdfFolderName =
       String(
@@ -539,8 +517,7 @@ export async function POST(
      * -----------------------------------------------------
      */
     const lower =
-      originalName
-        .toLowerCase();
+      originalName.toLowerCase();
 
     const contentTypeRaw =
       file.type || "";
@@ -548,9 +525,7 @@ export async function POST(
     const mime =
       contentTypeRaw ||
       (
-        lower.endsWith(
-          ".pdf"
-        )
+        lower.endsWith(".pdf")
           ? "application/pdf"
           : lower.endsWith(
                 ".xlsx"
@@ -566,12 +541,8 @@ export async function POST(
     const isPdf =
       mime
         .toLowerCase()
-        .includes(
-          "pdf"
-        ) ||
-      lower.endsWith(
-        ".pdf"
-      );
+        .includes("pdf") ||
+      lower.endsWith(".pdf");
 
     /*
      * -----------------------------------------------------
@@ -592,7 +563,7 @@ export async function POST(
     if (!isAdmin) {
       /*
        * Normal user uploads only
-       * for themselves.
+       * to their own account.
        */
       selectedUserIds = [
         meId,
@@ -604,11 +575,8 @@ export async function POST(
         await prisma.user.findMany(
           {
             where: {
-              role:
-                "USER",
-
-              status:
-                "ACTIVE",
+              role: "USER",
+              status: "ACTIVE",
             },
 
             select: {
@@ -627,10 +595,10 @@ export async function POST(
       0
     ) {
       /*
-       * Validate selected IDs.
+       * Validate manually selected users.
        *
-       * Only ACTIVE users receive
-       * uploaded files.
+       * Only ACTIVE normal users
+       * receive uploaded files.
        */
       const validUsers =
         await prisma.user.findMany(
@@ -641,11 +609,8 @@ export async function POST(
                   selectedUserIds,
               },
 
-              role:
-                "USER",
-
-              status:
-                "ACTIVE",
+              role: "USER",
+              status: "ACTIVE",
             },
 
             select: {
@@ -669,8 +634,7 @@ export async function POST(
       );
 
     /*
-     * PDF must have at least one
-     * recipient.
+     * PDF needs at least one recipient.
      */
     if (
       isPdf &&
@@ -685,8 +649,7 @@ export async function POST(
     }
 
     /*
-     * Folder parameters only make
-     * sense for PDFs.
+     * Folder fields are valid only for PDF.
      */
     if (
       !isPdf &&
@@ -705,14 +668,18 @@ export async function POST(
      * -----------------------------------------------------
      * ASSIGNMENT ROWS
      * -----------------------------------------------------
+     *
+     * Start every selected user without a folder.
+     *
+     * Folder resolution below fills pdfFolderId
+     * only where a matching personal folder exists.
      */
-    const assignmentRows:
-      {
-        userId: string;
-        pdfFolderId:
-          | string
-          | null;
-      }[] =
+    const assignmentRows: {
+      userId: string;
+      pdfFolderId:
+        | string
+        | null;
+    }[] =
       selectedUserIds.map(
         (userId) => ({
           userId,
@@ -725,10 +692,6 @@ export async function POST(
      * -----------------------------------------------------
      * PDF FOLDER RESOLUTION
      * -----------------------------------------------------
-     *
-     * For multiple selected users we
-     * resolve the SAME logical folder
-     * name separately for each user.
      */
     if (
       isPdf &&
@@ -739,11 +702,12 @@ export async function POST(
         requestedPdfFolderName;
 
       /*
-       * Compatibility:
+       * ---------------------------------------------------
+       * ONE USER + PHYSICAL FOLDER ID
+       * ---------------------------------------------------
        *
-       * If frontend sent one physical
-       * folder ID and there is one user,
-       * validate and use it.
+       * Used when a user uploads directly
+       * into one of their own folders.
        */
       if (
         requestedPdfFolderId &&
@@ -776,9 +740,7 @@ export async function POST(
           );
         }
 
-        if (
-          !folder.ownerId
-        ) {
+        if (!folder.ownerId) {
           return errorResponse(
             "legacy_global_folder",
             409
@@ -800,18 +762,32 @@ export async function POST(
           .pdfFolderId =
           folder.id;
 
+        /*
+         * We also know the logical name now.
+         */
         logicalFolderName =
           folder.name;
       }
 
       /*
-       * If a logical folder name is
-       * supplied, EVERY selected user
-       * must have their own copy of it.
+       * ---------------------------------------------------
+       * MULTI-USER LOGICAL FOLDER
+       * ---------------------------------------------------
+       *
+       * New rule:
+       *
+       * The folder does NOT have to exist
+       * for every selected user.
+       *
+       * Users who have the folder:
+       *   -> get their own folder ID.
+       *
+       * Users who don't:
+       *   -> pdfFolderId stays null.
+       *
+       * ALL users still receive the PDF.
        */
-      if (
-        logicalFolderName
-      ) {
+      if (logicalFolderName) {
         const personalFolders =
           await prisma.pdfFolder.findMany(
             {
@@ -852,25 +828,14 @@ export async function POST(
           }
         }
 
-        const missingUserIds =
-          selectedUserIds.filter(
-            (userId) =>
-              !folderByUser.has(
-                userId
-              )
-          );
-
-        if (
-          missingUserIds.length >
-          0
-        ) {
-          return errorResponse(
-            "folder_missing_for_selected_users",
-            409,
-            `Ο φάκελος "${logicalFolderName}" δεν υπάρχει για ${missingUserIds.length} από τους επιλεγμένους χρήστες.`
-          );
-        }
-
+        /*
+         * IMPORTANT:
+         *
+         * No missing-user rejection here.
+         *
+         * Users without the folder simply
+         * receive pdfFolderId = null.
+         */
         for (
           const row of
           assignmentRows
@@ -878,7 +843,7 @@ export async function POST(
           row.pdfFolderId =
             folderByUser.get(
               row.userId
-            ) || null;
+            ) ?? null;
         }
       }
     }
@@ -888,8 +853,7 @@ export async function POST(
      * STORAGE
      * -----------------------------------------------------
      *
-     * ONE upload regardless of
-     * recipient count.
+     * ONE upload regardless of recipient count.
      */
     const buffer =
       Buffer.from(
@@ -946,8 +910,7 @@ export async function POST(
             "upload_failed",
 
           detail:
-            uploadResult
-              .error
+            uploadResult.error
               .message,
 
           bucket:
@@ -969,11 +932,11 @@ export async function POST(
      * DATABASE
      * -----------------------------------------------------
      *
-     * ONE File
-     * MANY FileAssignments
+     * ONE File row
+     * MANY FileAssignment rows
      *
-     * Each assignment may have
-     * its own PdfFolder ID.
+     * Each user can have their own folder ID
+     * or null.
      */
     const created =
       await prisma.$transaction(
@@ -994,7 +957,7 @@ export async function POST(
                     meId,
 
                   /*
-                   * New uploads do not use
+                   * New uploads no longer use
                    * File.pdfFolderId.
                    */
                   pdfFolderId:
@@ -1146,7 +1109,7 @@ export async function POST(
 
     /*
      * DB failed after upload:
-     * remove orphaned storage object.
+     * remove orphaned Supabase object.
      */
     if (
       uploadedStorageKey
