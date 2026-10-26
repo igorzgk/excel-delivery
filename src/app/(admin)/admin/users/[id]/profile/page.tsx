@@ -3,10 +3,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  Folder,
+  ArrowLeft,
+  Download,
+  Eye,
   FileText,
-  Plus,
+  Folder,
+  FolderOpen,
   Pencil,
+  Plus,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 
@@ -28,6 +33,7 @@ type BusinessType =
   | "BAKERY_NO_COFFEE"
   | "BAKERY_PASTRY_WITH_COFFEE"
   | "PASTRY_WITH_COFFEE"
+  | "PASTRY_SHOP_NO_COFFEE"
   | "PASTRY_NO_COFFEE"
   | "GROCERY_FRUIT"
   | "WINE_NUTS_SHOP"
@@ -69,6 +75,7 @@ type ProfilePayload = {
   dryAgedChamberCount: number;
   iceCreamFreezerCount: number;
   chocolateDisplayCount: number;
+
   supervisorInitials: string;
 
   closedWeekdays: Weekday[];
@@ -124,13 +131,6 @@ type FileItem = {
 
   mime?: string | null;
 
-  /*
-   * IMPORTANT:
-   *
-   * Inside this page we normalize this value
-   * so it always represents the folder of the
-   * selected profile user.
-   */
   pdfFolderId?: string | null;
 
   pdfFolder?: FolderItem | null;
@@ -144,10 +144,7 @@ type FileItem = {
   assignments?: FileAssignmentItem[];
 };
 
-const BUSINESS_TYPES_LABELS: Record<
-  BusinessType,
-  string
-> = {
+const BUSINESS_TYPES_LABELS: Record<BusinessType, string> = {
   RESTAURANT_GRILL:
     "Εστιατόριο - Ψητοπωλείο",
 
@@ -199,6 +196,9 @@ const BUSINESS_TYPES_LABELS: Record<
   PASTRY_WITH_COFFEE:
     "Ζαχαροπλαστείο με παροχή καφέ",
 
+  PASTRY_SHOP_NO_COFFEE:
+    "Πρατήριο ζαχ/κής χωρίς παροχή καφέ",
+
   PASTRY_NO_COFFEE:
     "Ζαχαροπλαστείο χωρίς παροχή καφέ",
 
@@ -221,23 +221,30 @@ const BUSINESS_TYPES_LABELS: Record<
     "Παρασκευή – πώληση σφολιατοειδών προϊόντων",
 };
 
-const WEEKDAY_LABELS: Record<
-  Weekday,
-  string
-> = {
-  MONDAY: "Δευτέρα",
-  TUESDAY: "Τρίτη",
-  WEDNESDAY: "Τετάρτη",
-  THURSDAY: "Πέμπτη",
-  FRIDAY: "Παρασκευή",
-  SATURDAY: "Σάββατο",
-  SUNDAY: "Κυριακή",
+const WEEKDAY_LABELS: Record<Weekday, string> = {
+  MONDAY:
+    "Δευτέρα",
+
+  TUESDAY:
+    "Τρίτη",
+
+  WEDNESDAY:
+    "Τετάρτη",
+
+  THURSDAY:
+    "Πέμπτη",
+
+  FRIDAY:
+    "Παρασκευή",
+
+  SATURDAY:
+    "Σάββατο",
+
+  SUNDAY:
+    "Κυριακή",
 };
 
-const HOLIDAY_LABELS: Record<
-  PublicHoliday,
-  string
-> = {
+const HOLIDAY_LABELS: Record<PublicHoliday, string> = {
   NEW_YEAR:
     "01/01 (Πρωτοχρονιά)",
 
@@ -284,11 +291,6 @@ function isPdfFile(
   const name =
     (
       file.originalName ||
-      ""
-    ).toLowerCase();
-
-  const title =
-    (
       file.title ||
       ""
     ).toLowerCase();
@@ -298,15 +300,6 @@ function isPdfFile(
       "pdf"
     ) ||
     name.endsWith(
-      ".pdf"
-    ) ||
-    name.includes(
-      ".pdf"
-    ) ||
-    title.endsWith(
-      ".pdf"
-    ) ||
-    title.includes(
       ".pdf"
     )
   );
@@ -328,6 +321,20 @@ function isPdfUpload(
         ".pdf"
       )
   );
+}
+
+function cleanUploadedFilename(
+  name: string
+) {
+  return name
+    .replace(
+      /\.[^/.]+$/,
+      ""
+    )
+    .replace(
+      /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}__?/i,
+      ""
+    );
 }
 
 function formatSize(
@@ -361,7 +368,7 @@ function formatSize(
       units.length - 1
   ) {
     value /= 1024;
-    index++;
+    index += 1;
   }
 
   return `${value.toFixed(
@@ -372,18 +379,43 @@ function formatSize(
   )} ${units[index]}`;
 }
 
-function cleanUploadedFilename(
-  name: string
+function apiError(
+  json: any,
+  fallback: string
 ) {
-  return name
-    .replace(
-      /\.[^/.]+$/,
-      ""
-    )
-    .replace(
-      /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}__?/i,
-      ""
-    );
+  if (
+    json?.error ===
+    "folder_exists"
+  ) {
+    return "Ο φάκελος υπάρχει ήδη.";
+  }
+
+  if (
+    json?.error ===
+    "folder_owner_mismatch"
+  ) {
+    return "Ο επιλεγμένος φάκελος δεν ανήκει στον συγκεκριμένο χρήστη.";
+  }
+
+  if (
+    json?.error ===
+    "folder_not_found"
+  ) {
+    return "Ο φάκελος δεν βρέθηκε.";
+  }
+
+  if (
+    json?.error ===
+    "file_not_assigned_to_user"
+  ) {
+    return "Το PDF δεν είναι ανατεθειμένο στον συγκεκριμένο χρήστη.";
+  }
+
+  return (
+    json?.detail ||
+    json?.error ||
+    fallback
+  );
 }
 
 export default function AdminUserProfilePage() {
@@ -437,15 +469,15 @@ export default function AdminUserProfilePage() {
       string | null
     >(null);
 
-  /*
-   * Password reset
-   */
   const [
     pw,
     setPw,
   ] = useState({
-    newPassword: "",
-    confirm: "",
+    newPassword:
+      "",
+
+    confirm:
+      "",
   });
 
   const [
@@ -469,9 +501,6 @@ export default function AdminUserProfilePage() {
       string | null
     >(null);
 
-  /*
-   * Files modal
-   */
   const [
     filesOpen,
     setFilesOpen,
@@ -499,12 +528,12 @@ export default function AdminUserProfilePage() {
     >([]);
 
   const [
-    folderFilter,
-    setFolderFilter,
+    currentPdfFolderId,
+    setCurrentPdfFolderId,
   ] =
-    useState<string>(
-      "ALL"
-    );
+    useState<
+      string | null
+    >(null);
 
   const [
     loadingFiles,
@@ -521,9 +550,6 @@ export default function AdminUserProfilePage() {
     setCreatingFolder,
   ] = useState(false);
 
-  /*
-   * Upload
-   */
   const [
     upTitle,
     setUpTitle,
@@ -547,9 +573,14 @@ export default function AdminUserProfilePage() {
     setUploading,
   ] = useState(false);
 
-  /*
-   * Delete
-   */
+  const [
+    moveMenuFileId,
+    setMoveMenuFileId,
+  ] =
+    useState<
+      string | null
+    >(null);
+
   const [
     deletingId,
     setDeletingId,
@@ -558,18 +589,15 @@ export default function AdminUserProfilePage() {
       string | null
     >(null);
 
-  /*
-   * -------------------------------------------------------
-   * LOAD PROFILE
-   * -------------------------------------------------------
-   */
   useEffect(() => {
     if (!userId) {
       return;
     }
 
     (async () => {
-      setLoading(true);
+      setLoading(
+        true
+      );
 
       setError(
         null
@@ -595,19 +623,21 @@ export default function AdminUserProfilePage() {
           );
         }
 
-        const u =
+        const loadedUser =
           json.user as AdminUserMeta;
 
-        const p =
+        const loadedProfile =
           json.profile as
             | any
             | null;
 
         setUser(
-          u
+          loadedUser
         );
 
-        if (!p) {
+        if (
+          !loadedProfile
+        ) {
           setProfile({
             businessName:
               "",
@@ -653,67 +683,69 @@ export default function AdminUserProfilePage() {
         } else {
           setProfile({
             businessName:
-              p.businessName ??
+              loadedProfile.businessName ??
               "",
 
             addressStreet:
-              p.addressStreet ??
+              loadedProfile.addressStreet ??
               "",
 
             businessTypes:
               (
-                p.businessTypes ??
+                loadedProfile.businessTypes ??
                 []
               ) as BusinessType[],
 
             fridgeCount:
-              p.fridgeCount ??
+              loadedProfile.fridgeCount ??
               0,
 
             freezerCount:
-              p.freezerCount ??
+              loadedProfile.freezerCount ??
               0,
 
             hotCabinetCount:
-              p.hotCabinetCount ??
+              loadedProfile.hotCabinetCount ??
               0,
 
             dryAgedChamberCount:
-              p.dryAgedChamberCount ??
+              loadedProfile.dryAgedChamberCount ??
               0,
 
             iceCreamFreezerCount:
-              p.iceCreamFreezerCount ??
+              loadedProfile.iceCreamFreezerCount ??
               0,
 
             chocolateDisplayCount:
-              p.chocolateDisplayCount ??
+              loadedProfile.chocolateDisplayCount ??
               0,
 
             supervisorInitials:
-              p.supervisorInitials ??
+              loadedProfile.supervisorInitials ??
               "",
 
             closedWeekdays:
               (
-                p.closedWeekdays ??
+                loadedProfile.closedWeekdays ??
                 []
               ) as Weekday[],
 
             closedHolidays:
               (
-                p.closedHolidays ??
+                loadedProfile.closedHolidays ??
                 []
               ) as PublicHoliday[],
 
             augustRange: {
               from:
-                p.augustRange
+                loadedProfile
+                  .augustRange
                   ?.from ||
                 "",
 
               to:
-                p.augustRange
+                loadedProfile
+                  .augustRange
                   ?.to ||
                 "",
             },
@@ -734,11 +766,10 @@ export default function AdminUserProfilePage() {
     })();
   }, [userId]);
 
-  /*
-   * Lock body while modal is open.
-   */
   useEffect(() => {
-    if (!filesOpen) {
+    if (
+      !filesOpen
+    ) {
       return;
     }
 
@@ -767,15 +798,11 @@ export default function AdminUserProfilePage() {
 
     setProfile({
       ...profile,
-      [key]: value,
+      [key]:
+        value,
     });
   }
 
-  /*
-   * -------------------------------------------------------
-   * SAVE PROFILE
-   * -------------------------------------------------------
-   */
   async function save() {
     if (
       !profile ||
@@ -847,11 +874,6 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  /*
-   * -------------------------------------------------------
-   * RESET PASSWORD
-   * -------------------------------------------------------
-   */
   async function resetPassword() {
     if (!userId) {
       return;
@@ -951,21 +973,6 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  /*
-   * -------------------------------------------------------
-   * LOAD FILES
-   * -------------------------------------------------------
-   *
-   * IMPORTANT:
-   *
-   * GET /api/files?scope=all returns all assignments.
-   *
-   * We find THIS profile user's assignment and flatten
-   * its pdfFolderId into the FileItem used by this view.
-   *
-   * Therefore shared PDFs show the correct folder for
-   * the selected profile user.
-   */
   async function refreshFiles() {
     if (!userId) {
       return;
@@ -1058,13 +1065,6 @@ export default function AdminUserProfilePage() {
                       userId
                 );
 
-              /*
-               * Assignment takes priority.
-               *
-               * Even if pdfFolderId is null,
-               * null is intentional:
-               * this user has the PDF loose.
-               */
               if (
                 assignment
               ) {
@@ -1081,9 +1081,6 @@ export default function AdminUserProfilePage() {
                 };
               }
 
-              /*
-               * Legacy fallback.
-               */
               return file;
             }
           );
@@ -1105,11 +1102,6 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  /*
-   * -------------------------------------------------------
-   * LOAD THIS USER'S PERSONAL FOLDERS
-   * -------------------------------------------------------
-   */
   async function loadFolders() {
     if (!userId) {
       return;
@@ -1138,64 +1130,73 @@ export default function AdminUserProfilePage() {
             () => ({})
           );
 
-      if (res.ok) {
-        const nextFolders =
-          (
-            json.folders ||
-            []
-          ) as FolderItem[];
-
-        setFolders(
-          nextFolders
-        );
-
-        /*
-         * Prevent stale filter after folder removal.
-         */
-        setFolderFilter(
-          (
-            current
-          ) => {
-            if (
-              current ===
-                "ALL" ||
-              current ===
-                "NONE"
-            ) {
-              return current;
-            }
-
-            return nextFolders.some(
-              (
-                folder
-              ) =>
-                folder.id ===
-                current
-            )
-              ? current
-              : "ALL";
-          }
-        );
-
-        /*
-         * Prevent stale upload-folder selection.
-         */
-        setUpPdfFolderId(
-          (
-            current
-          ) =>
-            !current ||
-            nextFolders.some(
-              (
-                folder
-              ) =>
-                folder.id ===
-                current
-            )
-              ? current
-              : ""
+      if (!res.ok) {
+        throw new Error(
+          json?.error ||
+            "Αποτυχία φόρτωσης φακέλων"
         );
       }
+
+      const nextFolders =
+        (
+          json.folders ||
+          []
+        ) as FolderItem[];
+
+      setFolders(
+        nextFolders
+      );
+
+      setCurrentPdfFolderId(
+        (
+          current
+        ) => {
+          if (
+            !current
+          ) {
+            return null;
+          }
+
+          return nextFolders.some(
+            (
+              folder
+            ) =>
+              folder.id ===
+              current
+          )
+            ? current
+            : null;
+        }
+      );
+
+      setUpPdfFolderId(
+        (
+          current
+        ) => {
+          if (
+            !current
+          ) {
+            return "";
+          }
+
+          return nextFolders.some(
+            (
+              folder
+            ) =>
+              folder.id ===
+              current
+          )
+            ? current
+            : "";
+        }
+      );
+    } catch (
+      err
+    ) {
+      console.error(
+        "Could not load user folders:",
+        err
+      );
     } finally {
       setLoadingFolders(
         false
@@ -1204,12 +1205,13 @@ export default function AdminUserProfilePage() {
   }
 
   useEffect(() => {
-    if (!filesOpen) {
+    if (
+      !filesOpen
+    ) {
       return;
     }
 
     void refreshFiles();
-
     void loadFolders();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1218,11 +1220,6 @@ export default function AdminUserProfilePage() {
     userId,
   ]);
 
-  /*
-   * -------------------------------------------------------
-   * UPLOAD TO THIS USER
-   * -------------------------------------------------------
-   */
   async function uploadToUser() {
     if (!userId) {
       return;
@@ -1257,19 +1254,11 @@ export default function AdminUserProfilePage() {
         upFile
       );
 
-      /*
-       * Only this profile user.
-       */
       formData.append(
         "assignTo",
         userId
       );
 
-      /*
-       * PDF only:
-       *
-       * Physical personal folder ID of this user.
-       */
       if (
         isPdfUpload(
           upFile
@@ -1303,9 +1292,10 @@ export default function AdminUserProfilePage() {
 
       if (!res.ok) {
         throw new Error(
-          json?.detail ||
-            json?.error ||
+          apiError(
+            json,
             "Αποτυχία upload"
+          )
         );
       }
 
@@ -1328,7 +1318,9 @@ export default function AdminUserProfilePage() {
           | HTMLInputElement
           | null;
 
-      if (input) {
+      if (
+        input
+      ) {
         input.value =
           "";
       }
@@ -1348,11 +1340,6 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  /*
-   * -------------------------------------------------------
-   * CREATE PERSONAL FOLDER FOR THIS USER
-   * -------------------------------------------------------
-   */
   async function createFolder() {
     if (!userId) {
       return;
@@ -1400,25 +1387,21 @@ export default function AdminUserProfilePage() {
           );
 
       if (!res.ok) {
-        alert(
-          json?.error ===
-            "folder_exists"
-            ? "Ο φάκελος υπάρχει ήδη."
-            : json?.detail ||
-                json?.error ||
-                "Αποτυχία δημιουργίας φακέλου."
+        throw new Error(
+          apiError(
+            json,
+            "Αποτυχία δημιουργίας φακέλου."
+          )
         );
-
-        return;
       }
 
       await loadFolders();
 
       if (
-        json.folder
+        json?.folder
           ?.id
       ) {
-        setFolderFilter(
+        setCurrentPdfFolderId(
           json.folder.id
         );
 
@@ -1426,6 +1409,13 @@ export default function AdminUserProfilePage() {
           json.folder.id
         );
       }
+    } catch (
+      err: any
+    ) {
+      alert(
+        err?.message ||
+          "Αποτυχία δημιουργίας φακέλου."
+      );
     } finally {
       setCreatingFolder(
         false
@@ -1433,11 +1423,6 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  /*
-   * -------------------------------------------------------
-   * RENAME THIS USER'S PERSONAL FOLDER
-   * -------------------------------------------------------
-   */
   async function renameFolder(
     id: string,
     current: string
@@ -1450,7 +1435,8 @@ export default function AdminUserProfilePage() {
 
     if (
       !name ||
-      name === current
+      name ===
+        current
     ) {
       return;
     }
@@ -1483,9 +1469,10 @@ export default function AdminUserProfilePage() {
 
     if (!res.ok) {
       alert(
-        json?.detail ||
-          json?.error ||
+        apiError(
+          json,
           "Αποτυχία μετονομασίας."
+        )
       );
 
       return;
@@ -1497,21 +1484,12 @@ export default function AdminUserProfilePage() {
     ]);
   }
 
-  /*
-   * -------------------------------------------------------
-   * DELETE THIS USER'S PERSONAL FOLDER
-   * -------------------------------------------------------
-   *
-   * PDFs are NOT deleted.
-   *
-   * Their assignment folder becomes null.
-   */
   async function deleteFolder(
     id: string
   ) {
     if (
       !confirm(
-        "Διαγραφή φακέλου; Τα PDF δεν θα διαγραφούν, απλώς θα εμφανίζονται χωρίς φάκελο για αυτόν τον χρήστη."
+        "Διαγραφή φακέλου; Τα PDF δεν θα διαγραφούν. Θα εμφανίζονται χωρίς φάκελο για αυτόν τον χρήστη."
       )
     ) {
       return;
@@ -1535,17 +1513,23 @@ export default function AdminUserProfilePage() {
 
     if (!res.ok) {
       alert(
-        json?.detail ||
-          json?.error ||
+        apiError(
+          json,
           "Αποτυχία διαγραφής φακέλου."
+        )
       );
 
       return;
     }
 
-    setFolderFilter(
-      "ALL"
-    );
+    if (
+      currentPdfFolderId ===
+      id
+    ) {
+      setCurrentPdfFolderId(
+        null
+      );
+    }
 
     if (
       upPdfFolderId ===
@@ -1562,11 +1546,6 @@ export default function AdminUserProfilePage() {
     ]);
   }
 
-  /*
-   * -------------------------------------------------------
-   * MOVE PDF FOR THIS USER ONLY
-   * -------------------------------------------------------
-   */
   async function movePdf(
     fileId: string,
     pdfFolderId:
@@ -1593,13 +1572,6 @@ export default function AdminUserProfilePage() {
             body:
               JSON.stringify({
                 pdfFolderId,
-
-                /*
-                 * CRITICAL:
-                 *
-                 * This identifies which assignment of
-                 * a shared PDF we are moving.
-                 */
                 userId,
               }),
           }
@@ -1614,15 +1586,17 @@ export default function AdminUserProfilePage() {
 
       if (!res.ok) {
         throw new Error(
-          json?.detail ||
-            json?.error ||
+          apiError(
+            json,
             "Αποτυχία μετακίνησης PDF."
+          )
         );
       }
 
-      /*
-       * Update local view immediately.
-       */
+      setMoveMenuFileId(
+        null
+      );
+
       setAllFiles(
         (
           previous
@@ -1665,18 +1639,6 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  /*
-   * -------------------------------------------------------
-   * REMOVE FILE FROM THIS USER
-   * -------------------------------------------------------
-   *
-   * IMPORTANT:
-   *
-   * This does NOT necessarily delete the physical File.
-   *
-   * If a shared PDF belongs to multiple users,
-   * only this user's FileAssignment is removed.
-   */
   async function deleteFile(
     fileId: string
   ) {
@@ -1686,7 +1648,7 @@ export default function AdminUserProfilePage() {
 
     if (
       !confirm(
-        "Να αφαιρεθεί το αρχείο από αυτόν τον χρήστη; Αν το αρχείο είναι κοινόχρηστο με άλλους χρήστες, δεν θα διαγραφεί από εκείνους."
+        "Να αφαιρεθεί το αρχείο από αυτόν τον χρήστη; Αν είναι κοινόχρηστο με άλλους χρήστες, δεν θα διαγραφεί από εκείνους."
       )
     ) {
       return;
@@ -1748,6 +1710,15 @@ export default function AdminUserProfilePage() {
               fileId
           )
       );
+
+      if (
+        moveMenuFileId ===
+        fileId
+      ) {
+        setMoveMenuFileId(
+          null
+        );
+      }
     } catch (
       err: any
     ) {
@@ -1762,11 +1733,6 @@ export default function AdminUserProfilePage() {
     }
   }
 
-  /*
-   * -------------------------------------------------------
-   * FILTERS
-   * -------------------------------------------------------
-   */
   const filteredFiles =
     useMemo(() => {
       const q =
@@ -1820,51 +1786,69 @@ export default function AdminUserProfilePage() {
     others,
   } =
     useMemo(() => {
-      const pdfRows =
-        filteredFiles.filter(
-          isPdfFile
-        );
-
-      const otherRows =
-        filteredFiles.filter(
-          (
-            file
-          ) =>
-            !isPdfFile(
-              file
-            )
-        );
-
       return {
         pdfs:
-          pdfRows,
+          filteredFiles.filter(
+            isPdfFile
+          ),
 
         others:
-          otherRows,
+          filteredFiles.filter(
+            (
+              file
+            ) =>
+              !isPdfFile(
+                file
+              )
+          ),
       };
     }, [
       filteredFiles,
     ]);
 
-  const pdfsFilteredByFolder =
+  const currentPdfFolder =
     useMemo(() => {
       if (
-        folderFilter ===
-        "ALL"
+        !currentPdfFolderId
       ) {
-        return pdfs;
+        return null;
       }
 
-      if (
-        folderFilter ===
-        "NONE"
-      ) {
-        return pdfs.filter(
+      return (
+        folders.find(
+          (
+            folder
+          ) =>
+            folder.id ===
+            currentPdfFolderId
+        ) ||
+        null
+      );
+    }, [
+      folders,
+      currentPdfFolderId,
+    ]);
+
+  const rootPdfs =
+    useMemo(
+      () =>
+        pdfs.filter(
           (
             file
           ) =>
             !file.pdfFolderId
-        );
+        ),
+      [
+        pdfs,
+      ]
+    );
+
+  const visiblePdfFiles =
+    useMemo(() => {
+      if (
+        !currentPdfFolderId
+      ) {
+        return rootPdfs;
       }
 
       return pdfs.filter(
@@ -1872,12 +1856,88 @@ export default function AdminUserProfilePage() {
           file
         ) =>
           file.pdfFolderId ===
-          folderFilter
+          currentPdfFolderId
       );
     }, [
       pdfs,
-      folderFilter,
+      rootPdfs,
+      currentPdfFolderId,
     ]);
+
+  const visiblePdfFolders =
+    useMemo(() => {
+      if (
+        currentPdfFolderId
+      ) {
+        return [];
+      }
+
+      const q =
+        query
+          .trim()
+          .toLocaleLowerCase(
+            "el"
+          );
+
+      if (!q) {
+        return folders;
+      }
+
+      return folders.filter(
+        (
+          folder
+        ) =>
+          folder.name
+            .toLocaleLowerCase(
+              "el"
+            )
+            .includes(
+              q
+            )
+      );
+    }, [
+      folders,
+      currentPdfFolderId,
+      query,
+    ]);
+
+  function openPdfFolder(
+    folderId: string
+  ) {
+    setCurrentPdfFolderId(
+      folderId
+    );
+
+    setUpPdfFolderId(
+      folderId
+    );
+
+    setMoveMenuFileId(
+      null
+    );
+
+    setQuery(
+      ""
+    );
+  }
+
+  function goPdfRoot() {
+    setCurrentPdfFolderId(
+      null
+    );
+
+    setUpPdfFolderId(
+      ""
+    );
+
+    setMoveMenuFileId(
+      null
+    );
+
+    setQuery(
+      ""
+    );
+  }
 
   if (
     loading ||
@@ -1894,7 +1954,6 @@ export default function AdminUserProfilePage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
-      {/* HEADER */}
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">
@@ -1933,9 +1992,7 @@ export default function AdminUserProfilePage() {
         </button>
       </header>
 
-      {/* MAIN PROFILE CARD */}
       <section className="space-y-5 rounded-2xl border border-[color:var(--border)] bg-[color:var(--card,#fff)] p-4 shadow-sm">
-        {/* BASIC */}
         <div>
           <h2 className="mb-2 font-semibold">
             Βασικά στοιχεία
@@ -2011,7 +2068,6 @@ export default function AdminUserProfilePage() {
           </div>
         </div>
 
-        {/* BUSINESS TYPE */}
         <div>
           <h2 className="mb-2 font-semibold">
             Είδος επιχείρησης
@@ -2088,7 +2144,6 @@ export default function AdminUserProfilePage() {
           </div>
         </div>
 
-        {/* EQUIPMENT */}
         <div>
           <h2 className="mb-2 font-semibold">
             Εξοπλισμός αποθήκευσης/διατήρησης τροφίμων
@@ -2187,7 +2242,6 @@ export default function AdminUserProfilePage() {
           </div>
         </div>
 
-        {/* DAYS / HOLIDAYS */}
         <div>
           <h2 className="mb-2 font-semibold">
             Ημέρες & περίοδοι λειτουργίας
@@ -2402,7 +2456,6 @@ export default function AdminUserProfilePage() {
           </div>
         </div>
 
-        {/* PASSWORD RESET */}
         <div className="border-t border-[color:var(--border)] pt-2">
           <h2 className="mb-2 font-semibold">
             Reset κωδικού
@@ -2547,12 +2600,8 @@ export default function AdminUserProfilePage() {
         </div>
       </section>
 
-      {/* ==================================================
-          FILES FULL SCREEN MODAL
-          ================================================== */}
       {filesOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden">
-          {/* Overlay */}
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() =>
@@ -2562,9 +2611,7 @@ export default function AdminUserProfilePage() {
             }
           />
 
-          {/* Modal */}
           <div className="absolute inset-0 flex min-w-0 flex-col bg-white">
-            {/* Header */}
             <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
               <div className="min-w-0">
                 <div className="font-semibold">
@@ -2587,8 +2634,20 @@ export default function AdminUserProfilePage() {
 
                     void loadFolders();
                   }}
-                  className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5"
+                  className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-black/5"
                 >
+                  <RefreshCw
+                    size={
+                      15
+                    }
+                    className={
+                      loadingFiles ||
+                      loadingFolders
+                        ? "animate-spin"
+                        : ""
+                    }
+                  />
+
                   Ανανέωση
                 </button>
 
@@ -2606,10 +2665,8 @@ export default function AdminUserProfilePage() {
               </div>
             </div>
 
-            {/* Body */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden">
               <div className="mx-auto w-full max-w-[1500px] min-w-0 space-y-4 px-2 py-4 sm:px-4 lg:px-6">
-                {/* UPLOAD */}
                 <section className="rounded-2xl border bg-white p-4">
                   <h3 className="font-semibold">
                     Upload αρχείου στον χρήστη
@@ -2632,8 +2689,7 @@ export default function AdminUserProfilePage() {
                         event
                       ) =>
                         setUpTitle(
-                          event
-                            .target
+                          event.target
                             .value
                         )
                       }
@@ -2656,10 +2712,6 @@ export default function AdminUserProfilePage() {
                           picked
                         );
 
-                        setUpPdfFolderId(
-                          ""
-                        );
-
                         if (
                           picked &&
                           !upTitle.trim()
@@ -2668,6 +2720,21 @@ export default function AdminUserProfilePage() {
                             cleanUploadedFilename(
                               picked.name
                             )
+                          );
+                        }
+
+                        if (
+                          isPdfUpload(
+                            picked
+                          )
+                        ) {
+                          setUpPdfFolderId(
+                            currentPdfFolderId ||
+                              ""
+                          );
+                        } else {
+                          setUpPdfFolderId(
+                            ""
                           );
                         }
                       }}
@@ -2684,8 +2751,7 @@ export default function AdminUserProfilePage() {
                           event
                         ) =>
                           setUpPdfFolderId(
-                            event
-                              .target
+                            event.target
                               .value
                           )
                         }
@@ -2744,7 +2810,6 @@ export default function AdminUserProfilePage() {
                   </div>
                 </section>
 
-                {/* SEARCH */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <input
                     value={
@@ -2754,8 +2819,7 @@ export default function AdminUserProfilePage() {
                       event
                     ) =>
                       setQuery(
-                        event
-                          .target
+                        event.target
                           .value
                       )
                     }
@@ -2770,9 +2834,7 @@ export default function AdminUserProfilePage() {
                   </div>
                 </div>
 
-                {/* COLUMNS */}
-                <div className="grid min-w-0 gap-4 lg:grid-cols-[1.6fr_1fr]">
-                  {/* LEFT */}
+                <div className="grid min-w-0 gap-4 lg:grid-cols-[1.5fr_1fr]">
                   <section className="min-w-0 rounded-2xl border bg-white p-4">
                     <div className="flex items-baseline justify-between">
                       <h3 className="font-semibold">
@@ -2905,124 +2967,112 @@ export default function AdminUserProfilePage() {
                     )}
                   </section>
 
-                  {/* RIGHT PDFs */}
-                  <section className="min-w-0 rounded-2xl border bg-white p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="font-semibold">
-                        PDF (
-                        {
-                          pdfs.length
+                  <section className="min-w-0 overflow-visible rounded-2xl border bg-white">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+                      <div>
+                        <h3 className="font-semibold">
+                          PDF αρχεία (
+                          {
+                            pdfs.length
+                          }
+                          )
+                        </h3>
+
+                        <p className="mt-1 text-xs text-gray-500">
+                          Προσωπικοί φάκελοι και PDF του συγκεκριμένου χρήστη.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={
+                          createFolder
                         }
-                        )
-                      </h3>
-
-                      <div className="flex items-center gap-2">
-                        <select
-                          className="max-w-[220px] rounded-lg border px-2 py-1 text-sm"
-                          value={
-                            folderFilter
+                        disabled={
+                          creatingFolder
+                        }
+                        className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-60"
+                      >
+                        <Plus
+                          size={
+                            16
                           }
-                          onChange={(
-                            event
-                          ) =>
-                            setFolderFilter(
-                              event
-                                .target
-                                .value
-                            )
-                          }
-                        >
-                          <option value="ALL">
-                            Όλα
-                          </option>
+                        />
 
-                          <option value="NONE">
-                            Χωρίς φάκελο
-                          </option>
+                        {creatingFolder
+                          ? "Δημιουργία…"
+                          : "Φάκελος"}
+                      </button>
+                    </div>
 
-                          {folders.map(
-                            (
-                              folder
-                            ) => (
-                              <option
-                                key={
-                                  folder.id
-                                }
-                                value={
-                                  folder.id
-                                }
-                              >
-                                {
-                                  folder.name
-                                }
-                              </option>
-                            )
-                          )}
-                        </select>
-
+                    <div className="flex min-h-[48px] items-center gap-2 border-b bg-gray-50 px-3 py-2">
+                      {currentPdfFolder ? (
                         <button
                           type="button"
                           onClick={
-                            createFolder
+                            goPdfRoot
                           }
-                          disabled={
-                            creatingFolder
-                          }
-                          className="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-sm disabled:opacity-60"
+                          className="rounded-md border bg-white p-2 hover:bg-gray-100"
+                          title="Πίσω"
                         >
-                          <Plus
+                          <ArrowLeft
                             size={
                               16
                             }
                           />
-
-                          Φάκελος
                         </button>
+                      ) : null}
+
+                      <div className="flex min-w-0 items-center gap-2 text-sm">
+                        <button
+                          type="button"
+                          onClick={
+                            goPdfRoot
+                          }
+                          className={
+                            currentPdfFolder
+                              ? "text-gray-500 hover:text-gray-900"
+                              : "font-medium"
+                          }
+                        >
+                          PDF
+                        </button>
+
+                        {currentPdfFolder && (
+                          <>
+                            <span className="text-gray-400">
+                              ›
+                            </span>
+
+                            <span className="truncate font-medium">
+                              {
+                                currentPdfFolder.name
+                              }
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    {/* PERSONAL FOLDER LIST */}
-                    <div className="mt-3 max-h-[240px] overflow-auto rounded-xl border bg-gray-50 p-2">
-                      {loadingFolders ? (
-                        <div className="px-2 py-2 text-sm text-gray-500">
+                    <div className="min-h-[420px] p-3 sm:p-4">
+                      {loadingFolders &&
+                      folders.length ===
+                        0 ? (
+                        <div className="py-16 text-center text-sm text-gray-500">
                           Φόρτωση φακέλων…
                         </div>
-                      ) : folders.length ===
-                        0 ? (
-                        <div className="px-2 py-2 text-sm text-gray-500">
-                          Δεν υπάρχουν φάκελοι.
+                      ) : visiblePdfFolders.length ===
+                          0 &&
+                        visiblePdfFiles.length ===
+                          0 ? (
+                        <div className="py-16 text-center text-sm text-gray-500">
+                          {currentPdfFolder
+                            ? "Ο φάκελος είναι κενός."
+                            : "Δεν βρέθηκαν PDF ή φάκελοι."}
                         </div>
                       ) : (
-                        <div className="grid gap-1">
-                          <FolderRow
-                            active={
-                              folderFilter ===
-                              "ALL"
-                            }
-                            name="Όλα"
-                            onClick={() =>
-                              setFolderFilter(
-                                "ALL"
-                              )
-                            }
-                          />
-
-                          <FolderRow
-                            active={
-                              folderFilter ===
-                              "NONE"
-                            }
-                            name="Χωρίς φάκελο"
-                            onClick={() =>
-                              setFolderFilter(
-                                "NONE"
-                              )
-                            }
-                          />
-
-                          <div className="my-1 h-px bg-gray-200" />
-
-                          {folders.map(
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-4 sm:grid-cols-3 xl:grid-cols-4">
+                          {visiblePdfFolders.map(
                             (
                               folder
                             ) => (
@@ -3030,80 +3080,100 @@ export default function AdminUserProfilePage() {
                                 key={
                                   folder.id
                                 }
-                                className={[
-                                  "group flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-2",
-
-                                  folderFilter ===
-                                  folder.id
-                                    ? "border bg-white"
-                                    : "hover:bg-white/70",
-                                ].join(
-                                  " "
-                                )}
-                                onClick={() =>
-                                  setFolderFilter(
-                                    folder.id
-                                  )
-                                }
-                                title={
-                                  folder.name
-                                }
+                                className="group relative flex min-w-0 flex-col items-center rounded-lg border border-transparent px-1 py-3 text-center transition hover:border-blue-200 hover:bg-blue-50/70 sm:px-2"
                               >
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <Folder
-                                    size={
-                                      16
-                                    }
-                                    className="shrink-0"
-                                  />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openPdfFolder(
+                                      folder.id
+                                    )
+                                  }
+                                  className="flex w-full min-w-0 flex-col items-center"
+                                  title={
+                                    folder.name
+                                  }
+                                >
+                                  <div className="flex h-16 items-center justify-center sm:h-20">
+                                    <Folder
+                                      size={
+                                        62
+                                      }
+                                      strokeWidth={
+                                        1.35
+                                      }
+                                      className="text-amber-500"
+                                    />
+                                  </div>
 
-                                  <div className="truncate text-sm">
+                                  <div
+                                    className="mt-1 w-full overflow-hidden break-words text-xs font-medium leading-4 text-gray-800 sm:text-sm sm:leading-5"
+                                    style={{
+                                      display:
+                                        "-webkit-box",
+
+                                      WebkitLineClamp:
+                                        3,
+
+                                      WebkitBoxOrient:
+                                        "vertical",
+                                    }}
+                                  >
                                     {
                                       folder.name
                                     }
                                   </div>
-                                </div>
+                                </button>
 
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                                <div className="mt-2 flex items-center justify-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                                   <button
                                     type="button"
-                                    className="rounded p-1 hover:bg-gray-100"
-                                    onClick={(
-                                      event
-                                    ) => {
-                                      event.stopPropagation();
-
-                                      void renameFolder(
-                                        folder.id,
-                                        folder.name
-                                      );
-                                    }}
-                                    aria-label="Μετονομασία"
+                                    onClick={() =>
+                                      openPdfFolder(
+                                        folder.id
+                                      )
+                                    }
+                                    className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
+                                    title="Άνοιγμα"
                                   >
-                                    <Pencil
+                                    <FolderOpen
                                       size={
-                                        14
+                                        15
                                       }
                                     />
                                   </button>
 
                                   <button
                                     type="button"
-                                    className="rounded p-1 hover:bg-gray-100"
-                                    onClick={(
-                                      event
-                                    ) => {
-                                      event.stopPropagation();
+                                    onClick={() =>
+                                      void renameFolder(
+                                        folder.id,
+                                        folder.name
+                                      )
+                                    }
+                                    className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
+                                    title="Μετονομασία"
+                                  >
+                                    <Pencil
+                                      size={
+                                        15
+                                      }
+                                    />
+                                  </button>
 
+                                  <button
+                                    type="button"
+                                    onClick={() =>
                                       void deleteFolder(
                                         folder.id
-                                      );
-                                    }}
-                                    aria-label="Διαγραφή"
+                                      )
+                                    }
+                                    className="rounded-md border bg-white p-1.5 text-red-600 hover:bg-red-50"
+                                    title="Διαγραφή φακέλου"
                                   >
                                     <Trash2
                                       size={
-                                        14
+                                        15
                                       }
                                     />
                                   </button>
@@ -3111,134 +3181,216 @@ export default function AdminUserProfilePage() {
                               </div>
                             )
                           )}
-                        </div>
-                      )}
-                    </div>
 
-                    {/* PDFs */}
-                    {pdfsFilteredByFolder.length ===
-                    0 ? (
-                      <p className="mt-4 text-sm text-gray-500">
-                        Δεν βρέθηκαν αρχεία.
-                      </p>
-                    ) : (
-                      <div className="mt-4 grid gap-2">
-                        {pdfsFilteredByFolder.map(
-                          (
-                            file
-                          ) => {
-                            const date =
-                              new Date(
-                                file.createdAt
-                              );
+                          {visiblePdfFiles.map(
+                            (
+                              file
+                            ) => {
+                              const title =
+                                file.title ||
+                                file.originalName ||
+                                "PDF";
 
-                            return (
-                              <div
-                                key={
-                                  file.id
-                                }
-                                className="rounded-xl border p-3"
-                              >
-                                <div className="min-w-0">
-                                  <div className="flex items-start gap-2">
-                                    <FileText
-                                      size={
-                                        16
+                              return (
+                                <div
+                                  key={
+                                    file.id
+                                  }
+                                  className="group relative flex min-w-0 flex-col items-center rounded-lg border border-transparent px-1 py-3 text-center transition hover:border-blue-200 hover:bg-blue-50/70 sm:px-2"
+                                >
+                                  {file.url ? (
+                                    <a
+                                      href={
+                                        file.url
                                       }
-                                      className="mt-0.5 shrink-0"
-                                    />
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="flex w-full min-w-0 flex-col items-center"
+                                      title={
+                                        title
+                                      }
+                                    >
+                                      <div className="flex h-16 items-center justify-center sm:h-20">
+                                        <FileText
+                                          size={
+                                            56
+                                          }
+                                          strokeWidth={
+                                            1.4
+                                          }
+                                          className="text-red-600"
+                                        />
+                                      </div>
 
-                                    <div className="min-w-0 break-words font-medium">
-                                      {file.title ||
-                                        file.originalName ||
-                                        "PDF"}
-                                    </div>
-                                  </div>
+                                      <ExplorerFileName
+                                        title={
+                                          title
+                                        }
+                                      />
+                                    </a>
+                                  ) : (
+                                    <>
+                                      <div className="flex h-16 items-center justify-center sm:h-20">
+                                        <FileText
+                                          size={
+                                            56
+                                          }
+                                          strokeWidth={
+                                            1.4
+                                          }
+                                          className="text-red-600"
+                                        />
+                                      </div>
 
-                                  <div className="mt-1 pl-6 text-xs text-gray-600">
-                                    {date.toLocaleDateString()}{" "}
-                                    {date.toLocaleTimeString()}{" "}
-                                    ·{" "}
+                                      <ExplorerFileName
+                                        title={
+                                          title
+                                        }
+                                      />
+                                    </>
+                                  )}
+
+                                  <div className="mt-1 text-[10px] text-gray-400">
                                     {formatSize(
                                       file.size
                                     )}
                                   </div>
-                                </div>
 
-                                <div className="mt-3 flex flex-col gap-2">
-                                  {/* USER-SPECIFIC FOLDER */}
-                                  <select
-                                    className="w-full rounded-lg border px-2 py-2 text-sm"
-                                    value={
-                                      file.pdfFolderId ??
-                                      ""
-                                    }
-                                    onChange={(
-                                      event
-                                    ) =>
-                                      void movePdf(
-                                        file.id,
-
-                                        event
-                                          .target
-                                          .value
-                                          ? event
-                                              .target
-                                              .value
-                                          : null
-                                      )
-                                    }
-                                  >
-                                    <option value="">
-                                      Χωρίς φάκελο
-                                    </option>
-
-                                    {folders.map(
-                                      (
-                                        folder
-                                      ) => (
-                                        <option
-                                          key={
-                                            folder.id
+                                  <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                                    {file.url && (
+                                      <>
+                                        <a
+                                          href={
+                                            file.url
                                           }
-                                          value={
-                                            folder.id
-                                          }
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          title="Προβολή"
+                                          className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
                                         >
-                                          {
-                                            folder.name
-                                          }
-                                        </option>
-                                      )
-                                    )}
-                                  </select>
+                                          <Eye
+                                            size={
+                                              15
+                                            }
+                                          />
+                                        </a>
 
-                                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-                                    {file.url ? (
-                                      <a
-                                        href={
-                                          file.url
-                                        }
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-black"
-                                        style={{
-                                          backgroundColor:
-                                            "var(--brand, #25C3F4)",
-                                        }}
-                                      >
-                                        Λήψη
-                                      </a>
-                                    ) : (
-                                      <span className="text-gray-500">
-                                        —
-                                      </span>
+                                        <a
+                                          href={`${file.url}?download=1`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          title="Λήψη"
+                                          className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
+                                        >
+                                          <Download
+                                            size={
+                                              15
+                                            }
+                                          />
+                                        </a>
+                                      </>
                                     )}
+
+                                    <div className="relative">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setMoveMenuFileId(
+                                            (
+                                              current
+                                            ) =>
+                                              current ===
+                                              file.id
+                                                ? null
+                                                : file.id
+                                          )
+                                        }
+                                        title="Μετακίνηση σε φάκελο"
+                                        className="rounded-md border bg-white p-1.5 hover:bg-gray-50"
+                                      >
+                                        <Folder
+                                          size={
+                                            15
+                                          }
+                                        />
+                                      </button>
+
+                                      {moveMenuFileId ===
+                                        file.id && (
+                                        <div className="absolute left-1/2 top-full z-[200] mt-2 max-h-72 w-60 -translate-x-1/2 overflow-y-auto rounded-lg border bg-white py-1 text-left shadow-xl">
+                                          <div className="border-b px-3 py-2 text-xs font-semibold text-gray-500">
+                                            Μετακίνηση σε
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              void movePdf(
+                                                file.id,
+                                                null
+                                              )
+                                            }
+                                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 ${
+                                              !file.pdfFolderId
+                                                ? "bg-gray-50 font-medium"
+                                                : ""
+                                            }`}
+                                          >
+                                            <Folder
+                                              size={
+                                                15
+                                              }
+                                              className="text-gray-400"
+                                            />
+
+                                            Χωρίς φάκελο
+                                          </button>
+
+                                          {folders.map(
+                                            (
+                                              folder
+                                            ) => (
+                                              <button
+                                                key={
+                                                  folder.id
+                                                }
+                                                type="button"
+                                                onClick={() =>
+                                                  void movePdf(
+                                                    file.id,
+                                                    folder.id
+                                                  )
+                                                }
+                                                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 ${
+                                                  file.pdfFolderId ===
+                                                  folder.id
+                                                    ? "bg-gray-50 font-medium"
+                                                    : ""
+                                                }`}
+                                              >
+                                                <Folder
+                                                  size={
+                                                    15
+                                                  }
+                                                  className="shrink-0 text-amber-500"
+                                                />
+
+                                                <span className="truncate">
+                                                  {
+                                                    folder.name
+                                                  }
+                                                </span>
+                                              </button>
+                                            )
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
 
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        deleteFile(
+                                        void deleteFile(
                                           file.id
                                         )
                                       }
@@ -3246,28 +3398,23 @@ export default function AdminUserProfilePage() {
                                         deletingId ===
                                         file.id
                                       }
-                                      className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-black/5 disabled:opacity-60"
                                       title="Αφαίρεση από τον χρήστη"
+                                      className="rounded-md border bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
                                     >
                                       <Trash2
                                         size={
-                                          16
+                                          15
                                         }
                                       />
-
-                                      {deletingId ===
-                                      file.id
-                                        ? "…"
-                                        : "Διαγραφή"}
                                     </button>
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          }
-                        )}
-                      </div>
-                    )}
+                              );
+                            }
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </section>
                 </div>
 
@@ -3322,47 +3469,35 @@ function EscClose({
         "keydown",
         onKey
       );
-  }, [onClose]);
+  }, [
+    onClose,
+  ]);
 
   return null;
 }
 
-function FolderRow({
-  active,
-  name,
-  onClick,
+function ExplorerFileName({
+  title,
 }: {
-  active: boolean;
-  name: string;
-  onClick: () => void;
+  title: string;
 }) {
   return (
     <div
-      className={[
-        "flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2",
+      className="mt-1 w-full overflow-hidden break-words text-xs font-medium leading-4 text-gray-800 sm:text-sm sm:leading-5"
+      style={{
+        display:
+          "-webkit-box",
 
-        active
-          ? "border bg-white"
-          : "hover:bg-white/70",
-      ].join(
-        " "
-      )}
-      onClick={
-        onClick
-      }
+        WebkitLineClamp:
+          3,
+
+        WebkitBoxOrient:
+          "vertical",
+      }}
     >
-      <Folder
-        size={
-          16
-        }
-        className="shrink-0"
-      />
-
-      <span className="text-sm">
-        {
-          name
-        }
-      </span>
+      {
+        title
+      }
     </div>
   );
 }
